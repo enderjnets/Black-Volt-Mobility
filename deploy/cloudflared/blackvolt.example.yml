@@ -1,0 +1,14 @@
+# Cloudflare Tunnel ingress for blackvoltmobility.com → Black Volt frontend on the ROG.
+# Copy to ~/.cloudflared/blackvolt.yml on the ROG and fill in the tunnel UUID.
+# Mirrors the eko-realtors-demo tunnel pattern (dedicated tunnel + systemd service),
+# isolated from the eko-landing / eko-realtors-demo tunnels — do NOT touch those.
+
+tunnel: <BLACKVOLT_TUNNEL_UUID>
+credentials-file: /home/enderj/.cloudflared/<BLACKVOLT_TUNNEL_UUID>.json
+
+ingress:
+  - hostname: blackvoltmobility.com
+    service: http://localhost:3005
+  - hostname: www.blackvoltmobility.com
+    service: http://localhost:3005
+  - service: http_status:404
