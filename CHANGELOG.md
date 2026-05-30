@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.0 — 2026-05-30 — Driver Dashboard kit (from Claude Design)
+
+Implemented the **Driver Dashboard** UI kit as Next.js routes under a `/dashboard`
+shell (sidebar + topbar), bilingual (EN default + ES), mock data.
+
+- **Overview** `/dashboard`: KPI cards, AI assistant card, today's rides, weekly bars.
+- **Rides** `/dashboard/rides`: filterable list + month/week **Calendar** toggle.
+- **Clients** `/dashboard/clients`: CRM table with search + tier badges.
+- **Inbox** `/dashboard/inbox`: SMS / AI call / AI chat threads, AI-call summary,
+  AI-draft reply (`window.claude.complete` with mock fallback).
+- **Rates** `/dashboard/rates`: editable rate engine + peak surge + live fare
+  preview + brand-accent picker.
+- Sidebar collapses to an icon rail under 900px.
+
 ## v0.1.0 — 2026-05-30 — Passenger Web kit (from Claude Design)
 
 Implemented the **Passenger Web** UI kit from the Black Volt Mobility design

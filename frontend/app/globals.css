@@ -99,3 +99,16 @@ body {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Dashboard: collapse the sidebar to an icon rail on narrow screens. */
+@media (max-width: 900px) {
+  .bv-dash-aside {
+    width: 64px !important;
+  }
+  .bv-dash-text {
+    display: none !important;
+  }
+  .bv-dash-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
