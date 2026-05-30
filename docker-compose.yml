@@ -1,0 +1,87 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: blackvolt-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-blackvolt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-blackvolt_local_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-blackvolt}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-blackvolt}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      # 5435 — coexist with the four Eko stacks (5432/5433/5434) on the ROG.
+      - "127.0.0.1:5435:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: blackvolt-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      # 6382 — coexist with Eko stacks (6379/6380/6381).
+      - "127.0.0.1:6382:6379"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: blackvolt-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://blackvolt:blackvolt_local_pass@db:5432/blackvolt}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      APP_ENV: ${APP_ENV:-development}
+      DEBUG: ${DEBUG:-true}
+      # LLM
+      LLM_PRIMARY: ${LLM_PRIMARY:-kimi}
+      LLM_FALLBACK: ${LLM_FALLBACK:-minimax}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.kimi.com/coding}
+      KIMI_MODEL: ${KIMI_MODEL:-kimi-for-coding}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-https://api.minimax.io/anthropic}
+      MINIMAX_MODEL: ${MINIMAX_MODEL:-MiniMax-M2.7}
+      # Auth
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_ADMIN_EMAILS: ${GOOGLE_ADMIN_EMAILS:-}
+    ports:
+      # 8012 — coexist with Eko backends (8000/8002/8010/8011).
+      - "8012:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    container_name: blackvolt-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
+    ports:
+      # 3005 — coexist with Eko frontends (3001/3002/3003/3004).
+      - "3005:3000"
+
+volumes:
+  postgres-data:

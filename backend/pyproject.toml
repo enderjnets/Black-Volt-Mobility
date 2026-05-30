@@ -1,0 +1,19 @@
+[project]
+name = "black-volt-mobility-backend"
+version = "0.0.1"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI Depends() in defaults is intentional.
+# UP037: SQLAlchemy quoted annotations. UP042: str-enum idioms.
+ignore = ["B008", "UP037", "UP042"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
