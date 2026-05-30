@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.0";
+export const CURRENT_VERSION = "0.3.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.3.1",
+    date: "2026-05-30",
+    title: "Live domain + driver dashboard subdomain",
+    changes: [
+      "blackvoltmobility.com live via Cloudflare Tunnel → ROG.",
+      "app.blackvoltmobility.com routes straight to the driver dashboard (host rewrite).",
+      "Public site (apex/www) and dashboard (app) split by host.",
+    ],
+  },
   {
     version: "0.3.0",
     date: "2026-05-30",

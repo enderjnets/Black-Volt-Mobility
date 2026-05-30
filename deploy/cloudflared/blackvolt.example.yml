@@ -11,4 +11,7 @@ ingress:
     service: http://localhost:3005
   - hostname: www.blackvoltmobility.com
     service: http://localhost:3005
+  # Driver dashboard host — Next.js host rewrite lands "/" on /dashboard.
+  - hostname: app.blackvoltmobility.com
+    service: http://localhost:3005
   - service: http_status:404
