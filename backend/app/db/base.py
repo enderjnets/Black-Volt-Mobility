@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
@@ -45,7 +46,11 @@ def get_engine() -> AsyncEngine:
             settings.DATABASE_URL,
             echo=settings.DEBUG and settings.APP_ENV == "development",
             future=True,
-            pool_pre_ping=True,
+            # NullPool: a fresh asyncpg connection per checkout, closed with the
+            # session. Avoids reusing a pooled connection across event loops
+            # (the source of "Event loop is closed" under TestClient) and is fine
+            # for the MVP's traffic. Revisit pooling when scaling.
+            poolclass=NullPool,
         )
     return _engine
 

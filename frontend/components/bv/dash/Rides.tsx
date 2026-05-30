@@ -79,8 +79,12 @@ export function Rides() {
       {mode === "calendar" ? (
         <Calendar />
       ) : (
-        <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: 6, overflowX: "auto" }}>
+        <div
+          className="bv-table-wrap"
+          style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: 6, overflowX: "auto" }}
+        >
           <div
+            className="bv-table-head"
             style={{
               display: "grid",
               gridTemplateColumns: "130px 1fr 100px 60px 104px",
@@ -100,7 +104,7 @@ export function Rides() {
             <span>{t("dash.col.fare")}</span>
             <span>{t("dash.col.status")}</span>
           </div>
-          <div style={{ minWidth: 620 }}>
+          <div className="bv-table-min" style={{ minWidth: 620 }}>
             {rides.map((r) => (
               <RideRow key={r.id} r={r} />
             ))}

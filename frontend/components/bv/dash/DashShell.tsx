@@ -9,6 +9,7 @@ import { Icon } from "../Icon";
 import { Button } from "../ui";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
+import { DriverTabBar } from "./DriverTabBar";
 
 export function StatusPill({ status }: { status: "upcoming" | "active" | "done" }) {
   const { t } = useI18n();
@@ -168,7 +169,7 @@ export function DashShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="bv-mobile-pad" style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
             display: "flex",
@@ -211,6 +212,7 @@ export function DashShell({ children }: { children: ReactNode }) {
         </div>
         {children}
       </div>
+      <DriverTabBar />
     </div>
   );
 }

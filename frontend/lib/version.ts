@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.1";
+export const CURRENT_VERSION = "0.3.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.3.2",
+    date: "2026-05-30",
+    title: "Mobile / responsive (native-app feel)",
+    changes: [
+      "Client + driver get fixed bottom tab bars on phones/tablets (<900px).",
+      "Driver sidebar collapses into the tab bar + a 'More' bottom sheet.",
+      "Ride & client tables become touch cards; KPIs a 2×2 grid.",
+      "Floating AI chat lifts above the tab bar; safe-area aware.",
+    ],
+  },
   {
     version: "0.3.1",
     date: "2026-05-30",

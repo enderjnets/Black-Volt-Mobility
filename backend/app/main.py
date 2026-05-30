@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
 from app.config import get_settings
-from app.db.base import dispose_engine
+from app.db.base import dispose_engine, get_session_factory
 
 settings = get_settings()
 logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL, logging.INFO))
@@ -21,6 +22,13 @@ async def lifespan(app: FastAPI):
     logger.info("Starting %s v%s env=%s", settings.APP_NAME, settings.APP_VERSION, settings.APP_ENV)
     if settings.is_production and not settings.AUTH_ENABLED:
         logger.warning("APP_ENV=production but AUTH_ENABLED=false — dashboard open. Investigate.")
+    try:
+        from app.services.tenancy import ensure_seed
+
+        async with get_session_factory()() as session:
+            await ensure_seed(session)
+    except Exception as e:  # DB not ready yet — get_default_tenant self-heals later
+        logger.warning("startup seed skipped: %s", e)
     yield
     await dispose_engine()
 
@@ -40,6 +48,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 
 
 @app.get("/")

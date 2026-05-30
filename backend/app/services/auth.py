@@ -1,0 +1,129 @@
+"""Auth — HMAC-signed session cookie (no JWT dep) with two audiences:
+
+  • OWNER/DRIVER  → a shared `DASHBOARD_PASSWORD` (the driver logs into the
+    dashboard on app.blackvoltmobility.com). Token role = "owner".
+  • PASSENGER     → Google Sign-In. We verify the Google ID token, find-or-create
+    a Client row for the tenant, and mint a "passenger" token carrying client_id.
+
+Tokens carry {sub, exp, role, tid, email?, cid?}. The signing secret is
+AUTH_SECRET if set, else derived from the password (stable across restarts).
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import time
+
+from app.config import get_settings
+
+COOKIE_NAME = "bv_auth"
+_SUBJECT = "blackvolt"
+
+ROLE_OWNER = "owner"
+ROLE_DRIVER = "driver"
+ROLE_PASSENGER = "passenger"
+STAFF_ROLES = {ROLE_OWNER, ROLE_DRIVER}
+
+
+def _b64e(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _b64d(s: str) -> bytes:
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def _secret() -> bytes:
+    s = get_settings()
+    material = s.AUTH_SECRET or f"blackvolt-auth::{s.DASHBOARD_PASSWORD}"
+    return hashlib.sha256(material.encode("utf-8")).digest()
+
+
+def check_password(password: str) -> bool:
+    """Constant-time compare against DASHBOARD_PASSWORD (False if none set)."""
+    expected = get_settings().DASHBOARD_PASSWORD
+    if not expected:
+        return False
+    return hmac.compare_digest(password or "", expected)
+
+
+def make_token(
+    *,
+    role: str,
+    tenant_id: int,
+    email: str | None = None,
+    client_id: int | None = None,
+    ttl_hours: int | None = None,
+) -> str:
+    s = get_settings()
+    ttl = ttl_hours if ttl_hours is not None else s.AUTH_TTL_HOURS
+    payload: dict = {
+        "sub": _SUBJECT,
+        "exp": int(time.time()) + ttl * 3600,
+        "role": role,
+        "tid": tenant_id,
+    }
+    if email:
+        payload["email"] = email
+    if client_id is not None:
+        payload["cid"] = client_id
+    payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    sig = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
+    return f"{payload_b64}.{sig}"
+
+
+def decode_token(token: str | None) -> dict | None:
+    """Return the verified payload (sig + sub + exp ok), else None."""
+    if not token or "." not in token:
+        return None
+    payload_b64, sig = token.rsplit(".", 1)
+    expected = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
+    if not hmac.compare_digest(sig, expected):
+        return None
+    try:
+        payload = json.loads(_b64d(payload_b64))
+    except Exception:
+        return None
+    if payload.get("sub") != _SUBJECT:
+        return None
+    if int(payload.get("exp", 0)) <= int(time.time()):
+        return None
+    return payload
+
+
+# ─── Google Sign In ──────────────────────────────────────────────────────
+class GoogleAuthError(Exception):
+    """Raised when Google ID token verification fails."""
+
+
+def verify_google_id_token(id_token_str: str) -> dict:
+    """Validate a Google ID token; return {email, sub, name}.
+
+    Checks signature against Google's keys, `aud` == GOOGLE_CLIENT_ID, and that
+    the email is verified. Raises GoogleAuthError otherwise.
+    """
+    s = get_settings()
+    if not s.GOOGLE_CLIENT_ID:
+        raise GoogleAuthError("google_signin_not_configured")
+    if not id_token_str:
+        raise GoogleAuthError("missing_id_token")
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token as google_id_token
+    except ImportError as e:
+        raise GoogleAuthError(f"google_auth_library_missing: {e}") from e
+    try:
+        claims = google_id_token.verify_oauth2_token(
+            id_token_str, google_requests.Request(), s.GOOGLE_CLIENT_ID
+        )
+    except ValueError as e:
+        raise GoogleAuthError(f"invalid_id_token: {e}") from e
+    if not claims.get("email_verified"):
+        raise GoogleAuthError("email_not_verified")
+    email = (claims.get("email") or "").lower().strip()
+    sub = claims.get("sub") or ""
+    if not email or not sub:
+        raise GoogleAuthError("missing_email_or_sub")
+    return {"email": email, "sub": sub, "name": claims.get("name") or ""}

@@ -103,27 +103,71 @@ body {
   }
 }
 
-/* Responsive: stack the design-kit grids and hide the center nav on phones. */
-@media (max-width: 760px) {
+/* ── Responsive / mobile (native-app feel) ──────────────────────────────
+   Bottom tab bars replace the desktop header-nav (web) and sidebar (driver)
+   below 900px. Tables become touch cards (handled in JS via useViewport). */
+.bv-tabbar {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  /* show the fixed bottom tab bars */
+  .bv-tabbar {
+    display: grid;
+  }
+  /* web header center nav + driver sidebar are replaced by the tab bar */
   .bv-web-nav {
     display: none !important;
   }
+  .bv-dash-aside {
+    display: none !important;
+  }
+  /* stack the 2-column kit grids */
   .bv-fleet,
   .bv-profile,
-  .bv-acct-grid {
+  .bv-acct-grid,
+  .bv-dash-grid {
     grid-template-columns: 1fr !important;
+  }
+  /* clearance so the fixed tab bar never covers content */
+  .bv-mobile-pad {
+    padding-bottom: 84px !important;
+  }
+  /* lift the floating AI chat above the tab bar */
+  .bv-chat-launcher {
+    bottom: 92px !important;
+  }
+  .bv-chat-panel {
+    bottom: 160px !important;
+    max-height: calc(100dvh - 220px) !important;
   }
 }
 
-/* Dashboard: collapse the sidebar to an icon rail on narrow screens. */
-@media (max-width: 900px) {
-  .bv-dash-aside {
-    width: 64px !important;
-  }
-  .bv-dash-text {
+@media (max-width: 899px) {
+  /* Tables become touch cards (rows handle their own mobile layout): drop the
+     column header + the min-width that forced horizontal scroll. */
+  .bv-table-head {
     display: none !important;
   }
-  .bv-dash-grid {
-    grid-template-columns: 1fr !important;
+  .bv-table-wrap {
+    overflow-x: visible !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+  .bv-table-min {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  /* KPIs become a tidy 2×2 grid on phones */
+  .bv-kpi-row {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+  .bv-kpi-row > * {
+    min-width: 0 !important;
   }
 }

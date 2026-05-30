@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Icon } from "../Icon";
 import { Button } from "../ui";
 import { useI18n } from "@/lib/i18n";
+import { useViewport } from "@/lib/useViewport";
 import { StatusPill } from "./DashShell";
 import { BV_RIDES, type Ride } from "./data";
 
@@ -62,6 +63,65 @@ function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: str
 
 export function RideRow({ r }: { r: Ride }) {
   const [h, setH] = useState(false);
+  const { compact } = useViewport();
+
+  if (compact) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "13px 14px",
+          margin: "0 6px 8px",
+          background: "var(--obsidian-2)",
+          border: "1px solid var(--line-strong)",
+          borderRadius: "var(--radius-lg)",
+        }}
+      >
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: "50%",
+            background: "var(--obsidian-3)",
+            border: "1px solid var(--line-strong)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="user" size={17} color="var(--silver)" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", whiteSpace: "nowrap" }}>
+              {r.client}
+            </span>
+            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--arctic)" }}>${r.fare}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--silver)", minWidth: 0, margin: "2px 0 6px" }}>
+            <Icon name="circle-dot" size={12} color="var(--volt)" />
+            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {r.from} → {r.to}
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, color: "var(--fg3)" }}>{r.time}</span>
+            <StatusPill status={r.status} />
+            {r.flight && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--silver)" }}>
+                <Icon name="plane" size={11} color="var(--volt)" />
+                {r.flight}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       onMouseEnter={() => setH(true)}
@@ -150,7 +210,7 @@ export function Overview() {
   const { t } = useI18n();
   return (
     <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 22 }}>
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+      <div className="bv-kpi-row" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <KpiCard icon="navigation" label={t("dash.kpi.rides")} value="6" sub={t("dash.kpi.ridesSub")} />
         <KpiCard icon="dollar-sign" label={t("dash.kpi.revenue")} value="$434" sub={t("dash.kpi.revenueSub")} accent />
         <KpiCard icon="star" label={t("dash.kpi.rating")} value="4.98" />

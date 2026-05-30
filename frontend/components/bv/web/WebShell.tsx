@@ -10,6 +10,7 @@ import { VersionButton } from "../../ui/VersionButton";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { ChatAssistant } from "./Chat";
+import { ClientTabBar } from "./ClientTabBar";
 import { BV_USER, type BvUser, SignInModal } from "./SignInModal";
 
 interface WebCtx {
@@ -228,10 +229,14 @@ export function WebShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main style={{ flex: 1, width: "100%", maxWidth: 1040, margin: "0 auto", padding: "0 20px" }}>
+        <main
+          className="bv-mobile-pad"
+          style={{ flex: 1, width: "100%", maxWidth: 1040, margin: "0 auto", padding: "0 20px" }}
+        >
           {children}
         </main>
 
+        <ClientTabBar />
         <ChatAssistant open={chatOpen} setOpen={setChatOpen} />
         {signin && (
           <SignInModal

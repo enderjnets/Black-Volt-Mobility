@@ -45,11 +45,12 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
       <button
         onClick={() => setOpen(!open)}
         aria-label="Assistant"
+        className="bv-chat-launcher"
         style={{
           position: "fixed",
           right: 24,
           bottom: 24,
-          zIndex: 40,
+          zIndex: 46,
           width: 56,
           height: 56,
           borderRadius: "50%",
@@ -70,11 +71,12 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
 
       {open && (
         <div
+          className="bv-chat-panel"
           style={{
             position: "fixed",
             right: 24,
             bottom: 92,
-            zIndex: 40,
+            zIndex: 46,
             width: 360,
             maxWidth: "calc(100vw - 48px)",
             height: 480,
