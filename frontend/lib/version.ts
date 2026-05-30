@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.2.0";
+export const CURRENT_VERSION = "0.3.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.3.0",
+    date: "2026-05-30",
+    title: "Add ride (Manual + Smart) + SMS confirmation",
+    changes: [
+      "New /dashboard/add: create a reservation Manually or Smart.",
+      "Smart mode: drop/paste/upload a screenshot → Claude vision extracts it (mock fallback); AI-filled fields tagged, missing ones flagged.",
+      "Auto-generated confirmation SMS in the client's language: send now or copy.",
+      "Passenger booking now shows a 'Confirmation sent by SMS' notice.",
+    ],
+  },
   {
     version: "0.2.0",
     date: "2026-05-30",

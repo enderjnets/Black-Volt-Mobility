@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
@@ -44,6 +44,7 @@ export function StatusPill({ status }: { status: "upcoming" | "active" | "done" 
 
 const NAV: { seg: string; href: string; icon: string; key: string }[] = [
   { seg: "overview", href: "/dashboard", icon: "layout-dashboard", key: "dash.nav.overview" },
+  { seg: "add", href: "/dashboard/add", icon: "plus", key: "dash.nav.book" },
   { seg: "rides", href: "/dashboard/rides", icon: "navigation", key: "dash.nav.rides" },
   { seg: "clients", href: "/dashboard/clients", icon: "users", key: "dash.nav.clients" },
   { seg: "inbox", href: "/dashboard/inbox", icon: "message-circle", key: "dash.nav.inbox" },
@@ -88,6 +89,7 @@ function segOf(pathname: string): string {
 export function DashShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const pathname = usePathname();
+  const router = useRouter();
   const seg = segOf(pathname);
 
   return (
@@ -202,7 +204,7 @@ export function DashShell({ children }: { children: ReactNode }) {
                 }}
               />
             </div>
-            <Button variant="solid" size="sm" icon="plus">
+            <Button variant="solid" size="sm" icon="plus" onClick={() => router.push("/dashboard/add")}>
               {t("dash.newRide")}
             </Button>
           </div>

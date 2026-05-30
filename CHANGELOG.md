@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.3.0 — 2026-05-30 — Add ride (Manual + Smart) + SMS confirmation
+
+Added the **"Add ride"** screen to the driver dashboard (`/dashboard/add`) plus an
+auto-SMS confirmation notice on the passenger booking flow.
+
+- **Manual mode**: bilingual reservation form (client · trip · flight/details) with
+  a live reservation preview + suggested DEN flat fare.
+- **Smart mode**: drop / paste (⌘V) / upload a screenshot → Claude **vision**
+  extracts the details (`window.claude.complete` image block, mock fallback);
+  AI-filled fields get a cyan "AI" tag, missing required fields are flagged amber
+  with click-to-focus chips and a "found N of M" banner.
+- **Confirmation message**: auto-generated SMS in the client's language with a
+  send-now (auto) or copy (manual) choice.
+- Sidebar "Add ride / Nueva reserva" item + topbar "New ride" both route here.
+- Passenger booking confirmed step now shows "Confirmation sent by SMS".
+
 ## v0.2.0 — 2026-05-30 — Driver Dashboard kit (from Claude Design)
 
 Implemented the **Driver Dashboard** UI kit as Next.js routes under a `/dashboard`

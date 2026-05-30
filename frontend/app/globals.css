@@ -68,6 +68,21 @@ body {
   min-height: 100dvh;
 }
 
+/* Smart-capture scan + spinner (AddRide) */
+@keyframes bv-scan {
+  from {
+    top: 0;
+  }
+  to {
+    top: 100%;
+  }
+}
+@keyframes bv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Typing indicator (AI chat) */
 @keyframes bvBlink {
   0%,

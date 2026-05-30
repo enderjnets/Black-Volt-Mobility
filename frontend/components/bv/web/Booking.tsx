@@ -266,9 +266,24 @@ export function Booking() {
             >
               {t("book.confirmed")}
             </div>
-            <p style={{ color: "var(--silver)", fontSize: 14, maxWidth: 300, margin: "0 auto 18px", lineHeight: 1.5 }}>
+            <p style={{ color: "var(--silver)", fontSize: 14, maxWidth: 300, margin: "0 auto 14px", lineHeight: 1.5 }}>
               {t("book.confirmed.sub")}
             </p>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                background: "var(--volt-bg)",
+                border: "1px solid var(--volt-border)",
+                borderRadius: "var(--radius-full)",
+                padding: "6px 14px",
+                marginBottom: 18,
+              }}
+            >
+              <Icon name="message-circle" size={14} color="var(--volt)" />
+              <span style={{ fontSize: 12.5, color: "var(--volt)", fontWeight: 600, fontFamily: "var(--font-sans)" }}>{t("book.sms")}</span>
+            </div>
             <div
               style={{
                 display: "flex",
