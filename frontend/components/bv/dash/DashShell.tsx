@@ -9,6 +9,7 @@ import { Icon } from "../Icon";
 import { Button } from "../ui";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
+import { logout } from "@/lib/auth";
 import { DriverTabBar } from "./DriverTabBar";
 
 export function StatusPill({ status }: { status: "upcoming" | "active" | "done" }) {
@@ -165,7 +166,17 @@ export function DashShell({ children }: { children: ReactNode }) {
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)" }}>Ender</div>
             <div style={{ fontSize: 11, color: "var(--fg3)" }}>{t("dash.owner")}</div>
           </div>
-          <Icon name="log-out" size={16} color="var(--fg3)" />
+          <button
+            onClick={async () => {
+              await logout();
+              router.push("/login");
+            }}
+            aria-label={t("auth.signout")}
+            title={t("auth.signout")}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}
+          >
+            <Icon name="log-out" size={16} color="var(--fg3)" />
+          </button>
         </div>
       </aside>
 

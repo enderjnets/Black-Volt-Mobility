@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.3.2";
+export const CURRENT_VERSION = "0.4.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.4.0",
+    date: "2026-05-30",
+    title: "Phase 1 — Auth + multi-tenancy",
+    changes: [
+      "Driver login (/login) + AuthGuard protecting app.blackvoltmobility.com.",
+      "Tenant + Client models (multi-tenant ready); Black Volt seeded.",
+      "Passenger Google sign-in backend (verify + find-or-create client).",
+      "HMAC session cookie (owner/driver/passenger roles); sign-out.",
+      "Fix: bake INTERNAL_API_URL at build so the /api proxy reaches the backend.",
+    ],
+  },
   {
     version: "0.3.2",
     date: "2026-05-30",
