@@ -2,17 +2,100 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Black Volt Mobility — design tokens (from the design system's
+   colors_and_type.css). Single source for var(--*) used across
+   the ported UI-kit components.
+   ============================================================ */
 :root {
   color-scheme: dark;
+
+  /* Core brand palette */
+  --void: #0a0a0f;
+  --obsidian: #15151d;
+  --volt: #00e5ff;
+  --volt-dim: #00b8cc;
+  --silver: #c7cbd4;
+  --arctic: #f5f7fa;
+
+  /* Derived surfaces & lines */
+  --obsidian-2: #1c1c26;
+  --obsidian-3: #232330;
+  --line: rgba(199, 203, 212, 0.1);
+  --line-strong: rgba(199, 203, 212, 0.18);
+  --volt-border: rgba(0, 229, 255, 0.3);
+  --volt-bg: rgba(0, 229, 255, 0.1);
+  --volt-bg-20: rgba(0, 229, 255, 0.2);
+
+  /* Semantic foreground roles */
+  --fg1: var(--arctic);
+  --fg2: var(--silver);
+  --fg3: rgba(199, 203, 212, 0.55);
+  --fg-accent: var(--volt);
+
+  /* Status colors */
+  --success: #2bd4a0;
+  --warning: #ffc24b;
+  --danger: #ff5c6e;
+  --info: var(--volt);
+
+  /* Typography families (wired to next/font CSS vars) */
+  --font-display: var(--font-rajdhani), system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Elevation / glow */
+  --shadow-volt: 0 0 24px rgba(0, 229, 255, 0.35);
+  --shadow-volt-sm: 0 0 12px rgba(0, 229, 255, 0.25);
+  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 html,
 body {
-  background-color: #0a0a0f;
-  color: #f5f7fa;
+  background-color: var(--void);
+  color: var(--arctic);
   -webkit-tap-highlight-color: transparent;
 }
 
 body {
   min-height: 100dvh;
+}
+
+/* Typing indicator (AI chat) */
+@keyframes bvBlink {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Responsive: stack the design-kit grids and hide the center nav on phones. */
+@media (max-width: 760px) {
+  .bv-web-nav {
+    display: none !important;
+  }
+  .bv-fleet,
+  .bv-profile,
+  .bv-acct-grid {
+    grid-template-columns: 1fr !important;
+  }
 }

@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.0.1";
+export const CURRENT_VERSION = "0.1.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.1.0",
+    date: "2026-05-30",
+    title: "Passenger Web kit (from Claude Design)",
+    changes: [
+      "Booking flow: pickup/dropoff, route review, fare, Square pay, confirmation.",
+      "My Trips: live tracking + flight status (mock data).",
+      "Public driver profile /d/[slug] with QR onboarding card.",
+      "Google sign-in modal + account (saved addresses, payment, prefs).",
+      "Floating AI chat assistant; full design tokens + branded icon.",
+    ],
+  },
   {
     version: "0.0.1",
     date: "2026-05-29",

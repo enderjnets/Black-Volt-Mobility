@@ -1,0 +1,263 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+import { Icon } from "../Icon";
+import { useI18n } from "@/lib/i18n";
+import { type BvMsg, bvComplete } from "@/lib/bvAI";
+
+function mockReply(q: string): string {
+  const s = q.toLowerCase();
+  if (/driver|chofer|d[oó]nde/.test(s))
+    return "Ender is 6 minutes away in the black Kia EV9 (ENV-4827), heading north on Blake St.";
+  if (/pickup|recog|time|hora/.test(s))
+    return "Sure — I can move your pickup. What time works? Your flight UA 2293 lands 14:05, on time.";
+  if (/fare|tarifa|price|precio|estimate|estimar/.test(s))
+    return "Downtown Denver → DEN is about 18.4 mi, ~$74 with fixed upfront pricing. No surge.";
+  return "Got it — I've noted that. Ender will take care of it. Anything else before pickup?";
+}
+
+export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
+  const { t } = useI18n();
+  const [msgs, setMsgs] = useState<BvMsg[]>([{ role: "ai", text: t("chat.greet") }]);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [msgs, open, typing]);
+
+  const send = async (text?: string) => {
+    const v = (text ?? input).trim();
+    if (!v || typing) return;
+    const next: BvMsg[] = [...msgs, { role: "user", text: v }];
+    setMsgs(next);
+    setInput("");
+    setTyping(true);
+    const reply = await bvComplete(next, { mock: mockReply });
+    setTyping(false);
+    setMsgs((m) => [...m, { role: "ai", text: reply }]);
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(!open)}
+        aria-label="Assistant"
+        style={{
+          position: "fixed",
+          right: 24,
+          bottom: 24,
+          zIndex: 40,
+          width: 56,
+          height: 56,
+          borderRadius: "50%",
+          border: "1px solid var(--volt-border)",
+          background: "var(--volt)",
+          color: "var(--void)",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "var(--shadow-volt)",
+          transition: "transform .16s ease-out",
+          transform: open ? "scale(0.9)" : "scale(1)",
+        }}
+      >
+        <Icon name={open ? "x" : "sparkles"} size={24} color="var(--void)" fill={open ? "none" : "var(--void)"} />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "fixed",
+            right: 24,
+            bottom: 92,
+            zIndex: 40,
+            width: 360,
+            maxWidth: "calc(100vw - 48px)",
+            height: 480,
+            maxHeight: "calc(100dvh - 140px)",
+            display: "flex",
+            flexDirection: "column",
+            background: "var(--obsidian)",
+            border: "1px solid var(--volt-border)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-pop), var(--shadow-volt-sm)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 11,
+              padding: "14px 16px",
+              borderBottom: "1px solid var(--line)",
+            }}
+          >
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                background: "var(--volt-bg)",
+                border: "1px solid var(--volt-border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon name="sparkles" size={17} color="var(--volt)" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 600,
+                  fontSize: 15,
+                  color: "var(--arctic)",
+                }}
+              >
+                {t("chat.title")}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--fg3)" }}>{t("chat.sub")}</div>
+            </div>
+          </div>
+
+          <div
+            ref={scrollRef}
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            {msgs.map((m, i) => (
+              <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "82%" }}>
+                <div
+                  style={{
+                    padding: "10px 13px",
+                    borderRadius: 12,
+                    fontSize: 13.5,
+                    lineHeight: 1.45,
+                    fontFamily: "var(--font-sans)",
+                    background: m.role === "user" ? "var(--volt)" : "var(--obsidian-3)",
+                    color: m.role === "user" ? "var(--void)" : "var(--arctic)",
+                    borderBottomRightRadius: m.role === "user" ? 4 : 12,
+                    borderBottomLeftRadius: m.role === "user" ? 12 : 4,
+                    border: m.role === "user" ? "none" : "1px solid var(--line-strong)",
+                  }}
+                >
+                  {m.text}
+                </div>
+              </div>
+            ))}
+            {typing && (
+              <div style={{ alignSelf: "flex-start", maxWidth: "82%" }}>
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    borderBottomLeftRadius: 4,
+                    background: "var(--obsidian-3)",
+                    border: "1px solid var(--line-strong)",
+                    display: "flex",
+                    gap: 4,
+                  }}
+                >
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: "var(--volt)",
+                        animation: `bvBlink 1s ${i * 0.18}s infinite ease-in-out`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {msgs.length <= 1 && !typing && (
+            <div style={{ display: "flex", gap: 7, padding: "0 16px 10px", flexWrap: "wrap" }}>
+              {["chat.q1", "chat.q2", "chat.q3"].map((k) => (
+                <button
+                  key={k}
+                  onClick={() => send(t(k))}
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "var(--font-sans)",
+                    color: "var(--volt)",
+                    background: "var(--volt-bg)",
+                    border: "1px solid var(--volt-border)",
+                    borderRadius: "var(--radius-full)",
+                    padding: "6px 11px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {t(k)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "12px 14px",
+              borderTop: "1px solid var(--line)",
+            }}
+          >
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={t("chat.ph")}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+              style={{
+                flex: 1,
+                background: "var(--obsidian-3)",
+                border: "1px solid var(--line-strong)",
+                borderRadius: "var(--radius-full)",
+                padding: "10px 14px",
+                color: "var(--arctic)",
+                fontSize: 13.5,
+                fontFamily: "var(--font-sans)",
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={() => send()}
+              aria-label="Send"
+              style={{
+                width: 38,
+                height: 38,
+                flexShrink: 0,
+                borderRadius: "50%",
+                border: "none",
+                cursor: "pointer",
+                background: "var(--volt)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "var(--shadow-volt-sm)",
+              }}
+            >
+              <Icon name="send" size={17} color="var(--void)" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
