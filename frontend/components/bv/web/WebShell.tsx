@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { Icon } from "../Icon";
 import { Button, Logo } from "../ui";
 import { VersionButton } from "../../ui/VersionButton";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
+import { fetchMe, logout } from "@/lib/auth";
 import { ChatAssistant } from "./Chat";
 import { ClientTabBar } from "./ClientTabBar";
 import { BV_USER, type BvUser, SignInModal } from "./SignInModal";
@@ -71,11 +72,22 @@ export function WebShell({ children }: { children: ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [menu, setMenu] = useState(false);
 
+  // Reflect an existing passenger session (real Google sign-in) on load.
+  useEffect(() => {
+    fetchMe().then((me) => {
+      if (me.authenticated && me.role === "passenger") {
+        const email = me.email || "";
+        setUser({ name: email ? email.split("@")[0] : "Passenger", email, since: "" });
+      }
+    });
+  }, []);
+
   const ctx: WebCtx = {
     user,
     openChat: () => setChatOpen(true),
     openSignIn: () => setSignin(true),
-    signOut: () => {
+    signOut: async () => {
+      await logout();
       setUser(null);
       router.push("/");
     },
@@ -241,9 +253,19 @@ export function WebShell({ children }: { children: ReactNode }) {
         {signin && (
           <SignInModal
             onClose={() => setSignin(false)}
-            onSignIn={() => {
-              setUser(BV_USER);
+            onSignedIn={async (mode) => {
               setSignin(false);
+              if (mode === "google") {
+                const me = await fetchMe();
+                const email = me.email || "";
+                setUser(
+                  me.authenticated
+                    ? { name: email ? email.split("@")[0] : "Passenger", email, since: "" }
+                    : BV_USER,
+                );
+              } else {
+                setUser(BV_USER);
+              }
               router.push("/account");
             }}
           />

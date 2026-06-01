@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.0";
+export const CURRENT_VERSION = "0.4.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.4.1",
+    date: "2026-05-31",
+    title: "Passenger Google sign-in (real GIS)",
+    changes: [
+      "Portal sign-in renders the real Google button when configured.",
+      "Real session reflected in the header; sign-out clears the cookie.",
+      "Dormant (demo button) until NEXT_PUBLIC_GOOGLE_CLIENT_ID is set.",
+      "See docs/setup-google-signin.md.",
+    ],
+  },
   {
     version: "0.4.0",
     date: "2026-05-30",

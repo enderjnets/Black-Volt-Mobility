@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Icon } from "../Icon";
 import { GoogleG } from "../ui";
 import { useI18n } from "@/lib/i18n";
+import { loginGoogle } from "@/lib/auth";
+import { GoogleSignInButton } from "./GoogleSignInButton";
 
 export interface BvUser {
   name: string;
@@ -18,12 +20,35 @@ export const BV_USER: BvUser = {
   since: "May 2025",
 };
 
-export function SignInModal({ onClose, onSignIn }: { onClose: () => void; onSignIn: () => void }) {
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+
+export function SignInModal({
+  onClose,
+  onSignedIn,
+}: {
+  onClose: () => void;
+  onSignedIn: (mode: "google" | "demo") => void;
+}) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
-  const go = () => {
+  const [err, setErr] = useState<string | null>(null);
+
+  // Demo path (no Google client configured): keep the prototype's mock sign-in.
+  const goDemo = () => {
     setBusy(true);
-    setTimeout(() => onSignIn(), 800);
+    setTimeout(() => onSignedIn("demo"), 700);
+  };
+
+  // Real path: GIS hands us a Google ID token → backend verifies → session cookie.
+  const onCredential = async (idToken: string) => {
+    setBusy(true);
+    setErr(null);
+    const r = await loginGoogle(idToken);
+    if (r.ok) onSignedIn("google");
+    else {
+      setErr(t("auth.googleFailed"));
+      setBusy(false);
+    }
   };
   return (
     <div
@@ -101,37 +126,48 @@ export function SignInModal({ onClose, onSignIn }: { onClose: () => void; onSign
           {t("auth.subtitle")}
         </p>
 
-        <button
-          onClick={go}
-          disabled={busy}
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 11,
-            background: "var(--arctic)",
-            color: "#1f2024",
-            border: "none",
-            borderRadius: "var(--radius-md)",
-            padding: "13px 18px",
-            fontSize: 15,
-            fontWeight: 600,
-            fontFamily: "var(--font-sans)",
-            cursor: busy ? "default" : "pointer",
-            opacity: busy ? 0.7 : 1,
-            transition: "opacity .15s",
-          }}
-        >
-          {busy ? (
-            t("auth.signingin")
-          ) : (
-            <>
-              <GoogleG size={20} />
-              {t("auth.google")}
-            </>
-          )}
-        </button>
+        {GOOGLE_CLIENT_ID ? (
+          <div style={{ minHeight: 44 }}>
+            {busy ? (
+              <div style={{ fontSize: 14, color: "var(--silver)", padding: "12px 0" }}>{t("auth.googleSigningIn")}</div>
+            ) : (
+              <GoogleSignInButton clientId={GOOGLE_CLIENT_ID} onCredential={onCredential} />
+            )}
+            {err && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 8 }}>{err}</div>}
+          </div>
+        ) : (
+          <button
+            onClick={goDemo}
+            disabled={busy}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 11,
+              background: "var(--arctic)",
+              color: "#1f2024",
+              border: "none",
+              borderRadius: "var(--radius-md)",
+              padding: "13px 18px",
+              fontSize: 15,
+              fontWeight: 600,
+              fontFamily: "var(--font-sans)",
+              cursor: busy ? "default" : "pointer",
+              opacity: busy ? 0.7 : 1,
+              transition: "opacity .15s",
+            }}
+          >
+            {busy ? (
+              t("auth.signingin")
+            ) : (
+              <>
+                <GoogleG size={20} />
+                {t("auth.google")}
+              </>
+            )}
+          </button>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0" }}>
           <span style={{ flex: 1, height: 1, background: "var(--line)" }} />

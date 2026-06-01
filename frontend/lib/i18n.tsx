@@ -113,6 +113,8 @@ const EN: Record<string, string> = {
   "auth.password": "Password",
   "auth.invalidPassword": "Wrong password",
   "auth.checking": "Checking session…",
+  "auth.googleSigningIn": "Verifying with Google…",
+  "auth.googleFailed": "Google sign-in failed. Please try again.",
   // account
   "acct.title": "Your account",
   "acct.profile": "Profile",
@@ -319,6 +321,8 @@ const ES: Record<string, string> = {
   "auth.password": "Contraseña",
   "auth.invalidPassword": "Contraseña incorrecta",
   "auth.checking": "Verificando sesión…",
+  "auth.googleSigningIn": "Verificando con Google…",
+  "auth.googleFailed": "Falló el ingreso con Google. Intenta de nuevo.",
   "acct.title": "Tu cuenta",
   "acct.profile": "Perfil",
   "acct.member": "Miembro desde",
