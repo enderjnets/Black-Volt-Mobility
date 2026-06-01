@@ -5,9 +5,22 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.2";
+export const CURRENT_VERSION = "0.5.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.5.0",
+    date: "2026-05-31",
+    title: "Phase 2 — Booking core (route + pricing engine)",
+    changes: [
+      "Ride + RateConfig models (multi-tenant); fare engine + Google Maps adapter.",
+      "Quote API prices any trip from route distance/duration + per-tenant rates.",
+      "Maps simulated by default (deterministic) — one key flips it live.",
+      "Rates editor now loads + saves the live fare engine.",
+      "Add ride suggests a live quote and persists the reservation.",
+      "See docs/setup-google-maps.md.",
+    ],
+  },
   {
     version: "0.4.2",
     date: "2026-05-31",

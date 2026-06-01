@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.services import auth
+from app.services.tenancy import get_default_tenant
 
 
 def current_payload(request: Request) -> dict | None:
@@ -29,3 +31,11 @@ def require_staff(payload: dict = Depends(require_auth)) -> dict:
     if get_settings().AUTH_ENABLED and payload.get("role") not in auth.STAFF_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     return payload
+
+
+async def resolve_tenant_id(db: AsyncSession, payload: dict | None) -> int:
+    """Tenant id from the session, falling back to the single default tenant
+    (single-driver MVP / open mode where the token carries no tenant)."""
+    if payload and payload.get("tid"):
+        return int(payload["tid"])
+    return (await get_default_tenant(db)).id

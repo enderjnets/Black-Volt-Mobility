@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Button, Pill, Toggle } from "../ui";
 import { useI18n } from "@/lib/i18n";
+import { getRateConfig, updateRateConfig } from "@/lib/booking";
 
 function RateInput({
   icon,
@@ -98,14 +99,46 @@ export function Rates() {
   const [surge, setSurge] = useState(true);
   const [surgeX, setSurgeX] = useState(1.4);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Load the tenant's live rate config; falls back to the defaults above.
+  useEffect(() => {
+    getRateConfig()
+      .then((rc) => {
+        setBase(rc.base);
+        setPerMile(rc.per_mile);
+        setPerMin(rc.per_minute);
+        setAirport(rc.airport_flat);
+        setMinimum(rc.minimum);
+        setSurge(rc.peak_enabled);
+        setSurgeX(rc.peak_multiplier);
+      })
+      .catch(() => {});
+  }, []);
 
   const SAMPLE_MI = 18.4;
   const SAMPLE_MIN = 28;
   const fare = Math.max(minimum, airport);
 
-  const save = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1800);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await updateRateConfig({
+        base,
+        per_mile: perMile,
+        per_minute: perMin,
+        airport_flat: airport,
+        minimum,
+        peak_enabled: surge,
+        peak_multiplier: surgeX,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch {
+      /* keep the form values; a transient save error shouldn't wipe them */
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -222,7 +255,7 @@ export function Rates() {
           <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 12 }}>{t("dash.rates.accentHint")}</div>
         </div>
 
-        <Button variant="solid" full size="lg" icon={saved ? "check" : "zap"} onClick={save}>
+        <Button variant="solid" full size="lg" icon={saved ? "check" : "zap"} disabled={saving} onClick={save}>
           {saved ? t("dash.rates.saved") : t("dash.rates.save")}
         </Button>
       </div>

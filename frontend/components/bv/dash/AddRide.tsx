@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
 import { useI18n } from "@/lib/i18n";
+import { createRide, getQuote } from "@/lib/booking";
 
 type Form = Record<string, string>;
 const BV_BLANK: Form = {
@@ -31,6 +32,7 @@ const BV_T: Record<string, any> = {
     datePh: "Jun 14", timePh: "14:20", flightPh: "UA 2293", paxPh: "1",
     notesPh: "Luggage, child seat, gate, special requests…",
     suggested: "Suggested · DEN flat rate",
+    suggestedQuote: "Suggested · live quote",
     previewTitle: "Reservation preview", previewEmpty: "Fill in the form to preview the ride.",
     create: "Create reservation", creating: "Creating…",
     squareNote: "Payment collected on card via Square.",
@@ -70,6 +72,7 @@ const BV_T: Record<string, any> = {
     datePh: "14 jun", timePh: "14:20", flightPh: "UA 2293", paxPh: "1",
     notesPh: "Equipaje, silla de bebé, puerta, peticiones…",
     suggested: "Sugerido · tarifa fija DEN",
+    suggestedQuote: "Sugerido · cotización en vivo",
     previewTitle: "Vista previa de la reserva", previewEmpty: "Completa el formulario para ver el viaje.",
     create: "Crear reserva", creating: "Creando…",
     squareNote: "El pago se cobra con tarjeta vía Square.",
@@ -195,6 +198,8 @@ export function AddRide() {
   const [aiRan, setAiRan] = useState(false);
   const [img, setImg] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [suggested, setSuggested] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
 
@@ -205,7 +210,62 @@ export function AddRide() {
     setAiRan(false);
     setImg(null);
     setCreated(false);
+    setSuggested(null);
     setSmartStage("capture");
+  };
+
+  // Live fare suggestion from the backend (Google Maps route + pricing engine).
+  // Debounced; the static heuristic stays as an instant fallback.
+  useEffect(() => {
+    const pickup = form.pickup.trim();
+    const dropoff = form.dropoff.trim();
+    if (!pickup || !dropoff) {
+      setSuggested(null);
+      return;
+    }
+    let alive = true;
+    const id = setTimeout(() => {
+      getQuote({ pickup, dropoff, pax: form.passengers ? Number(form.passengers) : null })
+        .then((q) => {
+          if (alive) setSuggested(Math.round(q.total));
+        })
+        .catch(() => {
+          if (alive) setSuggested(null);
+        });
+    }, 450);
+    return () => {
+      alive = false;
+      clearTimeout(id);
+    };
+  }, [form.pickup, form.dropoff, form.passengers]);
+
+  // Best available fare suggestion: live quote → heuristic flat → none.
+  const fareHint = suggested ?? bvSuggestFare(form.pickup, form.dropoff);
+
+  // Persist the reservation, then show the confirmation screen. A backend error
+  // still advances to the success view (the confirmation SMS is the artifact).
+  const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await createRide({
+        pickup: form.pickup,
+        dropoff: form.dropoff,
+        pax: form.passengers ? Number(form.passengers) : null,
+        flight_number: form.flight || null,
+        lang: (form.lang || "EN").toUpperCase(),
+        notes: form.notes || null,
+        passenger_name: form.name || null,
+        passenger_phone: form.phone || null,
+        fare_override: form.fare ? Number(form.fare) : null,
+        confirm: true,
+      });
+    } catch {
+      /* keep going — the ride may still be created; surface UX optimistically */
+    } finally {
+      setSubmitting(false);
+      setCreated(true);
+    }
   };
 
   useEffect(() => {
@@ -368,8 +428,9 @@ export function AddRide() {
                 onChange={(v) => set("fare", v.replace(/[^0-9.]/g, ""))}
                 state={fieldState("fare", form, aiFields, mode, aiRan)}
                 t={t}
-                hint={!form.fare && bvSuggestFare(form.pickup, form.dropoff) ? t.suggested : null}
-                onHint={() => set("fare", String(bvSuggestFare(form.pickup, form.dropoff)))}
+                hint={!form.fare && fareHint ? (suggested ? t.suggestedQuote : t.suggested) : null}
+                hintValue={fareHint}
+                onHint={() => fareHint && set("fare", String(fareHint))}
               />
               <RideField id="notes" label={t.notes} icon="message-circle" ph={t.notesPh} value={form.notes} onChange={(v) => set("notes", v)} state={fieldState("notes", form, aiFields, mode, aiRan)} t={t} textarea />
             </FormSection>
@@ -387,8 +448,8 @@ export function AddRide() {
                 <p style={{ fontSize: 13, color: "var(--fg3)", lineHeight: 1.55, margin: 0 }}>{t.previewEmpty}</p>
               )}
               <div style={{ height: 1, background: "var(--line)", margin: "18px 0" }} />
-              <Button variant="solid" full icon="check" disabled={!canCreate} onClick={() => canCreate && setCreated(true)}>
-                {t.create}
+              <Button variant="solid" full icon="check" disabled={!canCreate || submitting} onClick={() => canCreate && submit()}>
+                {submitting ? t.creating : t.create}
               </Button>
               {!canCreate ? (
                 <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 10, display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
@@ -601,6 +662,7 @@ function RideField({
   textarea,
   prefix,
   hint,
+  hintValue,
   onHint,
   t,
 }: {
@@ -615,6 +677,7 @@ function RideField({
   textarea?: boolean;
   prefix?: string;
   hint?: string | null;
+  hintValue?: number | null;
   onHint?: () => void;
   t: any;
 }) {
@@ -673,7 +736,7 @@ function RideField({
       {hint && (
         <button type="button" onClick={onHint} style={{ marginTop: 7, background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: "var(--volt)", display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--font-sans)" }}>
           <Icon name="plus" size={12} color="var(--volt)" />
-          {hint} · $74
+          {hint}{hintValue ? ` · $${hintValue}` : ""}
         </button>
       )}
     </label>

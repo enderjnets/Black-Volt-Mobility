@@ -4,7 +4,8 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Client, Tenant
+from app.models import Client, RateConfig, Tenant
+from app.models.rate_config import DEFAULT_RATES
 
 DEFAULT_TENANT_SLUG = "black-volt"
 DEFAULT_TENANT = {
@@ -26,6 +27,12 @@ async def ensure_seed(db: AsyncSession) -> Tenant:
         db.add(t)
         await db.commit()
         await db.refresh(t)
+    rc = (
+        await db.execute(select(RateConfig).where(RateConfig.tenant_id == t.id))
+    ).scalar_one_or_none()
+    if rc is None:
+        db.add(RateConfig(tenant_id=t.id, **DEFAULT_RATES))
+        await db.commit()
     return t
 
 

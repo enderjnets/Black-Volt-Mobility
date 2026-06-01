@@ -54,6 +54,25 @@ class Settings(BaseSettings):
     def google_admin_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.GOOGLE_ADMIN_EMAILS.split(",") if e.strip()]
 
+    # ─── Maps (Phase 2) ─────────────────────────────────────────────────
+    # Google Maps Platform powers route distance/duration + place autocomplete.
+    # MAPS_SIMULATED (or a missing key) returns deterministic stub routes so the
+    # booking flow works end-to-end in dev/demo without billing. NEVER ship
+    # MAPS_SIMULATED=true with APP_ENV=production.
+    MAPS_SIMULATED: bool = True
+    GOOGLE_MAPS_API_KEY: str = ""
+    # Airports treated as triggering the airport surcharge / flat handling.
+    AIRPORT_KEYWORDS: str = "den,dia,denver intl,denver international,airport,aeropuerto"
+
+    @property
+    def airport_keywords_list(self) -> list[str]:
+        return [k.strip().lower() for k in self.AIRPORT_KEYWORDS.split(",") if k.strip()]
+
+    @property
+    def maps_live(self) -> bool:
+        """Real Google Maps calls require an explicit opt-out of simulation AND a key."""
+        return not self.MAPS_SIMULATED and bool(self.GOOGLE_MAPS_API_KEY)
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
 

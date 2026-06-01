@@ -78,10 +78,11 @@ Coexists with the four Eko stacks. Use exactly these:
 
 ## Phase status
 
-- 🔨 **Phase 0** — Bootstrap (`v0.0.1`): repo + Docker stack + brand shell +
+- ✅ **Phase 0** — Bootstrap (`v0.0.1`): repo + Docker stack + brand shell +
   bilingual landing + health endpoint.
-- ⏳ Phase 1 — Auth + multi-tenancy + profiles
-- ⏳ Phase 2 — Booking core (rides + Google Maps + pricing engine)
+- ✅ Phase 1 — Auth + multi-tenancy + profiles (`v0.4.x`)
+- ✅ Phase 2 — Booking core: rides + RateConfig + pricing engine + Google Maps
+  adapter (simulated default) + quote/rides/rate-config API (`v0.5.0`)
 - ⏳ Phase 3 — Square payments
 - ⏳ Phase 4 — Driver dashboard
 - ⏳ Phase 5 — Client portal

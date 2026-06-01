@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.5.0 — 2026-05-31 — Phase 2 — Booking core (route + pricing engine)
+
+The booking backend: price any trip from its route and the tenant's configurable
+fare engine, persist it as a ride, and edit the rates from the dashboard.
+
+- **Models**: `Ride` (route, schedule, fare snapshot, status lifecycle) and
+  `RateConfig` (per-tenant fares + surcharges). Both multi-tenant, migration
+  `0002_booking`.
+- **Pricing engine** (`services/pricing.py`, pure/unit-tested):
+  `MAX(floor, base + miles·per_mile + min·per_minute)` + extra-stop, group and
+  airport handling, weekend-late peak multiplier, loyalty discount.
+- **Maps adapter** (`services/maps.py`): Google Distance Matrix + Places
+  Autocomplete, with a deterministic **simulated** fallback (default) so the flow
+  runs without billing. Flip live with `MAPS_SIMULATED=false` + a key.
+- **API**: `POST /quote`, `GET /places/autocomplete`, `GET/PUT /rate-config`,
+  `POST/GET/PATCH /rides`. Tenant-scoped; passengers see only their own rides.
+- **Frontend**: Rates editor loads + saves the live engine; Add ride suggests a
+  live quote and persists the reservation.
+- See `docs/setup-google-maps.md`. 37 backend tests (pricing + maps + API).
+
 ## v0.3.0 — 2026-05-30 — Add ride (Manual + Smart) + SMS confirmation
 
 Added the **"Add ride"** screen to the driver dashboard (`/dashboard/add`) plus an

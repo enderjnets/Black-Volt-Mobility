@@ -62,6 +62,9 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_ADMIN_EMAILS: ${GOOGLE_ADMIN_EMAILS:-}
+      # Maps (Phase 2)
+      MAPS_SIMULATED: ${MAPS_SIMULATED:-true}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
     ports:
       # 8012 — coexist with Eko backends (8000/8002/8010/8011).
       - "8012:8000"
