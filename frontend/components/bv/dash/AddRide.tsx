@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
+import { SuggestionDropdown, useAddressSuggest } from "../AddressAutocomplete";
 import { useI18n } from "@/lib/i18n";
 import { createRide, getQuote } from "@/lib/booking";
 
@@ -409,8 +410,8 @@ export function AddRide() {
             </FormSection>
 
             <FormSection title={t.secTrip} icon="navigation">
-              <RideField id="pickup" label={t.pickup} icon="circle-dot" ph={t.pickupPh} value={form.pickup} onChange={(v) => set("pickup", v)} state={fieldState("pickup", form, aiFields, mode, aiRan)} t={t} />
-              <RideField id="dropoff" label={t.dropoff} icon="map-pin" ph={t.dropoffPh} value={form.dropoff} onChange={(v) => set("dropoff", v)} state={fieldState("dropoff", form, aiFields, mode, aiRan)} t={t} />
+              <AutocompleteField id="pickup" label={t.pickup} icon="circle-dot" ph={t.pickupPh} value={form.pickup} onChange={(v) => set("pickup", v)} state={fieldState("pickup", form, aiFields, mode, aiRan)} t={t} />
+              <AutocompleteField id="dropoff" label={t.dropoff} icon="map-pin" ph={t.dropoffPh} value={form.dropoff} onChange={(v) => set("dropoff", v)} state={fieldState("dropoff", form, aiFields, mode, aiRan)} t={t} />
               <RideField id="date" label={t.date} icon="calendar" ph={t.datePh} value={form.date} onChange={(v) => set("date", v)} state={fieldState("date", form, aiFields, mode, aiRan)} t={t} half />
               <RideField id="time" label={t.time} icon="clock" ph={t.timePh} value={form.time} onChange={(v) => set("time", v)} state={fieldState("time", form, aiFields, mode, aiRan)} t={t} half />
             </FormSection>
@@ -664,6 +665,7 @@ function RideField({
   hint,
   hintValue,
   onHint,
+  onKeyDown,
   t,
 }: {
   id: string;
@@ -679,6 +681,7 @@ function RideField({
   hint?: string | null;
   hintValue?: number | null;
   onHint?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
   t: any;
 }) {
   const [focus, setFocus] = useState(false);
@@ -728,9 +731,9 @@ function RideField({
         {icon && <Icon name={icon} size={17} color={focus ? focusBorder : state === "missing" ? "var(--warning)" : "var(--silver)"} style={{ marginTop: textarea ? 2 : 0 }} />}
         {prefix && <span style={{ color: "var(--silver)", fontSize: 14, fontFamily: "var(--font-sans)" }}>{prefix}</span>}
         {textarea ? (
-          <textarea id={id} value={value} placeholder={ph} rows={2} onChange={(e) => onChange(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} />
+          <textarea id={id} value={value} placeholder={ph} rows={2} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} />
         ) : (
-          <input id={id} value={value} placeholder={ph} onChange={(e) => onChange(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)} style={inputStyle} />
+          <input id={id} value={value} placeholder={ph} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)} style={inputStyle} />
         )}
       </div>
       {hint && (
@@ -740,6 +743,35 @@ function RideField({
         </button>
       )}
     </label>
+  );
+}
+
+// Pickup/Dropoff with Google Places autocomplete. Wraps RideField in a relative
+// container and renders the shared dropdown; each instance owns its own suggest
+// state so pickup and dropoff don't interfere.
+function AutocompleteField(props: {
+  id: string;
+  label: string;
+  icon: string;
+  ph: string;
+  value: string;
+  onChange: (v: string) => void;
+  state: string;
+  t: any;
+}) {
+  const ctl = useAddressSuggest({ onPick: props.onChange });
+  return (
+    <div ref={ctl.containerRef} style={{ position: "relative", gridColumn: "1 / -1" }}>
+      <RideField
+        {...props}
+        onChange={(v) => {
+          props.onChange(v);
+          ctl.handleType(v);
+        }}
+        onKeyDown={ctl.handleKeyDown}
+      />
+      <SuggestionDropdown ctl={ctl} />
+    </div>
   );
 }
 

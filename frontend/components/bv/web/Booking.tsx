@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Button, Card, Field } from "../ui";
+import { AddressField } from "./AddressField";
 import { useI18n } from "@/lib/i18n";
+import { getQuote, type Quote } from "@/lib/booking";
 
 export function MapPlaceholder({ height = 200 }: { height?: number }) {
   return (
@@ -100,6 +102,37 @@ export function Booking() {
   const [to, setTo] = useState("Denver Intl (DEN)");
   const [when, setWhen] = useState("now");
   const [pax, setPax] = useState(2);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoting, setQuoting] = useState(false);
+
+  // Real fare/route from the backend (Distance Matrix + pricing engine) when the
+  // rider reaches the review step. Falls back to the mock display if it fails.
+  useEffect(() => {
+    if (step !== 1) return;
+    const pickup = (from || "Downtown Denver").trim();
+    const dropoff = to.trim();
+    if (!pickup || !dropoff) return;
+    let alive = true;
+    setQuoting(true);
+    getQuote({ pickup, dropoff, pax })
+      .then((q) => {
+        if (alive) setQuote(q);
+      })
+      .catch(() => {
+        if (alive) setQuote(null);
+      })
+      .finally(() => {
+        if (alive) setQuoting(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [step, from, to, pax]);
+
+  // Display helpers — real quote when available, else the original mock values.
+  const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : "$74";
+  const distanceText = quote ? `${quote.distance_miles} mi` : quoting ? "—" : "18.4 mi";
+  const etaText = quote ? `${Math.round(quote.duration_minutes)} min` : quoting ? "—" : "6 min";
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "32px 0" }}>
@@ -113,8 +146,8 @@ export function Booking() {
       <Card glow pad={22}>
         {step === 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <Field icon="circle-dot" label={t("book.from")} value={from} placeholder={t("book.from.ph")} onChange={setFrom} />
-            <Field icon="plane" label={t("book.to")} value={to} placeholder={t("book.to.ph")} onChange={setTo} />
+            <AddressField icon="circle-dot" label={t("book.from")} value={from} placeholder={t("book.from.ph")} onChange={setFrom} />
+            <AddressField icon="plane" label={t("book.to")} value={to} placeholder={t("book.to.ph")} onChange={setTo} />
             <div style={{ display: "flex", gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>{t("book.when")}</div>
@@ -193,9 +226,9 @@ export function Booking() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 16, borderTop: "1px solid var(--line)", paddingTop: 16 }}>
-              <Stat icon="navigation" label={t("book.distance")} value="18.4 mi" />
-              <Stat icon="clock" label={t("book.eta")} value="6 min" />
-              <Stat icon="dollar-sign" label={t("book.fare")} value="$74" accent />
+              <Stat icon="navigation" label={t("book.distance")} value={distanceText} />
+              <Stat icon="clock" label={t("book.eta")} value={etaText} />
+              <Stat icon="dollar-sign" label={t("book.fare")} value={fareText} accent />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <Button variant="plain" icon="arrow-left" onClick={() => setStep(0)}>
@@ -213,7 +246,7 @@ export function Booking() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ color: "var(--silver)", fontSize: 14 }}>{t("book.fare")}</span>
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 32, color: "var(--arctic)" }}>
-                $74<span style={{ fontSize: 14, color: "var(--fg3)", fontWeight: 400 }}> .00</span>
+                ${(quote ? quote.total : 74).toFixed(2)}
               </span>
             </div>
             <Field icon="user" label="Cardholder" value="Alex Rivera" readOnly />
@@ -296,7 +329,9 @@ export function Booking() {
               }}
             >
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 22, color: "var(--volt)" }}>6 min</div>
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 22, color: "var(--volt)" }}>
+                  {quote ? `${Math.round(quote.duration_minutes)} min` : "6 min"}
+                </div>
                 <div style={{ fontSize: 11, color: "var(--fg3)" }}>ETA</div>
               </div>
               <div style={{ width: 1, height: 30, background: "var(--line-strong)" }} />

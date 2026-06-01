@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.1 — 2026-06-01 — Address autocomplete + live fares in booking
+
+Wired the live Google Maps backend (Phase 2) into the booking UI on both surfaces.
+
+- **Address autocomplete**: Pickup/drop-off fields now suggest real addresses from
+  Google Places (`/places/autocomplete`) with a debounced dropdown + keyboard nav.
+  New reusable `AddressAutocomplete` (hook + dropdown) + web `AddressField`.
+- **Live fares**: the passenger `/book` "Review route" step calls `/quote` and shows
+  real distance, ETA and fare (replacing the mock $74 / 18.4 mi / 6 min); the amount
+  flows into the pay + confirmation steps.
+- **Dashboard**: the driver "Add ride" pickup/drop-off get the same autocomplete.
+- Frontend-only; no backend changes.
+
 ## v0.5.0 — 2026-05-31 — Phase 2 — Booking core (route + pricing engine)
 
 The booking backend: price any trip from its route and the tenant's configurable

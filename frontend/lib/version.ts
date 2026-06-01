@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.5.0";
+export const CURRENT_VERSION = "0.5.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.5.1",
+    date: "2026-06-01",
+    title: "Address autocomplete + live fares in booking",
+    changes: [
+      "Pickup/drop-off fields autocomplete real addresses (Google Places).",
+      "Booking 'Review route' now shows live distance, ETA and fare from /quote.",
+      "Driver dashboard 'Add ride' gets the same address autocomplete.",
+    ],
+  },
   {
     version: "0.5.0",
     date: "2026-05-31",
