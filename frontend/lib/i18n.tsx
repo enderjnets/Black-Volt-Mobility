@@ -115,6 +115,7 @@ const EN: Record<string, string> = {
   "auth.checking": "Checking session…",
   "auth.googleSigningIn": "Verifying with Google…",
   "auth.googleFailed": "Google sign-in failed. Please try again.",
+  "auth.notDriver": "This Google account isn't authorized for the dashboard.",
   // account
   "acct.title": "Your account",
   "acct.profile": "Profile",
@@ -323,6 +324,7 @@ const ES: Record<string, string> = {
   "auth.checking": "Verificando sesión…",
   "auth.googleSigningIn": "Verificando con Google…",
   "auth.googleFailed": "Falló el ingreso con Google. Intenta de nuevo.",
+  "auth.notDriver": "Esta cuenta de Google no está autorizada para el panel.",
   "acct.title": "Tu cuenta",
   "acct.profile": "Perfil",
   "acct.member": "Miembro desde",

@@ -49,18 +49,26 @@ class GoogleLogin(BaseModel):
 
 @router.post("/login/google")
 async def login_google(body: GoogleLogin, response: Response, db: AsyncSession = Depends(get_db)):
-    """Passenger login via Google. Verifies the ID token, find-or-creates the
-    Client for the tenant, and issues a passenger session."""
+    """Google login. Allow-listed emails (GOOGLE_ADMIN_EMAILS) sign in as the
+    driver/owner of the dashboard; everyone else becomes a passenger (their
+    Client is find-or-created)."""
     try:
         info = auth.verify_google_id_token(body.id_token)
     except auth.GoogleAuthError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e
     tenant = await get_default_tenant(db)
+    email = info["email"]
+
+    if email in get_settings().google_admin_emails_list:
+        token = auth.make_token(role=auth.ROLE_OWNER, tenant_id=tenant.id, email=email)
+        _set_cookie(response, token)
+        return {"ok": True, "role": auth.ROLE_OWNER, "tenant": tenant.slug, "email": email}
+
     client = await find_or_create_client(
-        db, tenant_id=tenant.id, google_sub=info["sub"], email=info["email"], name=info["name"]
+        db, tenant_id=tenant.id, google_sub=info["sub"], email=email, name=info["name"]
     )
     token = auth.make_token(
-        role=auth.ROLE_PASSENGER, tenant_id=tenant.id, email=info["email"], client_id=client.id
+        role=auth.ROLE_PASSENGER, tenant_id=tenant.id, email=email, client_id=client.id
     )
     _set_cookie(response, token)
     return {

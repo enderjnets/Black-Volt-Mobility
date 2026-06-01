@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.4.1";
+export const CURRENT_VERSION = "0.4.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.4.2",
+    date: "2026-05-31",
+    title: "Google sign-in for the driver dashboard",
+    changes: [
+      "Driver /login adds a Google button (allow-listed emails → owner session).",
+      "Non-authorized Google accounts are rejected with a clear message.",
+      "Password login kept as the master fallback.",
+    ],
+  },
   {
     version: "0.4.1",
     date: "2026-05-31",

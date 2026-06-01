@@ -5,6 +5,7 @@ import os
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 os.environ["AUTH_SECRET"] = "api-test-secret"
 os.environ["AUTH_ENABLED"] = "true"
+os.environ["GOOGLE_ADMIN_EMAILS"] = "admin@bv.com"
 
 from app.config import get_settings  # noqa: E402
 
@@ -13,6 +14,7 @@ get_settings.cache_clear()  # re-read env (set above) before the app caches sett
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
+from app.services import auth as auth_service  # noqa: E402
 
 client = TestClient(app)
 
@@ -53,3 +55,25 @@ def test_me_open_mode_reports_flags():
     body = fresh.get("/api/v1/auth/me").json()
     assert "auth_enabled" in body
     assert "google_signin_enabled" in body
+
+
+def test_google_login_admin_email_is_owner(monkeypatch):
+    monkeypatch.setattr(
+        auth_service,
+        "verify_google_id_token",
+        lambda _t: {"email": "admin@bv.com", "sub": "sub-admin", "name": "Admin"},
+    )
+    r = client.post("/api/v1/auth/login/google", json={"id_token": "x"})
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "owner"
+
+
+def test_google_login_other_email_is_passenger(monkeypatch):
+    monkeypatch.setattr(
+        auth_service,
+        "verify_google_id_token",
+        lambda _t: {"email": "rider@example.com", "sub": "sub-rider", "name": "Rider"},
+    )
+    r = client.post("/api/v1/auth/login/google", json={"id_token": "x"})
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "passenger"

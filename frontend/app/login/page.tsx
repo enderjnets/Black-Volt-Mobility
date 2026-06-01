@@ -5,9 +5,13 @@ import { Suspense, useState } from "react";
 
 import { Icon } from "@/components/bv/Icon";
 import { Button } from "@/components/bv/ui";
+import { GoogleSignInButton } from "@/components/bv/web/GoogleSignInButton";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
-import { loginPassword } from "@/lib/auth";
+import { fetchMe, loginGoogle, loginPassword, logout } from "@/lib/auth";
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+const STAFF = new Set(["owner", "driver"]);
 
 function LoginCard() {
   const { t } = useI18n();
@@ -27,6 +31,27 @@ function LoginCard() {
       router.push(next);
     } else {
       setErr(t("auth.invalidPassword"));
+      setBusy(false);
+    }
+  };
+
+  // Google sign-in for the driver: only owner/driver emails (allow-listed on the
+  // backend) may enter the dashboard. A passenger account is signed out here.
+  const onGoogle = async (idToken: string) => {
+    setBusy(true);
+    setErr(null);
+    const res = await loginGoogle(idToken);
+    if (!res.ok) {
+      setErr(t("auth.googleFailed"));
+      setBusy(false);
+      return;
+    }
+    const me = await fetchMe();
+    if (me.authenticated && STAFF.has(me.role || "")) {
+      router.push(next);
+    } else {
+      await logout();
+      setErr(t("auth.notDriver"));
       setBusy(false);
     }
   };
@@ -111,6 +136,23 @@ function LoginCard() {
         <Button variant="solid" full size="lg" icon="zap" disabled={busy || !pw} onClick={submit}>
           {busy ? t("auth.signingin") : t("auth.signin")}
         </Button>
+
+        {GOOGLE_CLIENT_ID && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0 14px" }}>
+              <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+              <span style={{ fontSize: 11, color: "var(--fg3)", textTransform: "uppercase", letterSpacing: "0.12em" }}>
+                {t("auth.or")}
+              </span>
+              <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+            </div>
+            {busy ? (
+              <div style={{ fontSize: 13, color: "var(--silver)", textAlign: "center" }}>{t("auth.googleSigningIn")}</div>
+            ) : (
+              <GoogleSignInButton clientId={GOOGLE_CLIENT_ID} onCredential={onGoogle} />
+            )}
+          </>
+        )}
       </div>
       <div style={{ marginTop: 18, fontSize: 12, color: "var(--fg3)" }}>{t("brand.name")} · Denver / Aurora, CO</div>
     </div>
