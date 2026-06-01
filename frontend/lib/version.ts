@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.6.0";
+export const CURRENT_VERSION = "0.7.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.7.0",
+    date: "2026-06-01",
+    title: "Phase 3 — Square payments",
+    changes: [
+      "Real card payments on the booking flow via the Square Web Payments SDK.",
+      "Authorize at booking → capture on completion → refund (Payments API).",
+      "Card data never touches our servers; sandbox by default (test card 4111…).",
+      "Simulated fallback keeps the flow working without Square configured.",
+    ],
+  },
   {
     version: "0.6.0",
     date: "2026-06-01",

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.7.0 — 2026-06-01 — Phase 3 — Square payments
+
+Real card payments on the passenger booking flow, with the full authorize →
+capture → refund lifecycle.
+
+- **Frontend**: the `/book` payment step uses the **Square Web Payments SDK**
+  (`SquareCard`) to tokenize the card in-browser — card data never touches our
+  backend. Falls back to a simulated pay button when Square isn't configured.
+- **Backend**: `services/payments_square.py` (async Square SDK, sandbox/prod) +
+  `services/payments.py` orchestration + `Payment` model & migration
+  `0004_payments`. Endpoints: `POST /payments` (authorize, holds funds),
+  `POST /payments/{id}/capture` (staff), `POST /payments/{id}/refund` (staff),
+  `GET /payments/config` (public Web SDK config).
+- Authorizing a ride confirms it and stores the Square payment id.
+- `PAYMENTS_SIMULATED` (default) fakes payment ids so the flow runs without
+  Square; **sandbox** is live on the demo (test card `4111 1111 1111 1111`).
+- See `docs/setup-square.md`.
+
 ## v0.6.0 — 2026-06-01 — Usage analytics (first-party Insights)
 
 Own your usage data: a privacy-first, self-hosted event-tracking system + a driver

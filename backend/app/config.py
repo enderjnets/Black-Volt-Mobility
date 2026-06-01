@@ -73,6 +73,26 @@ class Settings(BaseSettings):
         """Real Google Maps calls require an explicit opt-out of simulation AND a key."""
         return not self.MAPS_SIMULATED and bool(self.GOOGLE_MAPS_API_KEY)
 
+    # ─── Payments / Square (Phase 3) ────────────────────────────────────
+    # Authorize at booking → capture on completion → refund on cancel. With
+    # PAYMENTS_SIMULATED (or no token) the service fakes payment ids so the flow
+    # works without Square. SQUARE_ENV picks sandbox vs production base URL.
+    # NEVER ship PAYMENTS_SIMULATED=true with APP_ENV=production.
+    PAYMENTS_SIMULATED: bool = True
+    SQUARE_ENV: str = "sandbox"  # "sandbox" | "production"
+    SQUARE_ACCESS_TOKEN: str = ""
+    SQUARE_LOCATION_ID: str = ""
+    SQUARE_APPLICATION_ID: str = ""
+
+    @property
+    def payments_live(self) -> bool:
+        """Real Square calls require an explicit opt-out of simulation AND a token+location."""
+        return (
+            not self.PAYMENTS_SIMULATED
+            and bool(self.SQUARE_ACCESS_TOKEN)
+            and bool(self.SQUARE_LOCATION_ID)
+        )
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
 

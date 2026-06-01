@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { Icon } from "../Icon";
 import { Button, Card, Field } from "../ui";
 import { AddressField } from "./AddressField";
+import { SquareCard } from "./SquareCard";
 import { useI18n } from "@/lib/i18n";
-import { getQuote, type Quote } from "@/lib/booking";
+import { createRide, getQuote, type Quote } from "@/lib/booking";
+import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
 import { track } from "@/lib/analytics";
 
 const FUNNEL_EVENT = ["book_start", "book_review", "book_pay", "book_confirmed"] as const;
@@ -107,6 +109,10 @@ export function Booking() {
   const [pax, setPax] = useState(2);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
+  const [rideId, setRideId] = useState<number | null>(null);
+  const [payCfg, setPayCfg] = useState<PaymentsConfig | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [payErr, setPayErr] = useState<string | null>(null);
 
   // Booking-funnel analytics: one event per step reached.
   useEffect(() => {
@@ -143,6 +149,53 @@ export function Booking() {
   const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : "$74";
   const distanceText = quote ? `${quote.distance_miles} mi` : quoting ? "—" : "18.4 mi";
   const etaText = quote ? `${Math.round(quote.duration_minutes)} min` : quoting ? "—" : "6 min";
+
+  // Load payments config once → decides real Square card form vs simulated fallback.
+  useEffect(() => {
+    getPaymentsConfig().then(setPayCfg).catch(() => setPayCfg(null));
+  }, []);
+  const squareReady = !!(payCfg && payCfg.application_id && payCfg.location_id);
+
+  // Step 1 → 2: create the ride (QUOTED) so the payment can attach to it.
+  const proceedToPay = async () => {
+    if (paying) return;
+    setPaying(true);
+    setPayErr(null);
+    try {
+      if (rideId == null) {
+        const ride = await createRide({
+          pickup: (from || "Downtown Denver").trim(),
+          dropoff: to.trim(),
+          pax,
+          confirm: false,
+        });
+        setRideId(ride.id);
+      }
+      setStep(2);
+    } catch {
+      setPayErr("ride");
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  // Card token (Square) or simulated nonce → authorize → confirmed.
+  const handleToken = async (token: string) => {
+    if (rideId == null) {
+      setPayErr("ride");
+      return;
+    }
+    setPaying(true);
+    setPayErr(null);
+    try {
+      await authorizePayment({ ride_id: rideId, source_id: token });
+      setStep(3);
+    } catch {
+      setPayErr("declined");
+    } finally {
+      setPaying(false);
+    }
+  };
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "32px 0" }}>
@@ -244,8 +297,8 @@ export function Booking() {
               <Button variant="plain" icon="arrow-left" onClick={() => setStep(0)}>
                 {t("common.back")}
               </Button>
-              <Button variant="solid" full iconRight="arrow-right" onClick={() => setStep(2)}>
-                {t("book.pay")}
+              <Button variant="solid" full iconRight="arrow-right" disabled={paying} onClick={proceedToPay}>
+                {paying ? t("pay.processing") : t("book.pay")}
               </Button>
             </div>
           </div>
@@ -259,11 +312,36 @@ export function Booking() {
                 ${(quote ? quote.total : 74).toFixed(2)}
               </span>
             </div>
-            <Field icon="user" label="Cardholder" value="Alex Rivera" readOnly />
-            <Field icon="credit-card" label="Card" value="4242  4242  4242  4242" readOnly />
-            <Button variant="solid" full size="lg" icon="zap" onClick={() => setStep(3)}>
-              {t("book.paybtn")}
-            </Button>
+            {squareReady ? (
+              <SquareCard
+                applicationId={payCfg!.application_id!}
+                locationId={payCfg!.location_id!}
+                env={payCfg!.env}
+                sandbox={!payCfg!.live}
+                amountLabel={`$${(quote ? quote.total : 74).toFixed(2)}`}
+                onToken={handleToken}
+              />
+            ) : (
+              <>
+                <Field icon="credit-card" label={t("pay.card")} value="•••• •••• •••• 4242" readOnly />
+                <Button
+                  variant="solid"
+                  full
+                  size="lg"
+                  icon="zap"
+                  disabled={paying}
+                  onClick={() => handleToken("cnon:card-nonce-ok")}
+                >
+                  {paying ? t("pay.processing") : t("book.paybtn")}
+                </Button>
+              </>
+            )}
+            {payErr && (
+              <div style={{ fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
+                <Icon name="alert-circle" size={14} color="var(--danger)" />
+                {t(`pay.err.${payErr}`)}
+              </div>
+            )}
             <div
               style={{
                 textAlign: "center",
