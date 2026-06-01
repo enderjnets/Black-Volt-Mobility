@@ -7,6 +7,9 @@ import { Button, Card, Field } from "../ui";
 import { AddressField } from "./AddressField";
 import { useI18n } from "@/lib/i18n";
 import { getQuote, type Quote } from "@/lib/booking";
+import { track } from "@/lib/analytics";
+
+const FUNNEL_EVENT = ["book_start", "book_review", "book_pay", "book_confirmed"] as const;
 
 export function MapPlaceholder({ height = 200 }: { height?: number }) {
   return (
@@ -104,6 +107,13 @@ export function Booking() {
   const [pax, setPax] = useState(2);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
+
+  // Booking-funnel analytics: one event per step reached.
+  useEffect(() => {
+    const ev = FUNNEL_EVENT[step];
+    if (ev) track(ev, ev === "book_confirmed" ? { fare: quote?.total } : undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   // Real fare/route from the backend (Distance Matrix + pricing engine) when the
   // rider reaches the review step. Falls back to the mock display if it fails.

@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.5.1";
+export const CURRENT_VERSION = "0.6.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.6.0",
+    date: "2026-06-01",
+    title: "Usage analytics (first-party Insights)",
+    changes: [
+      "Privacy-first event tracking: pageviews, time-on-page, booking funnel, sign-ins.",
+      "New driver 'Insights' page: visitors, sessions, top pages, funnel, sources, devices, countries.",
+      "Pseudonymous (random visitor id, no raw IP); country via Cloudflare.",
+      "All data stays in our own database — no third-party trackers.",
+    ],
+  },
   {
     version: "0.5.1",
     date: "2026-06-01",

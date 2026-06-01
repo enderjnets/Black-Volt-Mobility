@@ -10,6 +10,7 @@ import { VersionButton } from "../../ui/VersionButton";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { fetchMe, logout } from "@/lib/auth";
+import { track } from "@/lib/analytics";
 import { ChatAssistant } from "./Chat";
 import { ClientTabBar } from "./ClientTabBar";
 import { BV_USER, type BvUser, SignInModal } from "./SignInModal";
@@ -255,6 +256,7 @@ export function WebShell({ children }: { children: ReactNode }) {
             onClose={() => setSignin(false)}
             onSignedIn={async (mode) => {
               setSignin(false);
+              track("sign_in", { mode });
               if (mode === "google") {
                 const me = await fetchMe();
                 const email = me.email || "";

@@ -50,6 +50,7 @@ const NAV: { seg: string; href: string; icon: string; key: string }[] = [
   { seg: "rides", href: "/dashboard/rides", icon: "navigation", key: "dash.nav.rides" },
   { seg: "clients", href: "/dashboard/clients", icon: "users", key: "dash.nav.clients" },
   { seg: "inbox", href: "/dashboard/inbox", icon: "message-circle", key: "dash.nav.inbox" },
+  { seg: "analytics", href: "/dashboard/analytics", icon: "trending-up", key: "dash.nav.insights" },
   { seg: "rates", href: "/dashboard/rates", icon: "dollar-sign", key: "dash.nav.rates" },
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];

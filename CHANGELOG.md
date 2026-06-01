@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.6.0 — 2026-06-01 — Usage analytics (first-party Insights)
+
+Own your usage data: a privacy-first, self-hosted event-tracking system + a driver
+Insights dashboard. No third-party trackers; everything lands in our Postgres.
+
+- **Tracking** (`lib/analytics.ts` + `AnalyticsTracker` in the root layout, so it
+  covers portal + dashboard): `session_start`, `pageview`, `page_duration`
+  (time-on-page via visibility/unload + sendBeacon), the booking funnel
+  (`book_start → book_review → book_pay → book_confirmed`), and `sign_in`.
+- **Privacy**: pseudonymous — a random `visitor_id` (localStorage) + per-tab
+  `session_id`; **no raw IP** is stored; country comes from Cloudflare's
+  `CF-IPCountry` header. No consent banner yet (anonymous data).
+- **Backend**: `AnalyticsEvent` model + migration `0003_analytics`; `POST /track`
+  (open, batched, accepts sendBeacon) and `GET /analytics/summary` (staff).
+- **Insights page** (`/dashboard/analytics`): visitors, sessions, pageviews, avg
+  time, pageviews-over-time, booking funnel with conversion, top pages, traffic
+  sources (UTM + referrers), devices and countries; 7/30/90-day range.
+- See `docs/setup-analytics.md`.
+
 ## v0.5.1 — 2026-06-01 — Address autocomplete + live fares in booking
 
 Wired the live Google Maps backend (Phase 2) into the booking UI on both surfaces.

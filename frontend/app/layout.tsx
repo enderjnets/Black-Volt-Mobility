@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Rajdhani } from "next/font/google";
 
+import { AnalyticsTracker } from "@/components/bv/AnalyticsTracker";
 import { LanguageProvider } from "@/lib/i18n";
 import "./globals.css";
 
@@ -27,7 +28,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${rajdhani.variable}`}>
       <body className="font-sans antialiased">
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          <AnalyticsTracker />
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );
