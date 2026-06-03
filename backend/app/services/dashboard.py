@@ -32,12 +32,11 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
             select(func.count()).where(t, func.date(Ride.scheduled_at) == today)
         )
     ).scalar_one()
-    revenue_today_cents = (
+    # Revenue = paid rides today (any method: cash, Square, Venmo, Zelle…).
+    revenue_today = (
         await db.execute(
-            select(func.coalesce(func.sum(Payment.amount), 0)).where(
-                Payment.tenant_id == tenant_id,
-                Payment.status == PaymentStatus.CAPTURED,
-                func.date(Payment.created_at) == today,
+            select(func.coalesce(func.sum(Ride.fare_total), 0.0)).where(
+                t, Ride.paid.is_(True), func.date(Ride.paid_at) == today
             )
         )
     ).scalar_one()
@@ -97,7 +96,7 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
     return {
         "today": {
             "rides": rides_today,
-            "revenue": round(revenue_today_cents / 100.0, 2),
+            "revenue": round(float(revenue_today), 2),
             "upcoming": upcoming,
         },
         "next_pickup": next_pickup,
@@ -150,21 +149,19 @@ async def list_clients(db: AsyncSession, *, tenant_id: int) -> list[dict]:
     ).all()
     rides_by = {r.client_id: (r.rides, r.last) for r in agg}
 
-    # Captured spend per client (join payments → rides).
+    # Lifetime spend per client = paid rides (any method), in dollars.
     spend_rows = (
         await db.execute(
-            select(Ride.client_id, func.coalesce(func.sum(Payment.amount), 0))
-            .select_from(Payment)
-            .join(Ride, Payment.ride_id == Ride.id)
+            select(Ride.client_id, func.coalesce(func.sum(Ride.fare_total), 0.0))
             .where(
                 Ride.tenant_id == tenant_id,
                 Ride.client_id.isnot(None),
-                Payment.status == PaymentStatus.CAPTURED,
+                Ride.paid.is_(True),
             )
             .group_by(Ride.client_id)
         )
     ).all()
-    spend_by = {r[0]: r[1] for r in spend_rows}
+    spend_by = {r[0]: float(r[1]) for r in spend_rows}
 
     # Latest ride language per client.
     lang_rows = (
@@ -181,7 +178,7 @@ async def list_clients(db: AsyncSession, *, tenant_id: int) -> list[dict]:
     out = []
     for c in clients:
         rides_count, last = rides_by.get(c.id, (0, None))
-        spend = round(spend_by.get(c.id, 0) / 100.0, 2)
+        spend = round(spend_by.get(c.id, 0.0), 2)
         out.append(
             {
                 "id": c.id,

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.9.0 — 2026-06-02 — Real history import + payment methods + Square auto-sync
+
+Import the real business history and support every payment method, not just card.
+
+- **Import** (`app/scripts/import_history.py`): upserts the recurring clients
+  (Demetra, Rob, Michelle) and mirrors the real **Square payment history** into
+  completed rides + captured payments (real amounts + dates, linked to clients).
+  Read-only against Square (never charges); idempotent by `square_payment_id`.
+- **Payment methods**: every ride has a `payment_method` (default **cash**) + a
+  `paid` flag + `paid_at` (migration `0005_payment_method`). Square authorize/capture
+  sets it to `square` automatically; the driver can switch a ride to
+  Cash/Venmo/Zelle/Other and toggle paid from the ride detail.
+- **Revenue & client spend now count all paid rides** (any method), not only
+  captured Square payments.
+- **Auto-sync**: a periodic run of the importer pulls new Square charges into the
+  dashboard automatically (idempotent). Real-time webhook is a future upgrade.
+
 ## v0.8.0 — 2026-06-02 — Phase 4 — Driver dashboard on real data
 
 The driver dashboard now runs on real backend data (was mock) and lets the driver

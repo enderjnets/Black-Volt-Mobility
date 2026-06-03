@@ -2,10 +2,12 @@
 move the ride through its lifecycle. Tenant-scoped."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Payment, PaymentStatus, Ride, RideStatus
+from app.models import Payment, PaymentMethod, PaymentStatus, Ride, RideStatus
 from app.services import payments_square
 
 
@@ -43,6 +45,7 @@ async def authorize_for_ride(
     )
     db.add(pay)
     ride.payment_id = res.square_payment_id
+    ride.payment_method = PaymentMethod.SQUARE  # card via Square
     if ride.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
         ride.status = RideStatus.CONFIRMED
     await db.commit()
@@ -57,6 +60,15 @@ async def capture_payment(db: AsyncSession, *, tenant_id: int, payment: Payment)
     payment.status = PaymentStatus.CAPTURED
     if res.square_payment_id:
         payment.square_payment_id = res.square_payment_id
+    # Mark the ride settled (paid by Square).
+    if payment.ride_id:
+        ride = (
+            await db.execute(select(Ride).where(Ride.id == payment.ride_id))
+        ).scalar_one_or_none()
+        if ride:
+            ride.paid = True
+            ride.paid_at = datetime.now(UTC)
+            ride.payment_method = PaymentMethod.SQUARE
     await db.commit()
     await db.refresh(payment)
     return payment

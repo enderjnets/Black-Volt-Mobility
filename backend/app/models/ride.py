@@ -32,6 +32,14 @@ class RideStatus(str, enum.Enum):
     NO_SHOW = "no_show"
 
 
+class PaymentMethod(str, enum.Enum):
+    CASH = "cash"       # default — assume cash unless paid another way
+    SQUARE = "square"   # card via Square (auto-set on authorize/capture)
+    VENMO = "venmo"
+    ZELLE = "zelle"
+    OTHER = "other"
+
+
 # Statuses an in-progress/open ride can be in (used for list filters).
 OPEN_STATUSES = (
     RideStatus.REQUESTED,
@@ -95,6 +103,15 @@ class Ride(Base):
 
     # Square payment reference (Phase 3).
     payment_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    # Settlement: how the ride was paid + whether it's settled. Default cash
+    # (assume cash unless paid by Square or the driver picks another method).
+    payment_method: Mapped[PaymentMethod] = mapped_column(
+        pg_enum(PaymentMethod, name="payment_method"),
+        default=PaymentMethod.CASH,
+    )
+    paid: Mapped[bool] = mapped_column(default=False)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

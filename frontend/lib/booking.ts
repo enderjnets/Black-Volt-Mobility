@@ -113,7 +113,12 @@ export interface RideRow {
   currency?: string;
   pax?: number | null;
   flight_number: string | null;
+  payment_method?: string;
+  paid?: boolean;
+  paid_at?: string | null;
 }
+
+export type PaymentMethod = "cash" | "square" | "venmo" | "zelle" | "other";
 
 export async function listRides(status?: string): Promise<RideRow[]> {
   const r = await jget<{ rides: RideRow[] }>(`/v1/rides${status ? `?status=${status}` : ""}`);
@@ -142,6 +147,9 @@ export async function getRideDetail(id: number): Promise<RideDetail> {
   return jget<RideDetail>(`/v1/rides/${id}`);
 }
 
-export async function setRideStatus(id: number, status: string): Promise<RideRow> {
-  return jsend<RideRow>(`/v1/rides/${id}`, "PATCH", { status });
+export async function updateRide(
+  id: number,
+  body: { status?: string; payment_method?: PaymentMethod; paid?: boolean },
+): Promise<RideRow> {
+  return jsend<RideRow>(`/v1/rides/${id}`, "PATCH", body);
 }

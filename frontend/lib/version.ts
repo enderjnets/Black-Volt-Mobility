@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.8.0";
+export const CURRENT_VERSION = "0.9.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.9.0",
+    date: "2026-06-02",
+    title: "Real history import + payment methods + Square auto-sync",
+    changes: [
+      "Imported real clients + trips + charges from Square history.",
+      "Each ride has a payment method (default cash) and a paid flag.",
+      "Square payments auto-sync in; you can switch a ride to Venmo/Zelle/cash.",
+      "Revenue and client spend now count every payment method, not just card.",
+    ],
+  },
   {
     version: "0.8.0",
     date: "2026-06-02",

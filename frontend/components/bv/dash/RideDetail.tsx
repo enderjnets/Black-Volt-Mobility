@@ -8,10 +8,12 @@ import { useEffect, useState } from "react";
 import { Icon } from "../Icon";
 import { Button } from "../ui";
 import { useI18n } from "@/lib/i18n";
-import { getRideDetail, setRideStatus, type RideDetail as RD } from "@/lib/booking";
+import { getRideDetail, type PaymentMethod, type RideDetail as RD, updateRide } from "@/lib/booking";
 import { capturePayment } from "@/lib/payments";
 import { StatusPill } from "./DashShell";
 import { fmtWhen, uiStatus } from "./status";
+
+const METHODS: PaymentMethod[] = ["cash", "square", "venmo", "zelle", "other"];
 
 function Row({ icon, children }: { icon: string; children: React.ReactNode }) {
   return (
@@ -42,11 +44,11 @@ export function RideDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId]);
 
-  const changeStatus = async (status: string) => {
+  const patch = async (body: { status?: string; payment_method?: PaymentMethod; paid?: boolean }) => {
     setBusy(true);
     setErr(null);
     try {
-      await setRideStatus(rideId, status);
+      await updateRide(rideId, body);
       await load();
       onChanged?.();
     } catch {
@@ -55,6 +57,7 @@ export function RideDetail({
       setBusy(false);
     }
   };
+  const changeStatus = (status: string) => patch({ status });
 
   const capture = async () => {
     if (!ride?.payment) return;
@@ -167,11 +170,64 @@ export function RideDetail({
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t("dash.ride.payment")}</div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: pay ? "var(--arctic)" : "var(--fg3)" }}>
-                  {pay ? t(`dash.pay.${pay.status}`) : t("dash.pay.none")}
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: ride.paid ? "var(--success)" : "var(--fg3)" }}>
+                  {ride.paid ? t("dash.ride.paidYes") : t("dash.ride.paidNo")}
                   {pay?.simulated ? " ·sim" : ""}
                 </div>
               </div>
+            </div>
+
+            {/* Payment method + mark paid */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("dash.ride.method")}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                {METHODS.map((m) => {
+                  const on = (ride.payment_method || "cash") === m;
+                  return (
+                    <button
+                      key={m}
+                      disabled={busy}
+                      onClick={() => patch({ payment_method: m })}
+                      style={{
+                        padding: "7px 13px",
+                        borderRadius: "var(--radius-full)",
+                        cursor: "pointer",
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        fontFamily: "var(--font-sans)",
+                        background: on ? "var(--volt-bg-20)" : "var(--obsidian-3)",
+                        color: on ? "var(--volt)" : "var(--silver)",
+                        border: `1px solid ${on ? "var(--volt-border)" : "var(--line-strong)"}`,
+                      }}
+                    >
+                      {t(`dash.method.${m}`)}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                disabled={busy}
+                onClick={() => patch({ paid: !ride.paid })}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "9px 14px",
+                  borderRadius: "var(--radius-md)",
+                  cursor: "pointer",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  fontFamily: "var(--font-sans)",
+                  width: "100%",
+                  justifyContent: "center",
+                  background: ride.paid ? "rgba(43,212,160,0.12)" : "var(--obsidian-3)",
+                  color: ride.paid ? "var(--success)" : "var(--silver)",
+                  border: `1px solid ${ride.paid ? "rgba(43,212,160,0.4)" : "var(--line-strong)"}`,
+                }}
+              >
+                <Icon name={ride.paid ? "circle-check" : "circle-dot"} size={16} color="currentColor" />
+                {ride.paid ? t("dash.ride.markUnpaid") : t("dash.ride.markPaid")}
+              </button>
             </div>
 
             {err && (

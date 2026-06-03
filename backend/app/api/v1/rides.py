@@ -5,7 +5,7 @@ are open (they back a public price calculator); writes and the rides list requir
 a session (passengers see only their own rides; staff see all)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_payload, require_auth, require_staff, resolve_tenant_id
 from app.db.base import get_db
-from app.models import Ride, RideStatus
+from app.models import PaymentMethod, Ride, RideStatus
 from app.services import auth, booking, dashboard, maps
 
 router = APIRouter(tags=["booking"])
@@ -42,8 +42,10 @@ class RideCreate(QuoteRequest):
     confirm: bool = False  # passenger booking → CONFIRMED, else QUOTED
 
 
-class StatusPatch(BaseModel):
-    status: RideStatus
+class RidePatch(BaseModel):
+    status: RideStatus | None = None
+    payment_method: PaymentMethod | None = None
+    paid: bool | None = None
 
 
 class RateConfigBody(BaseModel):
@@ -82,6 +84,13 @@ def _ride_out(r: Ride) -> dict:
         "flight_number": r.flight_number,
         "lang": r.lang,
         "notes": r.notes,
+        "payment_method": (
+            r.payment_method.value
+            if isinstance(r.payment_method, PaymentMethod)
+            else r.payment_method
+        ),
+        "paid": r.paid,
+        "paid_at": r.paid_at.isoformat() if r.paid_at else None,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -234,17 +243,29 @@ async def get_ride(
 
 
 @router.patch("/rides/{ride_id}")
-async def patch_ride_status(
+async def patch_ride(
     ride_id: int,
-    body: StatusPatch,
+    body: RidePatch,
     request: Request,
     db: AsyncSession = Depends(get_db),
     payload: dict = Depends(require_staff),
 ):
+    """Driver updates a ride: status and/or payment method + paid flag.
+    Setting paid=true stamps paid_at; the driver can record cash/Venmo/Zelle."""
     tenant_id = await resolve_tenant_id(db, payload)
-    ride = await booking.set_ride_status(
-        db, tenant_id=tenant_id, ride_id=ride_id, status=body.status
-    )
+    ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
     if ride is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+    if body.status is not None:
+        ride.status = body.status
+    if body.payment_method is not None:
+        ride.payment_method = body.payment_method
+    if body.paid is not None:
+        ride.paid = body.paid
+        if body.paid and ride.paid_at is None:
+            ride.paid_at = datetime.now(UTC)
+        if not body.paid:
+            ride.paid_at = None
+    await db.commit()
+    await db.refresh(ride)
     return _ride_out(ride)
