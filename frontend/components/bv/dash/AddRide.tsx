@@ -123,6 +123,18 @@ function bvSuggestFare(pickup: string, dropoff: string): number | null {
   return null;
 }
 
+/* Combine the human date + time fields into a scheduled_at ISO string (best
+   effort). Parsed in the driver's local timezone → so the calendar shows the
+   right local pickup time. Returns null if it can't be parsed. */
+function buildScheduledAt(date: string, time: string): string | null {
+  const d = (date || "").trim();
+  if (!d) return null;
+  const t = (time || "").trim() || "00:00";
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T${t}` : `${d} ${new Date().getFullYear()} ${t}`;
+  const parsed = new Date(iso);
+  return isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 const BV_EXTRACT_PROMPT = `You read a screenshot of a customer ride request for Black Volt Mobility, a premium chauffeur / airport-transfer service in Denver. The screenshot may be an SMS, WhatsApp, email, or a typed note. Extract the reservation details.
 Return ONLY a JSON object — no prose, no markdown fences — with EXACTLY these keys, using null when the info is not present in the image:
 {"name": string|null, "phone": string|null, "lang": "EN"|"ES"|null, "pickup": string|null, "dropoff": string|null, "date": string|null, "time": string|null, "flight": string|null, "passengers": number|null, "fare": number|null, "notes": string|null}
@@ -253,6 +265,7 @@ export function AddRide() {
         pickup: form.pickup,
         dropoff: form.dropoff,
         pax: form.passengers ? Number(form.passengers) : null,
+        scheduled_at: buildScheduledAt(form.date, form.time),
         flight_number: form.flight || null,
         lang: (form.lang || "EN").toUpperCase(),
         notes: form.notes || null,

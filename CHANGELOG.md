@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.10.0 — 2026-06-02 — Google Calendar sync for scheduled rides
+
+Scheduled rides flow into the Black Volt Google Calendar.
+
+- **Calendar adapter** (`services/calendar.py`): a Google service account (shared
+  on `blackvoltmobility@gmail.com`) creates/updates ride events; simulated by
+  default (`CALENDAR_SIMULATED`) so bookings work without Google. Best-effort —
+  never blocks a booking.
+- Booking a scheduled ride creates an event (title, pickup location, route/flight/
+  fare/phone, 30-min reminder); cancelling removes it. `google_event_id` stored on
+  the ride (migration `0006_ride_calendar`).
+- **Add ride** now builds a real `scheduled_at` from its date + time fields, so new
+  rides land on the app calendar **and** Google Calendar.
+- `app/scripts/sync_calendar.py` backfills existing upcoming rides.
+- See `docs/setup-google-calendar.md`.
+
 ## v0.9.0 — 2026-06-02 — Real history import + payment methods + Square auto-sync
 
 Import the real business history and support every payment method, not just card.

@@ -132,6 +132,7 @@ export interface RideDetail extends RideRow {
   price_breakdown: Quote | null;
   lang: string | null;
   notes: string | null;
+  google_event_id: string | null;
   created_at: string | null;
   client: { id: number; name: string | null; phone: string | null } | null;
   payment: {

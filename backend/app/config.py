@@ -93,6 +93,23 @@ class Settings(BaseSettings):
             and bool(self.SQUARE_LOCATION_ID)
         )
 
+    # ─── Google Calendar (scheduled rides → Black Volt calendar) ────────
+    # A service account (shared on the Black Volt calendar) pushes ride events.
+    # CALENDAR_SIMULATED (or no creds) makes calendar writes a no-op so the
+    # booking flow works without Google. NEVER ship simulated with prod intent.
+    CALENDAR_SIMULATED: bool = True
+    GOOGLE_CALENDAR_ID: str = ""  # e.g. blackvoltmobility@gmail.com
+    GOOGLE_SERVICE_ACCOUNT_FILE: str = ""  # path to the mounted SA JSON
+    CALENDAR_TIMEZONE: str = "America/Denver"
+
+    @property
+    def calendar_live(self) -> bool:
+        return (
+            not self.CALENDAR_SIMULATED
+            and bool(self.GOOGLE_SERVICE_ACCOUNT_FILE)
+            and bool(self.GOOGLE_CALENDAR_ID)
+        )
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
 

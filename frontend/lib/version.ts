@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.9.0";
+export const CURRENT_VERSION = "0.10.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.10.0",
+    date: "2026-06-02",
+    title: "Google Calendar sync for scheduled rides",
+    changes: [
+      "Scheduled rides push to the Black Volt Google Calendar automatically.",
+      "Cancelling a ride removes its calendar event.",
+      "Add ride now saves a real date + time so rides land on the calendar.",
+      "See docs/setup-google-calendar.md to connect your calendar.",
+    ],
+  },
   {
     version: "0.9.0",
     date: "2026-06-02",

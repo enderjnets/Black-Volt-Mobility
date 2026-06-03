@@ -71,6 +71,14 @@ services:
       SQUARE_ACCESS_TOKEN: ${SQUARE_ACCESS_TOKEN:-}
       SQUARE_LOCATION_ID: ${SQUARE_LOCATION_ID:-}
       SQUARE_APPLICATION_ID: ${SQUARE_APPLICATION_ID:-}
+      # Google Calendar (scheduled rides)
+      CALENDAR_SIMULATED: ${CALENDAR_SIMULATED:-true}
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-}
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
+      CALENDAR_TIMEZONE: ${CALENDAR_TIMEZONE:-America/Denver}
+    volumes:
+      # Service-account JSON for Google Calendar (gitignored; absent in dev).
+      - ./secrets:/secrets:ro
     ports:
       # 8012 — coexist with Eko backends (8000/8002/8010/8011).
       - "8012:8000"

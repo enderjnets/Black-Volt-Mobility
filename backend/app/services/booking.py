@@ -141,7 +141,53 @@ async def create_ride(
     db.add(ride)
     await db.commit()
     await db.refresh(ride)
+    await sync_ride_to_calendar(db, ride)
     return ride
+
+
+# Statuses that should NOT appear on the calendar.
+_INACTIVE = (RideStatus.CANCELLED, RideStatus.NO_SHOW, RideStatus.COMPLETED)
+
+
+async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
+    """Push a scheduled, active ride to Google Calendar (create or update) and
+    store the event id. Best-effort — never raises (calendar must not block
+    bookings)."""
+    if ride.scheduled_at is None or ride.status in _INACTIVE:
+        return
+    try:
+        from app.models import Client
+        from app.services import calendar
+
+        name = ride.passenger_name
+        if ride.client_id:
+            c = (
+                await db.execute(select(Client).where(Client.id == ride.client_id))
+            ).scalar_one_or_none()
+            if c and c.name:
+                name = c.name
+        ev = calendar.build_ride_event(
+            client_name=name,
+            pickup=ride.pickup_text,
+            dropoff=ride.dropoff_text,
+            fare=ride.fare_total,
+            flight=ride.flight_number,
+            phone=ride.passenger_phone,
+            notes=ride.notes,
+        )
+        event_id = calendar.upsert_event(
+            summary=ev["summary"],
+            description=ev["description"],
+            location=ev["location"],
+            start=ride.scheduled_at,
+            duration_min=int(ride.duration_minutes or 60),
+            event_id=ride.google_event_id,
+        )
+        if event_id and event_id != ride.google_event_id:
+            ride.google_event_id = event_id
+            await db.commit()
+    except Exception:  # noqa: BLE001 — best-effort, never block the booking
+        await db.rollback()
 
 
 async def list_rides(

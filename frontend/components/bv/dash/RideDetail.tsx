@@ -136,6 +136,12 @@ export function RideDetail({
               <Row icon="circle-dot">{ride.pickup}</Row>
               <Row icon="map-pin">{ride.dropoff}</Row>
               <Row icon="calendar">{fmtWhen(ride.scheduled_at)}</Row>
+              {ride.google_event_id && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--success)" }}>
+                  <Icon name="circle-check" size={14} color="var(--success)" />
+                  {t("dash.ride.onCalendar")}
+                </div>
+              )}
               {ride.distance_miles != null && (
                 <Row icon="navigation">
                   {ride.distance_miles} mi · {ride.duration_minutes != null ? `${Math.round(ride.duration_minutes)} min` : "—"}

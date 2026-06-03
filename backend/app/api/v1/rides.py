@@ -91,6 +91,7 @@ def _ride_out(r: Ride) -> dict:
         ),
         "paid": r.paid,
         "paid_at": r.paid_at.isoformat() if r.paid_at else None,
+        "google_event_id": r.google_event_id,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -257,6 +258,12 @@ async def patch_ride(
     if ride is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
     if body.status is not None:
+        # Cancelled/no-show rides leave the calendar.
+        if body.status in (RideStatus.CANCELLED, RideStatus.NO_SHOW) and ride.google_event_id:
+            from app.services import calendar
+
+            calendar.delete_event(ride.google_event_id)
+            ride.google_event_id = None
         ride.status = body.status
     if body.payment_method is not None:
         ride.payment_method = body.payment_method

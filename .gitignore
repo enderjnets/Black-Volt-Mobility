@@ -28,3 +28,7 @@ package-lock.json
 # Build / data
 postgres-data/
 *.log
+
+# Service-account JSON keys (Google Calendar, etc.)
+secrets/*
+!secrets/.gitkeep
