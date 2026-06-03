@@ -1,0 +1,212 @@
+"use client";
+
+/* Ride detail drawer for the driver: full trip + client + payment, with status
+   actions (en route / complete / cancel / no-show) and Square capture. */
+
+import { useEffect, useState } from "react";
+
+import { Icon } from "../Icon";
+import { Button } from "../ui";
+import { useI18n } from "@/lib/i18n";
+import { getRideDetail, setRideStatus, type RideDetail as RD } from "@/lib/booking";
+import { capturePayment } from "@/lib/payments";
+import { StatusPill } from "./DashShell";
+import { fmtWhen, uiStatus } from "./status";
+
+function Row({ icon, children }: { icon: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: "var(--silver)", minWidth: 0 }}>
+      <Icon name={icon} size={15} color="var(--volt)" />
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{children}</span>
+    </div>
+  );
+}
+
+export function RideDetail({
+  rideId,
+  onClose,
+  onChanged,
+}: {
+  rideId: number;
+  onClose: () => void;
+  onChanged?: () => void;
+}) {
+  const { t } = useI18n();
+  const [ride, setRide] = useState<RD | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = () => getRideDetail(rideId).then(setRide).catch(() => setErr("load"));
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rideId]);
+
+  const changeStatus = async (status: string) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await setRideStatus(rideId, status);
+      await load();
+      onChanged?.();
+    } catch {
+      setErr("action");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const capture = async () => {
+    if (!ride?.payment) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await capturePayment(ride.payment.id);
+      await load();
+      onChanged?.();
+    } catch {
+      setErr("capture");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bucket = ride ? uiStatus(ride.status) : "upcoming";
+  const canEnRoute = ["requested", "quoted", "confirmed", "assigned"].includes(ride?.status || "");
+  const canComplete = ride?.status === "en_route";
+  const canCancel = bucket === "upcoming" || bucket === "active";
+  const pay = ride?.payment;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 70,
+        background: "rgba(5,5,9,0.72)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 460,
+          maxHeight: "88dvh",
+          overflowY: "auto",
+          background: "var(--obsidian)",
+          border: "1px solid var(--volt-border)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-volt)",
+          padding: 24,
+          position: "relative",
+        }}
+      >
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none", cursor: "pointer", padding: 4 }}
+        >
+          <Icon name="x" size={18} color="var(--silver)" />
+        </button>
+
+        {!ride ? (
+          <div style={{ padding: "30px 0", textAlign: "center", color: "var(--fg3)", fontSize: 13 }}>
+            {err ? t("dash.ride.loadErr") : t("common.loading")}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: "var(--arctic)" }}>
+                {ride.client?.name || ride.passenger_name || t("dash.ride.guest")}
+              </span>
+              <StatusPill status={bucket} />
+            </div>
+            <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 16 }}>BV-{ride.id}</div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 11, marginBottom: 18 }}>
+              <Row icon="circle-dot">{ride.pickup}</Row>
+              <Row icon="map-pin">{ride.dropoff}</Row>
+              <Row icon="calendar">{fmtWhen(ride.scheduled_at)}</Row>
+              {ride.distance_miles != null && (
+                <Row icon="navigation">
+                  {ride.distance_miles} mi · {ride.duration_minutes != null ? `${Math.round(ride.duration_minutes)} min` : "—"}
+                </Row>
+              )}
+              {ride.pax != null && <Row icon="users">{ride.pax}</Row>}
+              {ride.flight_number && <Row icon="plane">{ride.flight_number}</Row>}
+              {(ride.client?.phone || ride.client_phone) && (
+                <Row icon="phone">{ride.client?.phone || ride.client_phone}</Row>
+              )}
+              {ride.notes && <Row icon="message-circle">{ride.notes}</Row>}
+            </div>
+
+            {/* Fare + payment */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 16px",
+                borderRadius: "var(--radius-md)",
+                background: "var(--obsidian-3)",
+                border: "1px solid var(--line-strong)",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t("book.fare")}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 24, color: "var(--volt)" }}>
+                  ${Math.round(ride.fare_total || 0)}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t("dash.ride.payment")}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: pay ? "var(--arctic)" : "var(--fg3)" }}>
+                  {pay ? t(`dash.pay.${pay.status}`) : t("dash.pay.none")}
+                  {pay?.simulated ? " ·sim" : ""}
+                </div>
+              </div>
+            </div>
+
+            {err && (
+              <div style={{ fontSize: 12.5, color: "var(--danger)", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <Icon name="alert-circle" size={14} color="var(--danger)" />
+                {t(`dash.ride.err.${err}`)}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {pay?.status === "authorized" && (
+                <Button variant="solid" icon="credit-card" disabled={busy} onClick={capture}>
+                  {t("dash.ride.capture")}
+                </Button>
+              )}
+              {canEnRoute && (
+                <Button variant="tint" icon="navigation" disabled={busy} onClick={() => changeStatus("en_route")}>
+                  {t("dash.ride.enroute")}
+                </Button>
+              )}
+              {canComplete && (
+                <Button variant="solid" icon="circle-check" disabled={busy} onClick={() => changeStatus("completed")}>
+                  {t("dash.ride.complete")}
+                </Button>
+              )}
+              {canCancel && (
+                <Button variant="ghost" icon="x" disabled={busy} onClick={() => changeStatus("cancelled")}>
+                  {t("dash.ride.cancel")}
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

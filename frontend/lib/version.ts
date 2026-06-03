@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.7.0";
+export const CURRENT_VERSION = "0.8.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.8.0",
+    date: "2026-06-02",
+    title: "Phase 4 — Driver dashboard on real data",
+    changes: [
+      "Overview KPIs, rides, calendar and clients now come from your real data.",
+      "Tap a ride to see full detail and change status (en route / complete / cancel).",
+      "Capture the Square payment right from the ride detail.",
+      "Clients CRM with real ride count, lifetime spend and tier.",
+    ],
+  },
   {
     version: "0.7.0",
     date: "2026-06-01",

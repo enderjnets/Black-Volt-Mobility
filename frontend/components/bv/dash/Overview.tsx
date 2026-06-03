@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
-import { Button } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import { useViewport } from "@/lib/useViewport";
+import { listRides } from "@/lib/booking";
+import { getDashboardStats, type DashStats } from "@/lib/dashboard";
 import { StatusPill } from "./DashShell";
-import { BV_RIDES, type Ride } from "./data";
+import { type Ride } from "./data";
+import { apiToUiRide, fmtWhen, isToday } from "./status";
+import { RideDetail } from "./RideDetail";
 
 function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: string; value: string; sub?: string; accent?: boolean }) {
   return (
@@ -61,13 +64,15 @@ function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: str
   );
 }
 
-export function RideRow({ r }: { r: Ride }) {
+export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void }) {
   const [h, setH] = useState(false);
   const { compact } = useViewport();
+  const click = r.rid != null && onOpen ? () => onOpen(r.rid!) : undefined;
 
   if (compact) {
     return (
       <div
+        onClick={click}
         style={{
           display: "flex",
           alignItems: "center",
@@ -77,6 +82,7 @@ export function RideRow({ r }: { r: Ride }) {
           background: "var(--obsidian-2)",
           border: "1px solid var(--line-strong)",
           borderRadius: "var(--radius-lg)",
+          cursor: click ? "pointer" : "default",
         }}
       >
         <div
@@ -124,6 +130,7 @@ export function RideRow({ r }: { r: Ride }) {
 
   return (
     <div
+      onClick={click}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       style={{
@@ -135,6 +142,7 @@ export function RideRow({ r }: { r: Ride }) {
         borderRadius: "var(--radius-md)",
         background: h ? "var(--obsidian-2)" : "transparent",
         transition: "background .12s",
+        cursor: click ? "pointer" : "default",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -182,50 +190,101 @@ export function RideRow({ r }: { r: Ride }) {
   );
 }
 
-function MiniBars() {
-  const data = [40, 62, 48, 80, 95, 70, 55];
-  const days = ["M", "T", "W", "T", "F", "S", "S"];
-  const max = Math.max(...data);
+export function EmptyState({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "40px 20px", textAlign: "center" }}>
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 12,
+          background: "var(--obsidian-3)",
+          border: "1px solid var(--line-strong)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name={icon} size={22} color="var(--fg3)" />
+      </div>
+      <span style={{ fontSize: 13.5, color: "var(--fg3)", fontFamily: "var(--font-sans)" }}>{text}</span>
+    </div>
+  );
+}
+
+function MiniBars({ data }: { data: { day: string; rides: number }[] }) {
+  const max = Math.max(...data.map((d) => d.rides), 1);
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 90 }}>
-      {data.map((v, i) => (
+      {data.map((d, i) => (
         <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
           <div
             style={{
               width: "100%",
-              height: `${(v / max) * 70}px`,
+              height: `${Math.max(2, (d.rides / max) * 70)}px`,
               borderRadius: 4,
-              background: i === 4 ? "var(--volt)" : "var(--obsidian-3)",
-              boxShadow: i === 4 ? "var(--shadow-volt-sm)" : "none",
+              background: i === data.length - 1 ? "var(--volt)" : "var(--obsidian-3)",
+              boxShadow: i === data.length - 1 ? "var(--shadow-volt-sm)" : "none",
             }}
           />
-          <span style={{ fontSize: 11, color: "var(--fg3)" }}>{days[i]}</span>
+          <span style={{ fontSize: 11, color: "var(--fg3)" }}>{d.day[0]}</span>
         </div>
       ))}
     </div>
   );
 }
 
+function nextPickupShort(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
 export function Overview() {
   const { t } = useI18n();
+  const [stats, setStats] = useState<DashStats | null>(null);
+  const [today, setToday] = useState<Ride[]>([]);
+  const [detail, setDetail] = useState<number | null>(null);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    getDashboardStats().then((s) => alive && setStats(s)).catch(() => {});
+    listRides()
+      .then((rides) => {
+        if (!alive) return;
+        const todays = rides.filter((r) => isToday(r.scheduled_at));
+        const pick = (todays.length ? todays : rides).slice(0, 6).map(apiToUiRide);
+        setToday(pick);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [reload]);
+
+  const week = stats?.week ?? [];
+
   return (
     <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 22 }}>
       <div className="bv-kpi-row" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <KpiCard icon="navigation" label={t("dash.kpi.rides")} value="6" sub={t("dash.kpi.ridesSub")} />
-        <KpiCard icon="dollar-sign" label={t("dash.kpi.revenue")} value="$434" sub={t("dash.kpi.revenueSub")} accent />
+        <KpiCard icon="navigation" label={t("dash.kpi.rides")} value={String(stats?.today.rides ?? 0)} sub={t("dash.kpi.ridesSub")} />
+        <KpiCard icon="dollar-sign" label={t("dash.kpi.revenue")} value={`$${stats?.today.revenue ?? 0}`} sub={t("dash.kpi.revenueSub")} accent />
         <KpiCard icon="star" label={t("dash.kpi.rating")} value="4.98" />
-        <KpiCard icon="clock" label={t("dash.kpi.next")} value="14:20" sub={t("dash.kpi.nextSub")} />
+        <KpiCard icon="clock" label={t("dash.kpi.next")} value={nextPickupShort(stats?.next_pickup?.at)} sub={stats?.next_pickup?.client || undefined} />
       </div>
 
       <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 20, alignItems: "start" }}>
         <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: "6px 6px 10px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 8px" }}>
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 16, color: "var(--arctic)" }}>{t("dash.today")}</span>
-            <span style={{ fontSize: 12, color: "var(--volt)", cursor: "pointer" }}>{t("dash.viewAll")}</span>
           </div>
-          {BV_RIDES.slice(0, 5).map((r) => (
-            <RideRow key={r.id} r={r} />
-          ))}
+          {today.length === 0 ? (
+            <EmptyState icon="navigation" text={t("dash.empty.rides")} />
+          ) : (
+            today.map((r) => <RideRow key={r.id} r={r} onOpen={setDetail} />)
+          )}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -234,22 +293,32 @@ export function Overview() {
               <Icon name="sparkles" size={16} color="var(--volt)" />
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)" }}>{t("dash.ai")}</span>
             </div>
-            <p style={{ fontSize: 13, color: "var(--silver)", lineHeight: 1.55, margin: "0 0 14px" }}>{t("dash.ai.suggest")}</p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Button variant="solid" size="sm">
-                {t("dash.ai.reschedule")}
-              </Button>
-              <Button variant="plain" size="sm">
-                {t("dash.ai.dismiss")}
-              </Button>
-            </div>
+            <p style={{ fontSize: 13, color: "var(--silver)", lineHeight: 1.55, margin: 0 }}>
+              {stats
+                ? t("dash.ai.summary", {
+                    rides: stats.today.rides,
+                    upcoming: stats.today.upcoming,
+                    clients: stats.totals.clients,
+                  })
+                : t("common.loading")}
+            </p>
           </div>
           <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: 18 }}>
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)", marginBottom: 14 }}>{t("dash.week")}</div>
-            <MiniBars />
+            {week.length ? <MiniBars data={week} /> : <EmptyState icon="trending-up" text={t("dash.empty.week")} />}
           </div>
         </div>
       </div>
+
+      {detail != null && (
+        <RideDetail
+          rideId={detail}
+          onClose={() => setDetail(null)}
+          onChanged={() => {
+            setReload((n) => n + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

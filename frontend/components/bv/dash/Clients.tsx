@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Field, Pill } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import { useViewport } from "@/lib/useViewport";
-import { BV_CLIENTS, type Client } from "./data";
+import { listClients, type ClientRow } from "@/lib/dashboard";
+import { EmptyState } from "./Overview";
 
 const TIER_TONE: Record<string, "volt" | "muted" | "success"> = {
   VIP: "volt",
@@ -14,7 +15,7 @@ const TIER_TONE: Record<string, "volt" | "muted" | "success"> = {
   New: "success",
 };
 
-function ClientRow({ c }: { c: Client }) {
+function ClientRowView({ c }: { c: ClientRow }) {
   const { t } = useI18n();
   const [h, setH] = useState(false);
   const { compact } = useViewport();
@@ -55,9 +56,9 @@ function ClientRow({ c }: { c: Client }) {
               {t(`dash.tier.${c.tier}`)}
             </Pill>
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--silver)", margin: "3px 0 2px" }}>{c.phone}</div>
+          <div style={{ fontSize: 12.5, color: "var(--silver)", margin: "3px 0 2px" }}>{c.phone || c.email || "—"}</div>
           <div style={{ fontSize: 11.5, color: "var(--fg3)" }}>
-            {c.rides} {t("dash.col.rides").toLowerCase()} · ${c.spend.toLocaleString()} · {t("dash.prefers", { lang: c.lang })}
+            {c.rides_count} {t("dash.col.rides").toLowerCase()} · ${c.lifetime_spend.toLocaleString()} · {t("dash.prefers", { lang: c.lang })}
           </div>
         </div>
       </div>
@@ -100,9 +101,9 @@ function ClientRow({ c }: { c: Client }) {
           <div style={{ fontSize: 11, color: "var(--fg3)" }}>{t("dash.prefers", { lang: c.lang })}</div>
         </div>
       </div>
-      <div style={{ fontSize: 13, color: "var(--silver)" }}>{c.phone}</div>
-      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--arctic)" }}>{c.rides}</div>
-      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--arctic)" }}>${c.spend.toLocaleString()}</div>
+      <div style={{ fontSize: 13, color: "var(--silver)" }}>{c.phone || c.email || "—"}</div>
+      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--arctic)" }}>{c.rides_count}</div>
+      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--arctic)" }}>${c.lifetime_spend.toLocaleString()}</div>
       <Pill tone={TIER_TONE[c.tier]} icon={c.tier === "VIP" ? "star" : undefined}>
         {t(`dash.tier.${c.tier}`)}
       </Pill>
@@ -113,6 +114,22 @@ function ClientRow({ c }: { c: Client }) {
 export function Clients() {
   const { t } = useI18n();
   const [q, setQ] = useState("");
+  const [clients, setClients] = useState<ClientRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    listClients()
+      .then((cs) => alive && setClients(cs))
+      .catch(() => {})
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const shown = clients.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
+
   return (
     <div style={{ padding: 28 }}>
       <div style={{ marginBottom: 18, maxWidth: 320 }}>
@@ -143,9 +160,13 @@ export function Clients() {
           <span>{t("dash.col.lifetime")}</span>
           <span>{t("dash.col.tier")}</span>
         </div>
-        {BV_CLIENTS.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map((c, i) => (
-          <ClientRow key={i} c={c} />
-        ))}
+        {loading ? (
+          <EmptyState icon="users" text={t("common.loading")} />
+        ) : shown.length === 0 ? (
+          <EmptyState icon="users" text={t("dash.empty.clients")} />
+        ) : (
+          shown.map((c) => <ClientRowView key={c.id} c={c} />)
+        )}
       </div>
     </div>
   );

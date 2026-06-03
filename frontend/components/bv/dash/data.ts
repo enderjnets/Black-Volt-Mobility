@@ -1,13 +1,16 @@
 /* Black Volt Mobility — driver dashboard sample data (mock). */
 
+export type RideUiStatus = "upcoming" | "active" | "done" | "cancelled";
+
 export interface Ride {
   id: string;
+  rid?: number; // backend ride id (for detail fetch)
   client: string;
   from: string;
   to: string;
   time: string;
   fare: number;
-  status: "upcoming" | "active" | "done";
+  status: RideUiStatus;
   flight: string | null;
 }
 
@@ -40,7 +43,8 @@ export const BV_CLIENTS: Client[] = [
 export interface CalRide {
   t: string;
   c: string;
-  s: "upcoming" | "active" | "done";
+  s: RideUiStatus;
+  rid?: number;
 }
 
 export const CAL_RIDES: Record<number, CalRide[]> = {
@@ -75,6 +79,7 @@ export const CAL_STATUS: Record<string, string> = {
   upcoming: "var(--volt)",
   active: "var(--warning)",
   done: "var(--success)",
+  cancelled: "var(--danger)",
 };
 
 export interface ThreadMsg {

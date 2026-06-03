@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.8.0 — 2026-06-02 — Phase 4 — Driver dashboard on real data
+
+The driver dashboard now runs on real backend data (was mock) and lets the driver
+operate rides.
+
+- **Backend**: `services/dashboard.py` + `GET /dashboard/stats` (today rides,
+  revenue from captured payments, next pickup, 7-day bars, totals) and
+  `GET /clients` (CRM with ride count, lifetime spend, tier, language). `GET /rides`
+  now includes `client_name`; `GET /rides/{id}` includes the client + latest payment.
+- **Overview / Rides / Calendar / Clients**: wired to real data with empty states.
+  Calendar groups real rides by date on the actual current month.
+- **Ride detail drawer**: tap a ride → full trip + client + payment; change status
+  (en route → complete → cancel) and **capture the Square payment** when authorized.
+- Rates & Insights were already live; Inbox stays mock until Phase 7.
+
 ## v0.7.0 — 2026-06-01 — Phase 3 — Square payments
 
 Real card payments on the passenger booking flow, with the full authorize →

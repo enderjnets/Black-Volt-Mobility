@@ -40,3 +40,15 @@ export async function authorizePayment(input: {
   }
   return r.json();
 }
+
+export async function capturePayment(paymentId: number): Promise<PaymentResult> {
+  const r = await fetch(`/api/v1/payments/${paymentId}/capture`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : `capture:${r.status}`);
+  }
+  return r.json();
+}

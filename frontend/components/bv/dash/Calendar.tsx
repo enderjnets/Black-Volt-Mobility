@@ -1,21 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Icon } from "../Icon";
 import { useI18n } from "@/lib/i18n";
-import { CAL_RIDES, CAL_STATUS, type CalRide } from "./data";
+import { listRides } from "@/lib/booking";
+import { CAL_STATUS, type CalRide } from "./data";
+import { uiStatus } from "./status";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const TODAY = { y: 2026, m: 4, d: 29 }; // May 29 2026
 
-function Chip({ ride, dense }: { ride: CalRide; dense?: boolean }) {
+function key(y: number, m: number, d: number): string {
+  return `${y}-${m}-${d}`;
+}
+
+function Chip({ ride, dense, onOpen }: { ride: CalRide; dense?: boolean; onOpen?: (rid: number) => void }) {
   return (
     <div
+      onClick={ride.rid != null && onOpen ? () => onOpen(ride.rid!) : undefined}
       style={{
         display: "flex",
         alignItems: "center",
@@ -27,6 +33,7 @@ function Chip({ ride, dense }: { ride: CalRide; dense?: boolean }) {
         fontSize: dense ? 11 : 12,
         lineHeight: 1.2,
         overflow: "hidden",
+        cursor: ride.rid != null && onOpen ? "pointer" : "default",
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: CAL_STATUS[ride.s], flexShrink: 0 }} />
@@ -36,7 +43,19 @@ function Chip({ ride, dense }: { ride: CalRide; dense?: boolean }) {
   );
 }
 
-function MonthView({ y, m }: { y: number; m: number }) {
+function MonthView({
+  y,
+  m,
+  byDate,
+  today,
+  onOpen,
+}: {
+  y: number;
+  m: number;
+  byDate: Map<string, CalRide[]>;
+  today: { y: number; m: number; d: number };
+  onOpen?: (rid: number) => void;
+}) {
   const { t } = useI18n();
   const first = new Date(y, m, 1).getDay();
   const days = new Date(y, m + 1, 0).getDate();
@@ -44,7 +63,6 @@ function MonthView({ y, m }: { y: number; m: number }) {
   for (let i = 0; i < first; i++) cells.push(null);
   for (let d = 1; d <= days; d++) cells.push(d);
   while (cells.length % 7) cells.push(null);
-  const isMay26 = y === TODAY.y && m === TODAY.m;
 
   return (
     <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
@@ -66,8 +84,8 @@ function MonthView({ y, m }: { y: number; m: number }) {
           </div>
         ))}
         {cells.map((d, i) => {
-          const rides = isMay26 && d ? CAL_RIDES[d] || [] : [];
-          const today = isMay26 && d === TODAY.d;
+          const rides = d ? byDate.get(key(y, m, d)) || [] : [];
+          const isToday = d === today.d && m === today.m && y === today.y;
           return (
             <div
               key={i}
@@ -76,7 +94,7 @@ function MonthView({ y, m }: { y: number; m: number }) {
                 padding: 8,
                 borderBottom: "1px solid var(--line)",
                 borderRight: i % 7 !== 6 ? "1px solid var(--line)" : "none",
-                background: today ? "var(--volt-bg)" : "transparent",
+                background: isToday ? "var(--volt-bg)" : "transparent",
               }}
             >
               {d && (
@@ -86,15 +104,15 @@ function MonthView({ y, m }: { y: number; m: number }) {
                       fontFamily: "var(--font-display)",
                       fontWeight: 700,
                       fontSize: 13,
-                      color: today ? "var(--void)" : "var(--silver)",
-                      background: today ? "var(--volt)" : "transparent",
+                      color: isToday ? "var(--void)" : "var(--silver)",
+                      background: isToday ? "var(--volt)" : "transparent",
                       width: 22,
                       height: 22,
                       borderRadius: "50%",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      boxShadow: today ? "var(--shadow-volt-sm)" : "none",
+                      boxShadow: isToday ? "var(--shadow-volt-sm)" : "none",
                     }}
                   >
                     {d}
@@ -104,7 +122,7 @@ function MonthView({ y, m }: { y: number; m: number }) {
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {rides.slice(0, 2).map((r, j) => (
-                  <Chip key={j} ride={r} dense />
+                  <Chip key={j} ride={r} dense onOpen={onOpen} />
                 ))}
                 {rides.length > 2 && (
                   <span style={{ fontSize: 11, color: "var(--volt)", paddingLeft: 2 }}>{t("dash.cal.more", { n: rides.length - 2 })}</span>
@@ -118,30 +136,45 @@ function MonthView({ y, m }: { y: number; m: number }) {
   );
 }
 
-function WeekView() {
-  const start = 24;
-  const cols = Array.from({ length: 7 }, (_, i) => start + i);
+function WeekView({
+  byDate,
+  today,
+  onOpen,
+}: {
+  byDate: Map<string, CalRide[]>;
+  today: { y: number; m: number; d: number };
+  onOpen?: (rid: number) => void;
+}) {
+  // Week containing today (Sun→Sat).
+  const base = new Date(today.y, today.m, today.d);
+  const start = new Date(base);
+  start.setDate(base.getDate() - base.getDay());
+  const cols = Array.from({ length: 7 }, (_, i) => {
+    const dt = new Date(start);
+    dt.setDate(start.getDate() + i);
+    return dt;
+  });
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
-      {cols.map((d) => {
-        const rides = CAL_RIDES[d] || [];
-        const today = d === TODAY.d;
-        const dow = new Date(TODAY.y, TODAY.m, d).getDay();
+      {cols.map((dt) => {
+        const rides = byDate.get(key(dt.getFullYear(), dt.getMonth(), dt.getDate())) || [];
+        const isToday = dt.toDateString() === base.toDateString();
         return (
           <div
-            key={d}
+            key={dt.toISOString()}
             style={{
               background: "var(--obsidian)",
-              border: `1px solid ${today ? "var(--volt-border)" : "var(--line-strong)"}`,
+              border: `1px solid ${isToday ? "var(--volt-border)" : "var(--line-strong)"}`,
               borderRadius: "var(--radius-md)",
               padding: 10,
               minHeight: 320,
-              boxShadow: today ? "var(--shadow-volt-sm)" : "none",
+              boxShadow: isToday ? "var(--shadow-volt-sm)" : "none",
             }}
           >
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid var(--line)" }}>
-              <span style={{ fontSize: 10, color: "var(--fg3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{DOW[dow]}</span>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: today ? "var(--volt)" : "var(--arctic)" }}>{d}</span>
+              <span style={{ fontSize: 10, color: "var(--fg3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{DOW[dt.getDay()]}</span>
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: isToday ? "var(--volt)" : "var(--arctic)" }}>{dt.getDate()}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {rides.length === 0 ? (
@@ -150,12 +183,14 @@ function WeekView() {
                 rides.map((r, j) => (
                   <div
                     key={j}
+                    onClick={r.rid != null && onOpen ? () => onOpen(r.rid!) : undefined}
                     style={{
                       padding: "7px 9px",
                       borderRadius: 7,
                       background: "var(--obsidian-3)",
                       border: "1px solid var(--line-strong)",
                       borderLeft: `3px solid ${CAL_STATUS[r.s]}`,
+                      cursor: r.rid != null && onOpen ? "pointer" : "default",
                     }}
                   >
                     <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, color: "var(--arctic)" }}>{r.t}</div>
@@ -195,10 +230,43 @@ function CalNav({ icon, onClick }: { icon: string; onClick: () => void }) {
   );
 }
 
-export function Calendar() {
+export function Calendar({ onOpen }: { onOpen?: (rid: number) => void }) {
   const { t } = useI18n();
+  const now = useMemo(() => new Date(), []);
+  const today = { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
   const [mode, setMode] = useState<"month" | "week">("month");
-  const [view, setView] = useState({ y: 2026, m: 4 });
+  const [view, setView] = useState({ y: today.y, m: today.m });
+  const [byDate, setByDate] = useState<Map<string, CalRide[]>>(new Map());
+
+  useEffect(() => {
+    let alive = true;
+    listRides()
+      .then((rides) => {
+        if (!alive) return;
+        const map = new Map<string, CalRide[]>();
+        for (const r of rides) {
+          if (!r.scheduled_at) continue;
+          const dt = new Date(r.scheduled_at);
+          if (isNaN(dt.getTime())) continue;
+          const k = key(dt.getFullYear(), dt.getMonth(), dt.getDate());
+          const cr: CalRide = {
+            t: dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
+            c: r.client_name || r.passenger_name || "Guest",
+            s: uiStatus(r.status),
+            rid: r.id,
+          };
+          if (!map.has(k)) map.set(k, []);
+          map.get(k)!.push(cr);
+        }
+        for (const list of map.values()) list.sort((a, b) => a.t.localeCompare(b.t));
+        setByDate(map);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const shift = (n: number) =>
     setView((v) => {
       let m = v.m + n;
@@ -261,7 +329,11 @@ export function Calendar() {
           ))}
         </div>
       </div>
-      {mode === "month" ? <MonthView y={view.y} m={view.m} /> : <WeekView />}
+      {mode === "month" ? (
+        <MonthView y={view.y} m={view.m} byDate={byDate} today={today} onOpen={onOpen} />
+      ) : (
+        <WeekView byDate={byDate} today={today} onOpen={onOpen} />
+      )}
     </div>
   );
 }

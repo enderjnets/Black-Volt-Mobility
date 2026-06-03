@@ -1,18 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { useI18n } from "@/lib/i18n";
-import { BV_RIDES } from "./data";
-import { RideRow } from "./Overview";
+import { listRides } from "@/lib/booking";
+import { EmptyState, RideRow } from "./Overview";
 import { Calendar } from "./Calendar";
+import { RideDetail } from "./RideDetail";
+import { type Ride } from "./data";
+import { apiToUiRide } from "./status";
 
 export function Rides() {
   const { t } = useI18n();
   const [filter, setFilter] = useState("all");
   const [mode, setMode] = useState<"list" | "calendar">("list");
-  const rides = filter === "all" ? BV_RIDES : BV_RIDES.filter((r) => r.status === filter);
+  const [rides, setRides] = useState<Ride[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [detail, setDetail] = useState<number | null>(null);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    listRides()
+      .then((rs) => alive && setRides(rs.map(apiToUiRide)))
+      .catch(() => {})
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [reload]);
+
+  const shown = filter === "all" ? rides : rides.filter((r) => r.status === filter);
 
   return (
     <div style={{ padding: 28 }}>
@@ -77,7 +97,7 @@ export function Rides() {
         </div>
       </div>
       {mode === "calendar" ? (
-        <Calendar />
+        <Calendar onOpen={setDetail} />
       ) : (
         <div
           className="bv-table-wrap"
@@ -105,11 +125,19 @@ export function Rides() {
             <span>{t("dash.col.status")}</span>
           </div>
           <div className="bv-table-min" style={{ minWidth: 620 }}>
-            {rides.map((r) => (
-              <RideRow key={r.id} r={r} />
-            ))}
+            {loading ? (
+              <EmptyState icon="navigation" text={t("common.loading")} />
+            ) : shown.length === 0 ? (
+              <EmptyState icon="navigation" text={t("dash.empty.rides")} />
+            ) : (
+              shown.map((r) => <RideRow key={r.id} r={r} onOpen={setDetail} />)
+            )}
           </div>
         </div>
+      )}
+
+      {detail != null && (
+        <RideDetail rideId={detail} onClose={() => setDetail(null)} onChanged={() => setReload((n) => n + 1)} />
       )}
     </div>
   );

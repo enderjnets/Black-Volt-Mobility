@@ -104,14 +104,44 @@ export interface RideRow {
   id: number;
   status: string;
   passenger_name: string | null;
+  client_name?: string | null;
+  client_phone?: string | null;
   pickup: string;
   dropoff: string;
   scheduled_at: string | null;
   fare_total: number | null;
+  currency?: string;
+  pax?: number | null;
   flight_number: string | null;
 }
 
 export async function listRides(status?: string): Promise<RideRow[]> {
   const r = await jget<{ rides: RideRow[] }>(`/v1/rides${status ? `?status=${status}` : ""}`);
   return r.rides;
+}
+
+export interface RideDetail extends RideRow {
+  stops: { text: string }[] | null;
+  distance_miles: number | null;
+  duration_minutes: number | null;
+  price_breakdown: Quote | null;
+  lang: string | null;
+  notes: string | null;
+  created_at: string | null;
+  client: { id: number; name: string | null; phone: string | null } | null;
+  payment: {
+    id: number;
+    status: string;
+    amount: number;
+    currency: string;
+    simulated: boolean;
+  } | null;
+}
+
+export async function getRideDetail(id: number): Promise<RideDetail> {
+  return jget<RideDetail>(`/v1/rides/${id}`);
+}
+
+export async function setRideStatus(id: number, status: string): Promise<RideRow> {
+  return jsend<RideRow>(`/v1/rides/${id}`, "PATCH", { status });
 }

@@ -12,13 +12,21 @@ import { useI18n } from "@/lib/i18n";
 import { logout } from "@/lib/auth";
 import { DriverTabBar } from "./DriverTabBar";
 
-export function StatusPill({ status }: { status: "upcoming" | "active" | "done" }) {
+export function StatusPill({ status }: { status: "upcoming" | "active" | "done" | "cancelled" }) {
   const { t } = useI18n();
-  const tone = status === "active" ? "warning" : status === "done" ? "success" : "volt";
+  const tone =
+    status === "active"
+      ? "warning"
+      : status === "done"
+        ? "success"
+        : status === "cancelled"
+          ? "danger"
+          : "volt";
   const colors: Record<string, [string, string, string]> = {
     volt: ["var(--volt)", "var(--volt-border)", "var(--volt-bg)"],
     warning: ["var(--warning)", "rgba(255,194,75,0.4)", "rgba(255,194,75,0.12)"],
     success: ["var(--success)", "rgba(43,212,160,0.4)", "rgba(43,212,160,0.12)"],
+    danger: ["var(--danger)", "rgba(255,92,110,0.4)", "rgba(255,92,110,0.12)"],
   };
   const c = colors[tone];
   return (

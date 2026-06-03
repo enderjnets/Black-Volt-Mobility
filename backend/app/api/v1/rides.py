@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import current_payload, require_auth, require_staff, resolve_tenant_id
 from app.db.base import get_db
 from app.models import Ride, RideStatus
-from app.services import auth, booking, maps
+from app.services import auth, booking, dashboard, maps
 
 router = APIRouter(tags=["booking"])
 
@@ -202,7 +202,17 @@ async def list_rides(
     if payload.get("role") == auth.ROLE_PASSENGER:
         cid = payload.get("cid")
         rides = [r for r in rides if r.client_id == cid]
-    return {"rides": [_ride_out(r) for r in rides]}
+    names = await dashboard.client_names(
+        db, tenant_id=tenant_id, ids=[r.client_id for r in rides]
+    )
+    out = []
+    for r in rides:
+        d = _ride_out(r)
+        nm, ph = names.get(r.client_id, (None, None)) if r.client_id else (None, None)
+        d["client_name"] = nm or r.passenger_name
+        d["client_phone"] = ph or r.passenger_phone
+        out.append(d)
+    return {"rides": out}
 
 
 @router.get("/rides/{ride_id}")
@@ -218,7 +228,9 @@ async def get_ride(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
     if payload.get("role") == auth.ROLE_PASSENGER and ride.client_id != payload.get("cid"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
-    return _ride_out(ride)
+    out = _ride_out(ride)
+    out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))
+    return out
 
 
 @router.patch("/rides/{ride_id}")
