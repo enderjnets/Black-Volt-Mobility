@@ -34,17 +34,22 @@ RESERVATION_KEYS = (
 
 EXTRACT_PROMPT = (
     "You read screenshots of a customer ride request for Black Volt Mobility, a "
-    "premium chauffeur / airport-transfer service in Denver. The screenshots may "
-    "be SMS, WhatsApp, email, or typed notes. When several images are given, they "
-    "are ONE conversation with the SAME customer — combine them into a SINGLE "
-    "reservation (later messages override earlier ones).\n"
-    "Return ONLY a JSON object — no prose, no markdown fences — with EXACTLY these "
-    "keys, using null when the info is not present:\n"
+    "premium chauffeur / airport-transfer service in Denver. The screenshots are "
+    "phone or computer captures of SMS, WhatsApp, iMessage, email, or typed notes "
+    "— they may include a status bar, app chrome, timestamps, contact names, and "
+    "several chat bubbles. IGNORE the app UI and focus on the customer's message "
+    "text. When several images are given, they are ONE conversation with the SAME "
+    "customer — combine them into a SINGLE reservation (later messages override "
+    "earlier ones). Read carefully and extract whatever details you can actually "
+    "see; partial results are expected.\n"
+    "Return ONLY a JSON object — no prose, no markdown fences, nothing else — with "
+    "EXACTLY these keys, using null ONLY when that detail is truly not present:\n"
     '{"name": string|null, "phone": string|null, "lang": "EN"|"ES"|null, '
     '"pickup": string|null, "dropoff": string|null, "date": string|null, '
     '"time": string|null, "flight": string|null, "passengers": number|null, '
     '"fare": number|null, "notes": string|null}\n'
     "Notes:\n"
+    '- "name": the customer name (often the chat/contact title at the top).\n'
     '- "lang": guess from the language the customer wrote in.\n'
     '- "date"/"time": keep them short and human (e.g. "Jun 14", "06:30"). 24h time.\n'
     '- "fare": numeric dollars only if explicitly stated, else null.\n'
@@ -121,6 +126,7 @@ async def _vlm_one(media_type: str, raw: bytes, attempts: int = 2) -> dict | Non
                 image_data_url=data_url,
                 timeout=settings.SMART_VISION_TIMEOUT,
             )
+            logger.info("vlm content (%d bytes img): %s", len(raw), (text or "")[:300])
             return _coerce(_parse_json(text))
         except (llm.LLMError, ValueError, json.JSONDecodeError) as e:
             last = e
@@ -147,6 +153,8 @@ async def _extract_coding_vlm(images: list[tuple[str, bytes]]) -> dict:
                 merged[k] = v
     if ok == 0 and images:
         raise llm.LLMError("vlm:all_images_failed")
+    if not any(_has(v) for v in merged.values()):
+        logger.warning("vlm returned no fields from %d image(s)", len(images))
     return merged
 
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.12.1 — 2026-06-04 — Smart extraction: cross-device reliability + visible errors
+
+Fixes a report where a screenshot returned "AI found 0 of 9" with no explanation.
+
+- **Frontend no longer swallows extraction errors.** `runExtract` (Add ride) and
+  the Smart-update flow (RideDetail) now surface the real reason — unsupported
+  format, image too large, or service unreachable — and "couldn't read it, add
+  manually" when the model reads nothing, instead of a blank "0 found".
+- **In-browser image normalization** (`lib/smart.ts normalizeImage`): every
+  screenshot is downscaled (long edge ≤2200px) and re-encoded to PNG/JPEG via
+  canvas before upload — consistent from Android/iPhone/Mac/Linux, under the size
+  limit, vision-friendly. Undecodable formats (e.g. HEIC on Chrome) raise a clear
+  "convert to PNG/JPG" message.
+- **Backend diagnostics + prompt**: `services/smart.py` logs the (truncated) VLM
+  response and warns when it returns no fields; `EXTRACT_PROMPT` now tells the
+  model to ignore phone status bars / app chrome and extract partial data.
+- Backend accepts `image/heic`/`image/heif` as a safety net (clearer than a drop).
+
 ## v0.12.0 — 2026-06-04 — Smart update: change a ride from screenshots
 
 A client's change of plans → drop the screenshots on the ride and the system

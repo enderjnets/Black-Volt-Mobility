@@ -11,7 +11,7 @@ import { Button, Pill } from "../ui";
 import { SuggestionDropdown, useAddressSuggest } from "../AddressAutocomplete";
 import { useI18n } from "@/lib/i18n";
 import { createRide, getQuote } from "@/lib/booking";
-import { extractReservation } from "@/lib/smart";
+import { extractReservation, hasAnyField, SmartError } from "@/lib/smart";
 
 const SMART_MAX_IMAGES = 5;
 
@@ -50,6 +50,11 @@ const BV_T: Record<string, any> = {
     addMore: "Add more", removeImg: "Remove", maxImgs: (n: number) => `Up to ${n} screenshots.`,
     shotsCount: (n: number) => `${n} ${n === 1 ? "screenshot" : "screenshots"}`,
     demoNote: "Demo mode — set the vision key on the server for real extraction.",
+    err_unsupported_image_type: "That image format isn't supported — use a PNG or JPG screenshot.",
+    err_image_too_large: "That image is too large — try a screenshot under 10 MB.",
+    err_decode_failed: "Couldn't read that image (HEIC?) — convert it to PNG or JPG and retry.",
+    err_service: "Couldn't reach the AI service — try again, or fill the form manually.",
+    noReadNote: "Couldn't read the details from the image — add them manually below.",
     scanning: "Reading the screenshots…", scanningSub: "Pulling out the reservation details.",
     scanningN: (n: number) => `Reading ${n} ${n === 1 ? "screenshot" : "screenshots"}…`,
     foundOf: (a: number, b: number) => `AI found ${a} of ${b} details.`,
@@ -94,6 +99,11 @@ const BV_T: Record<string, any> = {
     addMore: "Añadir más", removeImg: "Quitar", maxImgs: (n: number) => `Hasta ${n} capturas.`,
     shotsCount: (n: number) => `${n} ${n === 1 ? "captura" : "capturas"}`,
     demoNote: "Modo demo — configura la clave de visión en el servidor para extracción real.",
+    err_unsupported_image_type: "Ese formato de imagen no es compatible — usa una captura PNG o JPG.",
+    err_image_too_large: "Esa imagen es muy grande — usa una captura de menos de 10 MB.",
+    err_decode_failed: "No pude leer esa imagen (¿HEIC?) — conviértela a PNG o JPG e intenta de nuevo.",
+    err_service: "No pude contactar el servicio de IA — intenta de nuevo o llena el formulario a mano.",
+    noReadNote: "No pude leer los datos de la imagen — agrégalos a mano abajo.",
     scanning: "Leyendo las capturas…", scanningSub: "Extrayendo los datos de la reserva.",
     scanningN: (n: number) => `Leyendo ${n} ${n === 1 ? "captura" : "capturas"}…`,
     foundOf: (a: number, b: number) => `La IA encontró ${a} de ${b} datos.`,
@@ -176,6 +186,8 @@ export function AddRide() {
   const [aiRan, setAiRan] = useState(false);
   const [shots, setShots] = useState<Shot[]>([]);
   const [smartDemo, setSmartDemo] = useState(false);
+  const [smartErr, setSmartErr] = useState<string | null>(null);
+  const [noRead, setNoRead] = useState(false);
   const [created, setCreated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [suggested, setSuggested] = useState<number | null>(null);
@@ -183,7 +195,8 @@ export function AddRide() {
   const [drag, setDrag] = useState(false);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
-  const addFiles = (files: FileList | File[]) =>
+  const addFiles = (files: FileList | File[]) => {
+    setSmartErr(null);
     setShots((prev) => {
       const room = SMART_MAX_IMAGES - prev.length;
       if (room <= 0) return prev;
@@ -193,6 +206,7 @@ export function AddRide() {
         .map((file) => ({ file, url: URL.createObjectURL(file) }));
       return [...prev, ...next];
     });
+  };
   const removeShot = (i: number) =>
     setShots((prev) => {
       const s = prev[i];
@@ -210,6 +224,8 @@ export function AddRide() {
     setAiRan(false);
     clearShots();
     setSmartDemo(false);
+    setSmartErr(null);
+    setNoRead(false);
     setCreated(false);
     setSuggested(null);
     setSmartStage("capture");
@@ -290,6 +306,8 @@ export function AddRide() {
 
   async function runExtract(useSample: boolean) {
     setSmartStage("scanning");
+    setSmartErr(null);
+    setNoRead(false);
     let obj: Record<string, unknown> = {};
     if (useSample) {
       await new Promise((r) => setTimeout(r, 1200));
@@ -300,9 +318,16 @@ export function AddRide() {
         const res = await extractReservation(shots.map((s) => s.file));
         obj = res.fields || {};
         setSmartDemo(res.simulated);
-      } catch {
-        obj = {};
-        setSmartDemo(false);
+        // Read OK but nothing usable → proceed to the form with a clear notice.
+        if (!hasAnyField(obj)) setNoRead(true);
+      } catch (e) {
+        // Hard failure (bad format / too large / service down): stay on the
+        // capture screen and tell the driver exactly why, instead of a blank form.
+        const code = e instanceof SmartError ? e.code : "service";
+        const key = `err_${code}`;
+        setSmartErr(t[key] ? key : "err_service");
+        setSmartStage("capture");
+        return;
       }
     }
     const next: Form = { ...BV_BLANK };
@@ -399,25 +424,33 @@ export function AddRide() {
       </div>
 
       {mode === "smart" && smartStage !== "form" ? (
-        <SmartCapture
-          t={t}
-          shots={shots}
-          drag={drag}
-          setDrag={setDrag}
-          fileRef={fileRef}
-          scanning={smartStage === "scanning"}
-          onFiles={addFiles}
-          onRemove={removeShot}
-          onExtract={() => runExtract(false)}
-          onSample={() => {
-            clearShots();
-            runExtract(true);
-          }}
-        />
+        <div style={{ maxWidth: 760, margin: "0 auto" }}>
+          {smartErr && smartStage === "capture" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 9, background: "rgba(255,99,99,0.08)", border: "1px solid rgba(255,99,99,0.4)", borderRadius: "var(--radius-md)", padding: "12px 14px", marginBottom: 12 }}>
+              <Icon name="alert-circle" size={16} color="var(--danger)" />
+              <span style={{ fontSize: 13, color: "var(--silver)" }}>{t[smartErr] || t.err_service}</span>
+            </div>
+          )}
+          <SmartCapture
+            t={t}
+            shots={shots}
+            drag={drag}
+            setDrag={setDrag}
+            fileRef={fileRef}
+            scanning={smartStage === "scanning"}
+            onFiles={addFiles}
+            onRemove={removeShot}
+            onExtract={() => runExtract(false)}
+            onSample={() => {
+              clearShots();
+              runExtract(true);
+            }}
+          />
+        </div>
       ) : (
         <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1.65fr 1fr", gap: 22, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {mode === "smart" && aiRan && <ReviewBanner t={t} missing={missing} form={form} demo={smartDemo} onBack={reset} />}
+            {mode === "smart" && aiRan && <ReviewBanner t={t} missing={missing} form={form} demo={smartDemo} noRead={noRead} onBack={reset} />}
 
             <FormSection title={t.secClient} icon="user">
               <RideField id="name" label={t.name} icon="user" ph={t.namePh} value={form.name} onChange={(v) => set("name", v)} state={fieldState("name", form, aiFields, mode, aiRan)} t={t} />
@@ -487,7 +520,7 @@ export function AddRide() {
   );
 }
 
-function ReviewBanner({ t, missing, form, demo, onBack }: { t: any; missing: string[]; form: Form; demo?: boolean; onBack: () => void }) {
+function ReviewBanner({ t, missing, form, demo, noRead, onBack }: { t: any; missing: string[]; form: Form; demo?: boolean; noRead?: boolean; onBack: () => void }) {
   const tracked = ["name", "phone", "pickup", "dropoff", "date", "time", "flight", "passengers", "fare"];
   const found = tracked.filter((k) => String(form[k] || "").trim()).length;
   const total = tracked.length;
@@ -526,6 +559,12 @@ function ReviewBanner({ t, missing, form, demo, onBack }: { t: any; missing: str
             <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
               <Icon name="alert-circle" size={12} color="var(--fg3)" />
               {t.demoNote}
+            </div>
+          )}
+          {noRead && (
+            <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="alert-circle" size={12} color="var(--warning)" />
+              {t.noReadNote}
             </div>
           )}
           {n > 0 && (

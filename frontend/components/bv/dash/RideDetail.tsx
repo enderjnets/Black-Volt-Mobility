@@ -20,7 +20,7 @@ import {
   type RideUpdatePreview,
   updateRide,
 } from "@/lib/booking";
-import { extractReservation } from "@/lib/smart";
+import { extractReservation, hasAnyField, SmartError } from "@/lib/smart";
 import { capturePayment } from "@/lib/payments";
 import { StatusPill } from "./DashShell";
 import { fmtWhen, uiStatus } from "./status";
@@ -149,6 +149,8 @@ export function RideDetail({
   const [orig, setOrig] = useState<Draft | null>(null);
   const [preview, setPreview] = useState<RideUpdatePreview | null>(null);
   const [demo, setDemo] = useState(false);
+  const [suErr, setSuErr] = useState<string | null>(null);
+  const [suNoRead, setSuNoRead] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = () => getRideDetail(rideId).then(setRide).catch(() => setErr("load"));
@@ -188,7 +190,8 @@ export function RideDetail({
   };
 
   // ── Smart update helpers ──────────────────────────────────────────────────
-  const addFiles = (files: FileList | File[]) =>
+  const addFiles = (files: FileList | File[]) => {
+    setSuErr(null);
     setShots((prev) => {
       const room = SU_MAX_IMAGES - prev.length;
       if (room <= 0) return prev;
@@ -198,6 +201,7 @@ export function RideDetail({
         .map((file) => ({ file, url: URL.createObjectURL(file) }));
       return [...prev, ...next];
     });
+  };
   const clearShots = () =>
     setShots((prev) => {
       prev.forEach((s) => URL.revokeObjectURL(s.url));
@@ -210,6 +214,8 @@ export function RideDetail({
     setPreview(null);
     setDemo(false);
     setErr(null);
+    setSuErr(null);
+    setSuNoRead(false);
     setMode("view");
   };
   useEffect(() => () => shots.forEach((s) => URL.revokeObjectURL(s.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -230,18 +236,25 @@ export function RideDetail({
     return () => window.removeEventListener("paste", onPaste);
   }, [mode]);
 
+  const SU_ERR_CODES = ["unsupported_image_type", "image_too_large", "decode_failed"];
   const runExtract = async () => {
     if (!ride || !shots.length) return;
     setMode("scanning");
     setErr(null);
+    setSuErr(null);
+    setSuNoRead(false);
     let fields: Record<string, unknown> = {};
     try {
       const res = await extractReservation(shots.map((s) => s.file));
       fields = res.fields || {};
       setDemo(res.simulated);
-    } catch {
-      fields = {};
-      setDemo(false);
+      if (!hasAnyField(fields)) setSuNoRead(true);
+    } catch (e) {
+      // Hard failure: stay on capture with a clear, actionable message.
+      const code = e instanceof SmartError && SU_ERR_CODES.includes(e.code) ? e.code : "service";
+      setSuErr(`dash.ride.su.err.${code}`);
+      setMode("capture");
+      return;
     }
     const base = draftOf(ride);
     const next: Draft = { ...base };
@@ -335,16 +348,24 @@ export function RideDetail({
   // ── Smart update: capture / scanning ──────────────────────────────────────
   if (mode === "capture" || mode === "scanning") {
     return shell(
-      <SmartCapturePanel
-        t={t}
-        shots={shots}
-        scanning={mode === "scanning"}
-        fileRef={fileRef}
-        onFiles={addFiles}
-        onRemove={(i) => setShots((prev) => { const s = prev[i]; if (s) URL.revokeObjectURL(s.url); return prev.filter((_, j) => j !== i); })}
-        onExtract={runExtract}
-        onBack={closeSmart}
-      />,
+      <>
+        {suErr && mode === "capture" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 9, background: "rgba(255,99,99,0.08)", border: "1px solid rgba(255,99,99,0.4)", borderRadius: "var(--radius-md)", padding: "11px 13px", marginBottom: 12 }}>
+            <Icon name="alert-circle" size={15} color="var(--danger)" />
+            <span style={{ fontSize: 12.5, color: "var(--silver)" }}>{t(suErr)}</span>
+          </div>
+        )}
+        <SmartCapturePanel
+          t={t}
+          shots={shots}
+          scanning={mode === "scanning"}
+          fileRef={fileRef}
+          onFiles={addFiles}
+          onRemove={(i) => setShots((prev) => { const s = prev[i]; if (s) URL.revokeObjectURL(s.url); return prev.filter((_, j) => j !== i); })}
+          onExtract={runExtract}
+          onBack={closeSmart}
+        />
+      </>,
     );
   }
 
@@ -415,7 +436,9 @@ export function RideDetail({
             {t("dash.ride.su.back")}
           </Button>
           {changedKeys.size === 0 ? (
-            <span style={{ fontSize: 12.5, color: "var(--fg3)", alignSelf: "center" }}>{t("dash.ride.su.unchanged")}</span>
+            <span style={{ fontSize: 12.5, color: suNoRead ? "var(--warning)" : "var(--fg3)", alignSelf: "center" }}>
+              {suNoRead ? t("dash.ride.su.noRead") : t("dash.ride.su.unchanged")}
+            </span>
           ) : (
             <Button
               variant={conflicts.length ? "tint" : "solid"}

@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.12.0";
+export const CURRENT_VERSION = "0.12.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.12.1",
+    date: "2026-06-04",
+    title: "Smart extraction: reliable on any device + clear errors",
+    changes: [
+      "Screenshots are normalized in-browser (downscaled + re-encoded) so it works from Android, iPhone, Mac or Linux.",
+      "Real reasons now show instead of a silent '0 found': unsupported format, too large, or service down.",
+      "If AI reads nothing, it says so and lets you fill the form by hand.",
+    ],
+  },
   {
     version: "0.12.0",
     date: "2026-06-04",

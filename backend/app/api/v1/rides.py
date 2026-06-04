@@ -18,7 +18,16 @@ from app.models import PaymentMethod, Ride, RideStatus
 from app.services import auth, booking, dashboard, maps, smart
 
 # Vision providers accept these; anything else is rejected before the model call.
-_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+# The frontend normalizes images to PNG/JPEG first, so HEIC/HEIF rarely reach here
+# — accepted as a safety net (and a clearer error than a silent drop otherwise).
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+}
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB per image (MiniMax-M3 limit)
 
 router = APIRouter(tags=["booking"])

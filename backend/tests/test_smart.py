@@ -47,6 +47,19 @@ def test_parse_json_extracts_object():
     assert obj == {"name": "Ana", "pax": 2}
 
 
+def test_parse_json_raises_without_object():
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        smart._parse_json("I cannot read this image, sorry.")
+
+
+def test_coerce_empty_is_all_null():
+    out = smart._coerce({})
+    assert set(out.keys()) == set(smart.RESERVATION_KEYS)
+    assert all(v is None for v in out.values())
+
+
 def test_endpoint_requires_staff():
     c = TestClient(app)  # no session
     r = c.post("/api/v1/rides/extract", files={"files": ("a.png", _PNG, "image/png")})
