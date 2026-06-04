@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.13.0 — 2026-06-04 — Reservations that silently failed now save (422 + false success)
+
+A ride added for a client never appeared: `POST /rides` returned **422** (the AI
+extracted "United Airlines UA 2766" — over the 20-char `flight_number` limit) but
+`AddRide.submit` swallowed the error and showed "Reservation created" anyway.
+
+- **Backend tolerates real/AI data**: `flight_number` limit 20→**40** (model +
+  `RideCreate`/`RideEdit`; migration `0007_flight_len` widens the column). `lang`
+  is **normalized** to `EN`/`ES` via a validator instead of failing when the AI
+  returns "Spanish"/"English". `smart._coerce` also normalizes lang + trims flight,
+  and `EXTRACT_PROMPT` now asks for the flight **code** only and a 2-letter lang.
+- **No more false success**: `AddRide.submit` only shows the success screen when a
+  real ride id comes back; otherwise it surfaces the actual error (the FastAPI
+  `detail`, with 422 arrays normalized to a readable string via `fmtApiDetail` —
+  never rendering the raw object).
+- **Calendar** no longer shows cancelled / no-show rides.
+
 ## v0.12.2 — 2026-06-04 — Smart extraction: survive transient network blips
 
 Fixes a 500 ("Couldn't reach the AI service") when one of several screenshots hit

@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.12.2";
+export const CURRENT_VERSION = "0.13.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.13.0",
+    date: "2026-06-04",
+    title: "Reservations that silently failed now actually save",
+    changes: [
+      "Fixed: a ride could show 'created' but never save when a field was too long.",
+      "Flight number accepts full airline names; language accepts any wording (→ EN/ES).",
+      "If creating a reservation fails, you now see exactly why instead of a false success.",
+      "Cancelled rides no longer clutter the calendar.",
+    ],
+  },
   {
     version: "0.12.2",
     date: "2026-06-04",

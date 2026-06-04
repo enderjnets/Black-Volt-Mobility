@@ -56,6 +56,29 @@ async function jget<T>(path: string): Promise<T> {
   return r.json();
 }
 
+// Normalize a FastAPI error body to a readable string. `detail` may be a string
+// or a 422 array of {loc,msg} — never return the raw object (rendering it as a
+// React child crashes the page; see the 422-render note in memory).
+export function fmtApiDetail(d: unknown, fallback: string): string {
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    const parts = d
+      .map((e) => {
+        if (e && typeof e === "object") {
+          const loc = Array.isArray((e as { loc?: unknown[] }).loc)
+            ? String((e as { loc: unknown[] }).loc.at(-1))
+            : "";
+          const msg = (e as { msg?: string }).msg || "";
+          return [loc, msg].filter(Boolean).join(": ");
+        }
+        return "";
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+  return fallback;
+}
+
 async function jsend<T>(path: string, method: string, body?: unknown): Promise<T> {
   const r = await fetch(`/api${path}`, {
     method,
@@ -63,7 +86,10 @@ async function jsend<T>(path: string, method: string, body?: unknown): Promise<T
     credentials: "include",
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error(`${path}:${r.status}`);
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(fmtApiDetail((d as { detail?: unknown }).detail, `${path}:${r.status}`));
+  }
   return r.json();
 }
 

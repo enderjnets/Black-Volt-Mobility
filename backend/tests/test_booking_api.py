@@ -124,3 +124,41 @@ def test_get_missing_ride_404():
     c = _owner()
     r = c.get("/api/v1/rides/99999999")
     assert r.status_code == 404
+
+
+def test_create_ride_tolerates_long_flight_and_loose_lang():
+    """Real/AI data: full airline name in flight + 'Spanish' lang must NOT 422.
+    flight is stored (<=40) and lang normalizes to ES. (Regression: Demetra ride
+    that silently failed with a 422.)"""
+    c = _owner()
+    r = c.post(
+        "/api/v1/rides",
+        json={
+            "pickup": "14681 Saddlebred Ave, Parker, CO",
+            "dropoff": "Denver Intl (DEN)",
+            "passenger_name": "Demetra Sullivan",
+            "flight_number": "United Airlines UA 2766",
+            "lang": "Spanish",
+            "confirm": True,
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["flight_number"] == "United Airlines UA 2766"
+    assert body["lang"] == "ES"
+    detail = c.get(f"/api/v1/rides/{body['id']}").json()
+    assert detail["flight_number"] == "United Airlines UA 2766"
+
+
+def test_edit_ride_loose_lang_normalizes():
+    c = _owner()
+    rid = c.post(
+        "/api/v1/rides",
+        json={"pickup": "Aurora", "dropoff": "DEN", "confirm": True},
+    ).json()["id"]
+    r = c.patch(
+        f"/api/v1/rides/{rid}",
+        json={"lang": "english", "flight_number": "American AA 100"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["lang"] == "EN"

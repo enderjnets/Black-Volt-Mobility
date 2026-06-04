@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_payload, require_auth, require_staff, resolve_tenant_id
@@ -34,6 +34,17 @@ router = APIRouter(tags=["booking"])
 
 
 # ─── Schemas ────────────────────────────────────────────────────────────────
+def _normalize_lang(v):
+    """Coerce any language input (incl. AI "Spanish"/"español") to EN|ES so a
+    long/loose value never 422s the request. None stays None."""
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    if not s:
+        return None
+    return "ES" if s.startswith(("es", "sp")) else "EN"
+
+
 class QuoteRequest(BaseModel):
     pickup: str = Field(min_length=1, max_length=400)
     dropoff: str = Field(min_length=1, max_length=400)
@@ -48,12 +59,14 @@ class RideCreate(QuoteRequest):
     client_id: int | None = None
     passenger_name: str | None = Field(default=None, max_length=200)
     passenger_phone: str | None = Field(default=None, max_length=40)
-    flight_number: str | None = Field(default=None, max_length=20)
-    lang: str | None = Field(default=None, max_length=2)
+    flight_number: str | None = Field(default=None, max_length=40)
+    lang: str | None = None
     notes: str | None = None
     vehicle: str | None = Field(default=None, max_length=120)
     fare_override: float | None = Field(default=None, ge=0)
     confirm: bool = False  # passenger booking → CONFIRMED, else QUOTED
+
+    _norm_lang = field_validator("lang", mode="before")(_normalize_lang)
 
 
 class RideEdit(BaseModel):
@@ -63,10 +76,12 @@ class RideEdit(BaseModel):
     stops: list[str] | None = None
     scheduled_at: datetime | None = None
     pax: int | None = Field(default=None, ge=1, le=12)
-    flight_number: str | None = Field(default=None, max_length=20)
+    flight_number: str | None = Field(default=None, max_length=40)
     notes: str | None = None
-    lang: str | None = Field(default=None, max_length=2)
+    lang: str | None = None
     fare_override: float | None = Field(default=None, ge=0)
+
+    _norm_lang = field_validator("lang", mode="before")(_normalize_lang)
 
 
 class RidePatch(RideEdit):

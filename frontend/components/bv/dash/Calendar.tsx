@@ -246,6 +246,8 @@ export function Calendar({ onOpen }: { onOpen?: (rid: number) => void }) {
         const map = new Map<string, CalRide[]>();
         for (const r of rides) {
           if (!r.scheduled_at) continue;
+          // Cancelled / no-show rides don't belong on the calendar.
+          if (uiStatus(r.status) === "cancelled") continue;
           const dt = new Date(r.scheduled_at);
           if (isNaN(dt.getTime())) continue;
           const k = key(dt.getFullYear(), dt.getMonth(), dt.getDate());

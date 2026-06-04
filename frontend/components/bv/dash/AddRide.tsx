@@ -43,6 +43,7 @@ const BV_T: Record<string, any> = {
     create: "Create reservation", creating: "Creating…",
     squareNote: "Payment collected on card via Square.",
     needRequired: "Complete the required fields to continue.",
+    createErr: "Couldn't create the reservation — check the fields and try again.",
     dropTitle: "Drop, paste or upload screenshots",
     dropSub: "One or several SMS, WhatsApp, email or notes from the client — AI reads the details.",
     dropBtn: "Choose images", paste: "or press ⌘V / Ctrl+V to paste",
@@ -92,6 +93,7 @@ const BV_T: Record<string, any> = {
     create: "Crear reserva", creating: "Creando…",
     squareNote: "El pago se cobra con tarjeta vía Square.",
     needRequired: "Completa los campos obligatorios para continuar.",
+    createErr: "No se pudo crear la reserva — revisa los campos e intenta de nuevo.",
     dropTitle: "Arrastra, pega o sube capturas",
     dropSub: "Uno o varios SMS, WhatsApp, correos o notas del cliente — la IA lee los datos.",
     dropBtn: "Elegir imágenes", paste: "o pulsa ⌘V / Ctrl+V para pegar",
@@ -188,6 +190,7 @@ export function AddRide() {
   const [smartDemo, setSmartDemo] = useState(false);
   const [smartErr, setSmartErr] = useState<string | null>(null);
   const [noRead, setNoRead] = useState(false);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [suggested, setSuggested] = useState<number | null>(null);
@@ -264,8 +267,9 @@ export function AddRide() {
   const submit = async () => {
     if (submitting) return;
     setSubmitting(true);
+    setSubmitErr(null);
     try {
-      await createRide({
+      const res = await createRide({
         pickup: form.pickup,
         dropoff: form.dropoff,
         pax: form.passengers ? Number(form.passengers) : null,
@@ -278,11 +282,13 @@ export function AddRide() {
         fare_override: form.fare ? Number(form.fare) : null,
         confirm: true,
       });
-    } catch {
-      /* keep going — the ride may still be created; surface UX optimistically */
+      // Only celebrate if the ride was actually persisted (a real id back).
+      if (res && typeof res.id === "number") setCreated(true);
+      else setSubmitErr(t.createErr);
+    } catch (e) {
+      setSubmitErr(e instanceof Error && e.message ? e.message : t.createErr);
     } finally {
       setSubmitting(false);
-      setCreated(true);
     }
   };
 
@@ -501,6 +507,12 @@ export function AddRide() {
               <Button variant="solid" full icon="check" disabled={!canCreate || submitting} onClick={() => canCreate && submit()}>
                 {submitting ? t.creating : t.create}
               </Button>
+              {submitErr && (
+                <div style={{ fontSize: 12.5, color: "var(--danger)", marginTop: 10, display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <Icon name="alert-circle" size={14} color="var(--danger)" />
+                  <span>{submitErr}</span>
+                </div>
+              )}
               {!canCreate ? (
                 <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 10, display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
                   <Icon name="alert-circle" size={13} color="var(--warning)" />

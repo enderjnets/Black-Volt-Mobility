@@ -93,7 +93,7 @@ class Ride(Base):
     # Trip details.
     pax: Mapped[int | None] = mapped_column(Integer, nullable=True)
     vehicle: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    flight_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    flight_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     lang: Mapped[str | None] = mapped_column(String(2), nullable=True)  # EN | ES
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

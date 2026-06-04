@@ -50,7 +50,10 @@ EXTRACT_PROMPT = (
     '"fare": number|null, "notes": string|null}\n'
     "Notes:\n"
     '- "name": the customer name (often the chat/contact title at the top).\n'
-    '- "lang": guess from the language the customer wrote in.\n'
+    '- "lang": EXACTLY "EN" or "ES" (the two-letter code only), guessed from the '
+    "language the customer wrote in.\n"
+    '- "flight": the flight CODE only — airline IATA + number, e.g. "UA 2766" — '
+    "NOT the airline's full name.\n"
     '- "date"/"time": keep them short and human (e.g. "Jun 14", "06:30"). 24h time.\n'
     '- "fare": numeric dollars only if explicitly stated, else null.\n'
     '- Denver International should be normalized to "Denver Intl (DEN)".'
@@ -73,9 +76,18 @@ SAMPLE_EXTRACTION: dict = {
 
 
 def _coerce(obj: dict) -> dict:
-    """Keep only the canonical keys; pass values through untouched (the frontend
-    stringifies and validates). Unknown keys are dropped."""
-    return {k: obj.get(k) for k in RESERVATION_KEYS}
+    """Keep only the canonical keys; normalize the two that hit backend limits so
+    real/AI data never 422s downstream: lang → EN|ES, flight ≤ 40 chars. Unknown
+    keys are dropped; the rest pass through (the frontend stringifies/validates)."""
+    out = {k: obj.get(k) for k in RESERVATION_KEYS}
+    lang = out.get("lang")
+    if lang is not None:
+        s = str(lang).strip().lower()
+        out["lang"] = ("ES" if s.startswith(("es", "sp")) else "EN") if s else None
+    flight = out.get("flight")
+    if flight is not None:
+        out["flight"] = str(flight).strip()[:40] or None
+    return out
 
 
 def _parse_json(text: str) -> dict:
