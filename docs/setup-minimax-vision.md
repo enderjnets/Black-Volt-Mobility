@@ -7,27 +7,46 @@ one conversation — and pre-fills a single reservation. Until configured,
 `SMART_SIMULATED=true` returns a deterministic demo sample so the flow works
 without billing.
 
-## Why MiniMax-M3
+## Two providers (pick by which MiniMax key you have)
 
-Only **MiniMax-M3** accepts image content blocks over the anthropic-compatible
-endpoint (`https://api.minimax.io/anthropic`). The M2.x text models (incl.
-`MiniMax-M2.7`) and `kimi-for-coding` **silently ignore images** — they will not
-work for this. Per the project rule we use MiniMax (not Anthropic OAuth).
+`SMART_VISION_PROVIDER`:
 
-- Formats: JPEG, PNG, GIF, WEBP · max **10 MB** per image · up to **5** images.
-- Extraction is **best-effort**: a model/timeout failure returns empty fields
-  (the driver fills them in) and never blocks the form.
+- **`minimax_coding_vlm`** (default) — MiniMax **Coding Plan** (`sk-cp-…` key,
+  flat subscription). Calls `POST {SMART_VISION_HOST}/v1/coding_plan/vlm` with one
+  image per request (the backend calls it once per screenshot and **merges** the
+  results into one reservation, newer images winning). The Coding Plan must be
+  **active** for the key — an inactive/expired plan returns
+  `base_resp 1004 "token is unusable"`.
+- **`minimax_anthropic`** — **MiniMax-M3** over `SMART_VISION_BASE_URL`
+  (`…/anthropic`) with a pay-as-you-go `sk-api-…` key. All images go in one call.
+  Only M3 reads images; M2.x and `kimi-for-coding` silently ignore them. Needs
+  wallet balance, else `402 insufficient_balance`.
+
+Per the project rule we use MiniMax (not Anthropic OAuth). Formats: JPEG, PNG,
+GIF, WEBP · max **10 MB**/image · up to **5** images. Extraction is
+**best-effort**: a failure leaves the fields empty (the driver fills them in) and
+never blocks the form.
 
 ## Activate (on the ROG)
 
-In `~/Black-Volt-Mobility/.env`:
+In `~/Black-Volt-Mobility/.env` — Coding Plan (default):
 
 ```
 SMART_SIMULATED=false
+SMART_VISION_PROVIDER=minimax_coding_vlm
+SMART_VISION_HOST=https://api.minimax.io      # or https://api.minimaxi.com (mainland)
+SMART_VISION_API_KEY=sk-cp-…                  # Coding Plan key — secret, never commit
+SMART_MAX_IMAGES=5
+```
+
+Or pay-as-you-go MiniMax-M3:
+
+```
+SMART_SIMULATED=false
+SMART_VISION_PROVIDER=minimax_anthropic
 SMART_VISION_BASE_URL=https://api.minimax.io/anthropic
 SMART_VISION_MODEL=MiniMax-M3
-SMART_VISION_API_KEY=sk-api-…        # MiniMax API key — secret, never commit
-SMART_MAX_IMAGES=5
+SMART_VISION_API_KEY=sk-api-…                 # secret, never commit
 ```
 
 Then rebuild the backend:

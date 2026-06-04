@@ -82,6 +82,59 @@ def _parse_json(text: str) -> dict:
     return json.loads(text[a : b + 1])
 
 
+def _has(v) -> bool:
+    return v is not None and str(v).strip() != ""
+
+
+async def _extract_anthropic(images: list[tuple[str, bytes]]) -> dict:
+    """MiniMax-M3 over the anthropic endpoint: all images in one call."""
+    import base64
+
+    settings = get_settings()
+    payload = [(mt, base64.b64encode(raw).decode("ascii")) for mt, raw in images]
+    text = await llm.vision_complete(
+        prompt=EXTRACT_PROMPT,
+        images=payload,
+        model=settings.SMART_VISION_MODEL,
+        base_url=settings.SMART_VISION_BASE_URL,
+        api_key=settings.SMART_VISION_API_KEY,
+        max_tokens=1024,
+    )
+    return _coerce(_parse_json(text))
+
+
+async def _extract_coding_vlm(images: list[tuple[str, bytes]]) -> dict:
+    """MiniMax Coding Plan VLM: one image per call, merged into one reservation
+    (later images override earlier — newer messages win). A single image failing
+    to read/parse is skipped, not fatal, so partial input still yields fields."""
+    import base64
+
+    settings = get_settings()
+    merged: dict = {k: None for k in RESERVATION_KEYS}
+    ok = 0
+    for media_type, raw in images:
+        b64 = base64.b64encode(raw).decode("ascii")
+        data_url = f"data:{media_type};base64,{b64}"
+        try:
+            text = await llm.minimax_vlm_understand(
+                host=settings.SMART_VISION_HOST,
+                api_key=settings.SMART_VISION_API_KEY,
+                prompt=EXTRACT_PROMPT,
+                image_data_url=data_url,
+            )
+            fields = _coerce(_parse_json(text))
+        except (llm.LLMError, ValueError, json.JSONDecodeError) as e:
+            logger.warning("vlm image skipped: %s", e)
+            continue
+        ok += 1
+        for k, v in fields.items():
+            if _has(v):
+                merged[k] = v
+    if ok == 0 and images:
+        raise llm.LLMError("vlm:all_images_failed")
+    return merged
+
+
 async def extract_reservation(images: list[tuple[str, bytes]]) -> dict:
     """Read screenshots → reservation fields. `images` is (media_type, raw_bytes).
 
@@ -91,19 +144,10 @@ async def extract_reservation(images: list[tuple[str, bytes]]) -> dict:
     settings = get_settings()
     if not settings.smart_live:
         return _coerce(dict(SAMPLE_EXTRACTION))
-    import base64
-
-    payload = [(mt, base64.b64encode(raw).decode("ascii")) for mt, raw in images]
     try:
-        text = await llm.vision_complete(
-            prompt=EXTRACT_PROMPT,
-            images=payload,
-            model=settings.SMART_VISION_MODEL,
-            base_url=settings.SMART_VISION_BASE_URL,
-            api_key=settings.SMART_VISION_API_KEY,
-            max_tokens=1024,
-        )
-        return _coerce(_parse_json(text))
+        if settings.SMART_VISION_PROVIDER == "minimax_anthropic":
+            return await _extract_anthropic(images)
+        return await _extract_coding_vlm(images)
     except (llm.LLMError, ValueError, json.JSONDecodeError) as e:
         logger.warning("smart extract failed: %s", e)
         return {k: None for k in RESERVATION_KEYS}

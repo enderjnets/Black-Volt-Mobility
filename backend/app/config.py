@@ -117,11 +117,20 @@ class Settings(BaseSettings):
     # the anthropic-compatible endpoint. SMART_SIMULATED (or a missing key)
     # returns a deterministic sample so the flow works without billing.
     # Uses a dedicated key so the vision model can differ from the chat LLM.
+    # Two providers:
+    #  - "minimax_coding_vlm": MiniMax Coding Plan (sk-cp key) → POST
+    #    {host}/v1/coding_plan/vlm, one image per call (we merge). Subscription.
+    #  - "minimax_anthropic": MiniMax-M3 over the anthropic endpoint (sk-api key,
+    #    pay-as-you-go). Multiple images in one call.
     SMART_SIMULATED: bool = True
-    SMART_VISION_BASE_URL: str = "https://api.minimax.io/anthropic"
-    SMART_VISION_MODEL: str = "MiniMax-M3"
+    SMART_VISION_PROVIDER: str = "minimax_coding_vlm"  # | "minimax_anthropic"
     SMART_VISION_API_KEY: str = ""
     SMART_MAX_IMAGES: int = 5
+    # Coding-plan VLM
+    SMART_VISION_HOST: str = "https://api.minimax.io"  # | https://api.minimaxi.com
+    # Anthropic endpoint (MiniMax-M3)
+    SMART_VISION_BASE_URL: str = "https://api.minimax.io/anthropic"
+    SMART_VISION_MODEL: str = "MiniMax-M3"
 
     @property
     def smart_live(self) -> bool:

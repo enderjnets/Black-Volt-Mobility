@@ -66,3 +66,41 @@ async def vision_complete(
     if not text:
         raise LLMError("vision:empty_response")
     return text
+
+
+async def minimax_vlm_understand(
+    *,
+    host: str,
+    api_key: str,
+    prompt: str,
+    image_data_url: str,
+    timeout: float | None = None,
+) -> str:
+    """MiniMax Coding Plan vision tool: POST {host}/v1/coding_plan/vlm with one
+    image (base64 data URL) + a prompt; returns the text `content`. This is the
+    MiniMax-native API (not anthropic): Bearer auth, `base_resp.status_code` for
+    errors. One image per call — callers merge multiple images. Raises LLMError.
+    """
+    import httpx
+
+    if not api_key:
+        raise LLMError("vlm:no_api_key")
+    to = timeout if timeout is not None else get_settings().LLM_TIMEOUT_SECONDS
+    try:
+        async with httpx.AsyncClient(timeout=to) as http:
+            r = await http.post(
+                f"{host}/v1/coding_plan/vlm",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"prompt": prompt, "image_url": image_data_url},
+            )
+        r.raise_for_status()
+        data = r.json()
+    except (httpx.HTTPError, ValueError) as e:
+        raise LLMError(f"vlm:{type(e).__name__}") from e
+    base = data.get("base_resp", {})
+    if base.get("status_code") not in (0, None):
+        raise LLMError(f"vlm:{base.get('status_code')}:{base.get('status_msg')}")
+    text = (data.get("content") or "").strip()
+    if not text:
+        raise LLMError("vlm:empty_response")
+    return text

@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.11.0";
+export const CURRENT_VERSION = "0.11.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.11.1",
+    date: "2026-06-04",
+    title: "Smart reservation — MiniMax Coding Plan vision",
+    changes: [
+      "Smart extraction now supports the MiniMax Coding Plan (subscription) vision API.",
+      "Each screenshot is read and merged into one reservation; newer images win.",
+      "Switch provider with SMART_VISION_PROVIDER (coding plan or pay-as-you-go M3).",
+    ],
+  },
   {
     version: "0.11.0",
     date: "2026-06-04",

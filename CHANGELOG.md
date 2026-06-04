@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.11.1 — 2026-06-04 — Smart reservation: MiniMax Coding Plan vision
+
+Adds the MiniMax **Coding Plan** (subscription, `sk-cp-` key) as a vision
+provider, alongside the pay-as-you-go MiniMax-M3 path.
+
+- `services/llm.py`: `minimax_vlm_understand` → `POST {host}/v1/coding_plan/vlm`
+  (MiniMax-native: Bearer auth, `base_resp` status, one image per call).
+- `services/smart.py`: `SMART_VISION_PROVIDER` selects `minimax_coding_vlm`
+  (default — one VLM call per screenshot, merged into one reservation, newer
+  images win, a failed image is skipped) or `minimax_anthropic` (MiniMax-M3, all
+  images in one call). Both still degrade to manual entry on failure.
+- config / compose / `.env.example`: `SMART_VISION_PROVIDER`, `SMART_VISION_HOST`.
+- See `docs/setup-minimax-vision.md`.
+
 ## v0.11.0 — 2026-06-04 — Smart reservation: real AI from multiple screenshots
 
 The Smart "Add reservation" tab now does real vision extraction (it used to only
