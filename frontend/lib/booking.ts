@@ -134,7 +134,7 @@ export interface RideDetail extends RideRow {
   notes: string | null;
   google_event_id: string | null;
   created_at: string | null;
-  client: { id: number; name: string | null; phone: string | null } | null;
+  client: { id: number; name: string | null; phone: string | null; email: string | null } | null;
   payment: {
     id: number;
     status: string;
@@ -148,9 +148,48 @@ export async function getRideDetail(id: number): Promise<RideDetail> {
   return jget<RideDetail>(`/v1/rides/${id}`);
 }
 
-export async function updateRide(
-  id: number,
-  body: { status?: string; payment_method?: PaymentMethod; paid?: boolean },
-): Promise<RideRow> {
+// Fields a driver can change on an existing ride (status/payment + change of plans).
+export interface RideEdit {
+  status?: string;
+  payment_method?: PaymentMethod;
+  paid?: boolean;
+  pickup?: string;
+  dropoff?: string;
+  scheduled_at?: string | null;
+  pax?: number | null;
+  flight_number?: string | null;
+  notes?: string | null;
+  lang?: string | null;
+  fare_override?: number | null;
+}
+
+export async function updateRide(id: number, body: RideEdit): Promise<RideRow> {
   return jsend<RideRow>(`/v1/rides/${id}`, "PATCH", body);
+}
+
+export interface RideUpdatePreview {
+  current: Record<string, unknown>;
+  proposed: {
+    pickup: string;
+    dropoff: string;
+    scheduled_at: string | null;
+    pax: number | null;
+    flight_number: string | null;
+    notes: string | null;
+    lang: string | null;
+    fare_total: number | null;
+    distance_miles: number | null;
+    duration_minutes: number | null;
+  };
+  conflicts: {
+    id: number;
+    name: string;
+    scheduled_at: string;
+    pickup: string;
+    dropoff: string;
+  }[];
+}
+
+export async function previewRideUpdate(id: number, changes: RideEdit): Promise<RideUpdatePreview> {
+  return jsend<RideUpdatePreview>(`/v1/rides/${id}/preview-update`, "POST", changes);
 }

@@ -110,6 +110,10 @@ class Settings(BaseSettings):
             and bool(self.GOOGLE_CALENDAR_ID)
         )
 
+    # Minimum gap (minutes) required between two rides before they count as a
+    # scheduling conflict (travel + turnaround for the single driver).
+    RIDE_BUFFER_MIN: int = 45
+
     # ─── Smart reservation (screenshot → reservation, vision) ───────────
     # The driver pastes screenshots of a client's SMS/WhatsApp/email; a vision
     # model reads them and pre-fills the reservation. Only MiniMax-M3 (not the

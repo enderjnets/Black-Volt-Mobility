@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.12.0 — 2026-06-04 — Smart update: change a ride from screenshots
+
+A client's change of plans → drop the screenshots on the ride and the system
+applies the change, checking for schedule clashes first.
+
+- **PATCH /rides/{id}** now edits the ride itself (pickup/dropoff/time/pax/flight/
+  notes/fare), not just status/payment. Route or schedule edits **re-quote** the
+  fare and **move the Google Calendar event** (`booking.apply_ride_update`).
+- **Conflict detection** (`booking.find_conflicts`, `RIDE_BUFFER_MIN`=45): active
+  rides whose window (± a travel/turnaround buffer) overlaps the new time.
+- **POST /rides/{id}/preview-update** (staff, dry-run): re-quotes + reports
+  conflicts without persisting — backs the diff + warning shown before applying.
+- **RideDetail → "Smart update"**: drop the client's change screenshots → AI reads
+  the new details → editable diff (changed fields tagged) → conflict warning
+  (apply-anyway) → apply → a change-confirmation message you can copy or send by
+  SMS/email/AI call (auto-send staged until Phase 7 comms).
+- Client email now surfaced on ride detail (to pick the email channel).
+
 ## v0.11.1 — 2026-06-04 — Smart reservation: MiniMax Coding Plan vision
 
 Adds the MiniMax **Coding Plan** (subscription, `sk-cp-` key) as a vision

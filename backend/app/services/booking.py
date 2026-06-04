@@ -190,6 +190,134 @@ async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
         await db.rollback()
 
 
+# Fields a driver may edit on an existing ride (Smart update / change of plans).
+# Route-affecting fields trigger a re-quote; `stops` is passed as list[str].
+EDITABLE_FIELDS = (
+    "pickup",
+    "dropoff",
+    "stops",
+    "scheduled_at",
+    "pax",
+    "flight_number",
+    "notes",
+    "lang",
+    "fare_override",
+)
+_ROUTE_FIELDS = ("pickup", "dropoff", "stops", "pax", "scheduled_at")
+
+
+async def find_conflicts(
+    db: AsyncSession,
+    *,
+    tenant_id: int,
+    scheduled_at: datetime,
+    duration_minutes: float | None,
+    exclude_ride_id: int | None = None,
+    buffer_min: int | None = None,
+) -> list[dict]:
+    """Active, scheduled rides whose time window (± a travel/turnaround buffer)
+    overlaps the proposed [scheduled_at, +duration]. Used to warn before applying
+    a change of plans. Excludes the ride being edited and inactive rides."""
+    from datetime import timedelta
+
+    from app.config import get_settings
+    from app.models import Client
+
+    mins = buffer_min if buffer_min is not None else get_settings().RIDE_BUFFER_MIN
+    buf = timedelta(minutes=mins)
+    p_start = scheduled_at
+    p_end = scheduled_at + timedelta(minutes=duration_minutes or 60)
+
+    q = select(Ride).where(
+        Ride.tenant_id == tenant_id,
+        Ride.scheduled_at.is_not(None),
+        Ride.status.not_in(_INACTIVE),
+    )
+    if exclude_ride_id is not None:
+        q = q.where(Ride.id != exclude_ride_id)
+    rides = list((await db.execute(q)).scalars().all())
+
+    hits = []
+    for r in rides:
+        e_start = r.scheduled_at
+        e_end = e_start + timedelta(minutes=r.duration_minutes or 60)
+        # Conflict unless one ride fully ends (+buffer) before the other starts.
+        if p_end + buf <= e_start or e_end + buf <= p_start:
+            continue
+        hits.append(r)
+
+    names: dict[int, str] = {}
+    cids = [r.client_id for r in hits if r.client_id]
+    if cids:
+        rows = (await db.execute(select(Client).where(Client.id.in_(cids)))).scalars().all()
+        names = {c.id: c.name for c in rows if c.name}
+    return [
+        {
+            "id": r.id,
+            "name": names.get(r.client_id) or r.passenger_name or "Guest",
+            "scheduled_at": r.scheduled_at.isoformat(),
+            "pickup": r.pickup_text,
+            "dropoff": r.dropoff_text,
+        }
+        for r in hits
+    ]
+
+
+async def apply_ride_update(
+    db: AsyncSession, *, ride: Ride, changes: dict, persist: bool = True
+) -> Ride:
+    """Apply editable changes to a ride. Route-affecting edits re-quote (maps +
+    pricing) and refresh distance/duration/fare/breakdown unless a fare_override
+    is given. With persist=True the change is committed and the calendar event is
+    re-synced (moved); with persist=False the ride is mutated in-memory only (for
+    a dry-run preview)."""
+    clean = {k: v for k, v in changes.items() if k in EDITABLE_FIELDS and v is not None}
+    fare_override = clean.pop("fare_override", None)
+
+    if "pickup" in clean:
+        ride.pickup_text = clean["pickup"]
+    if "dropoff" in clean:
+        ride.dropoff_text = clean["dropoff"]
+    if "stops" in clean:
+        ride.stops = [{"text": s} for s in clean["stops"]] if clean["stops"] else None
+    if "scheduled_at" in clean:
+        ride.scheduled_at = clean["scheduled_at"]
+    if "pax" in clean:
+        ride.pax = clean["pax"]
+    if "flight_number" in clean:
+        ride.flight_number = clean["flight_number"]
+    if "notes" in clean:
+        ride.notes = clean["notes"]
+    if "lang" in clean:
+        ride.lang = clean["lang"]
+
+    if any(f in clean for f in _ROUTE_FIELDS):
+        stops = [s["text"] for s in ride.stops] if ride.stops else None
+        breakdown = await build_quote(
+            db,
+            tenant_id=ride.tenant_id,
+            pickup=ride.pickup_text,
+            dropoff=ride.dropoff_text,
+            stops=stops,
+            pax=ride.pax,
+            scheduled_at=ride.scheduled_at,
+        )
+        ride.distance_miles = breakdown["distance_miles"]
+        ride.duration_minutes = breakdown["duration_minutes"]
+        ride.currency = breakdown["currency"]
+        ride.price_breakdown = breakdown
+        if fare_override is None:
+            ride.fare_total = breakdown["total"]
+    if fare_override is not None:
+        ride.fare_total = fare_override
+
+    if persist:
+        await db.commit()
+        await db.refresh(ride)
+        await sync_ride_to_calendar(db, ride)
+    return ride
+
+
 async def list_rides(
     db: AsyncSession, *, tenant_id: int, status: RideStatus | None = None, limit: int = 100
 ) -> list[Ride]:

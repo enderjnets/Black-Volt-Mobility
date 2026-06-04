@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.11.1";
+export const CURRENT_VERSION = "0.12.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.12.0",
+    date: "2026-06-04",
+    title: "Smart update — change a ride from screenshots",
+    changes: [
+      "On a ride, tap 'Smart update' and drop the client's change-of-plans screenshots.",
+      "AI reads the new details; you review the diff and the fare re-quotes itself.",
+      "Warns if the new time clashes with another ride — apply anyway if you choose.",
+      "After applying, copy or send the change-confirmation message (SMS/email/call).",
+    ],
+  },
   {
     version: "0.11.1",
     date: "2026-06-04",

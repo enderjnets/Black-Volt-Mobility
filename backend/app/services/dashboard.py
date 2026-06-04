@@ -213,9 +213,11 @@ async def ride_detail_extra(db: AsyncSession, *, tenant_id: int, ride: Ride) -> 
     """Client + latest payment info to enrich a single ride's detail view."""
     client = None
     if ride.client_id:
-        names = await client_names(db, tenant_id=tenant_id, ids=[ride.client_id])
-        nm, ph = names.get(ride.client_id, (None, None))
-        client = {"id": ride.client_id, "name": nm, "phone": ph}
+        c = (
+            await db.execute(select(Client).where(Client.id == ride.client_id))
+        ).scalar_one_or_none()
+        if c:
+            client = {"id": c.id, "name": c.name, "phone": c.phone, "email": c.email}
     pay = await latest_payment(db, tenant_id=tenant_id, ride_id=ride.id)
     payment = (
         {

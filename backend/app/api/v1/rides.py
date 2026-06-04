@@ -47,7 +47,20 @@ class RideCreate(QuoteRequest):
     confirm: bool = False  # passenger booking → CONFIRMED, else QUOTED
 
 
-class RidePatch(BaseModel):
+class RideEdit(BaseModel):
+    """Editable ride fields (Smart update / change of plans)."""
+    pickup: str | None = Field(default=None, min_length=1, max_length=400)
+    dropoff: str | None = Field(default=None, min_length=1, max_length=400)
+    stops: list[str] | None = None
+    scheduled_at: datetime | None = None
+    pax: int | None = Field(default=None, ge=1, le=12)
+    flight_number: str | None = Field(default=None, max_length=20)
+    notes: str | None = None
+    lang: str | None = Field(default=None, max_length=2)
+    fare_override: float | None = Field(default=None, ge=0)
+
+
+class RidePatch(RideEdit):
     status: RideStatus | None = None
     payment_method: PaymentMethod | None = None
     paid: bool | None = None
@@ -292,12 +305,20 @@ async def patch_ride(
     db: AsyncSession = Depends(get_db),
     payload: dict = Depends(require_staff),
 ):
-    """Driver updates a ride: status and/or payment method + paid flag.
+    """Driver updates a ride: status, payment method/paid flag, and/or the ride
+    details themselves (pickup/dropoff/time/pax/flight/notes — a change of plans).
+    Editing the route or schedule re-quotes the fare and moves the calendar event.
     Setting paid=true stamps paid_at; the driver can record cash/Venmo/Zelle."""
     tenant_id = await resolve_tenant_id(db, payload)
     ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
     if ride is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+
+    changes = body.model_dump(exclude_none=True)
+    has_edits = any(k in changes for k in booking.EDITABLE_FIELDS)
+    if has_edits:
+        await booking.apply_ride_update(db, ride=ride, changes=changes, persist=False)
+
     if body.status is not None:
         # Cancelled/no-show rides leave the calendar.
         if body.status in (RideStatus.CANCELLED, RideStatus.NO_SHOW) and ride.google_event_id:
@@ -316,4 +337,67 @@ async def patch_ride(
             ride.paid_at = None
     await db.commit()
     await db.refresh(ride)
+    # Re-sync the (possibly moved) calendar event after an edit to an active ride.
+    if has_edits and ride.scheduled_at and ride.status not in booking._INACTIVE:
+        await booking.sync_ride_to_calendar(db, ride)
+        await db.refresh(ride)
     return _ride_out(ride)
+
+
+@router.post("/rides/{ride_id}/preview-update")
+async def preview_ride_update(
+    ride_id: int,
+    body: RideEdit,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Dry-run a change of plans: re-quote the proposed trip and report scheduling
+    conflicts WITHOUT persisting. Backs the diff + conflict warning shown before
+    the driver applies the change."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
+    if ride is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+
+    ch = body.model_dump(exclude_none=True)
+    cur_stops = [s["text"] for s in ride.stops] if ride.stops else None
+    m_pickup = ch.get("pickup", ride.pickup_text)
+    m_dropoff = ch.get("dropoff", ride.dropoff_text)
+    m_stops = ch.get("stops", cur_stops)
+    m_pax = ch.get("pax", ride.pax)
+    m_sched = ch.get("scheduled_at", ride.scheduled_at)
+
+    distance, duration, fare = ride.distance_miles, ride.duration_minutes, ride.fare_total
+    if any(k in ch for k in ("pickup", "dropoff", "stops", "pax", "scheduled_at")):
+        bd = await booking.build_quote(
+            db, tenant_id=tenant_id, pickup=m_pickup, dropoff=m_dropoff,
+            stops=m_stops, pax=m_pax, scheduled_at=m_sched,
+        )
+        distance, duration = bd["distance_miles"], bd["duration_minutes"]
+        fare = bd["total"]
+    if "fare_override" in ch:
+        fare = ch["fare_override"]
+
+    conflicts = []
+    if m_sched is not None:
+        conflicts = await booking.find_conflicts(
+            db, tenant_id=tenant_id, scheduled_at=m_sched,
+            duration_minutes=duration, exclude_ride_id=ride.id,
+        )
+    return {
+        "current": {
+            "pickup": ride.pickup_text, "dropoff": ride.dropoff_text,
+            "scheduled_at": ride.scheduled_at.isoformat() if ride.scheduled_at else None,
+            "pax": ride.pax, "flight_number": ride.flight_number,
+            "fare_total": ride.fare_total, "distance_miles": ride.distance_miles,
+            "duration_minutes": ride.duration_minutes,
+        },
+        "proposed": {
+            "pickup": m_pickup, "dropoff": m_dropoff,
+            "scheduled_at": m_sched.isoformat() if m_sched else None,
+            "pax": m_pax, "flight_number": ch.get("flight_number", ride.flight_number),
+            "notes": ch.get("notes", ride.notes), "lang": ch.get("lang", ride.lang),
+            "fare_total": fare, "distance_miles": distance, "duration_minutes": duration,
+        },
+        "conflicts": conflicts,
+    }
