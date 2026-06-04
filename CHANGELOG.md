@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.13.1 — 2026-06-04 — Smart extraction reads the right pickup date
+
+A Demetra ride added "for today" landed on **Jul 4**: the vision model returned
+`"date": "Jul 4"` — it had grabbed a date from the flight itinerary, not the
+pickup day. (The ride showed in the list but not on June's calendar because it
+was a month ahead.)
+
+- `smart._prompt()` now anchors `EXTRACT_PROMPT` to **today's date** (driver
+  timezone, `CALENDAR_TIMEZONE`) and tells the model the `date` is the customer's
+  PICKUP date — resolving relative dates ("today/tomorrow/this Friday",
+  "hoy/mañana/viernes") and picking the nearest sensible date when only a day is
+  given. No model/provider change.
+
 ## v0.13.0 — 2026-06-04 — Reservations that silently failed now save (422 + false success)
 
 A ride added for a client never appeared: `POST /rides` returned **422** (the AI

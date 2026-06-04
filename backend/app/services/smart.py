@@ -59,6 +59,30 @@ EXTRACT_PROMPT = (
     '- Denver International should be normalized to "Denver Intl (DEN)".'
 )
 
+
+def _prompt() -> str:
+    """EXTRACT_PROMPT anchored to today's date (driver timezone) so the model
+    resolves relative dates and the PICKUP date, instead of grabbing a date from
+    a flight itinerary or guessing the wrong month/year."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    try:
+        today = datetime.now(ZoneInfo(get_settings().CALENDAR_TIMEZONE))
+    except Exception:  # bad tz name → UTC
+        from datetime import UTC
+
+        today = datetime.now(UTC)
+    ds = f"{today:%A}, {today:%b} {today.day} {today.year}"
+    return (
+        EXTRACT_PROMPT
+        + f"\n- TODAY is {ds}. The \"date\" is the customer's PICKUP date — NOT a "
+        "flight departure/return date in an itinerary. Resolve relative dates "
+        '("today"/"hoy", "tomorrow"/"mañana", weekday names like "Friday"/'
+        '"viernes") against TODAY. If only a day-of-month is given, choose the '
+        "nearest such date that is today or in the future."
+    )
+
 # Returned when simulated (no vision key) so the Smart tab is demoable offline.
 SAMPLE_EXTRACTION: dict = {
     "name": "Daniel Ortega",
@@ -110,7 +134,7 @@ async def _extract_anthropic(images: list[tuple[str, bytes]]) -> dict:
     settings = get_settings()
     payload = [(mt, base64.b64encode(raw).decode("ascii")) for mt, raw in images]
     text = await llm.vision_complete(
-        prompt=EXTRACT_PROMPT,
+        prompt=_prompt(),
         images=payload,
         model=settings.SMART_VISION_MODEL,
         base_url=settings.SMART_VISION_BASE_URL,
@@ -134,7 +158,7 @@ async def _vlm_one(media_type: str, raw: bytes, attempts: int = 2) -> dict | Non
             text = await llm.minimax_vlm_understand(
                 host=settings.SMART_VISION_HOST,
                 api_key=settings.SMART_VISION_API_KEY,
-                prompt=EXTRACT_PROMPT,
+                prompt=_prompt(),
                 image_data_url=data_url,
                 timeout=settings.SMART_VISION_TIMEOUT,
             )

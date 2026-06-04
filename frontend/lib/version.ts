@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.13.0";
+export const CURRENT_VERSION = "0.13.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.13.1",
+    date: "2026-06-04",
+    title: "Smart extraction reads the right pickup date",
+    changes: [
+      "AI now anchors to today's date — 'today/tomorrow/this Friday' resolve correctly.",
+      "It takes the customer's pickup date, not a flight itinerary's departure date.",
+    ],
+  },
   {
     version: "0.13.0",
     date: "2026-06-04",
