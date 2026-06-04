@@ -95,7 +95,10 @@ async def minimax_vlm_understand(
             )
         r.raise_for_status()
         data = r.json()
-    except (httpx.HTTPError, ValueError) as e:
+    except Exception as e:
+        # Any transport failure (HTTP, JSON, or a raw TLS/SSL glitch like
+        # SSLV3_ALERT_BAD_RECORD_MAC that httpx doesn't wrap) → one LLMError the
+        # caller can retry/degrade on. Never let a network error escape raw.
         raise LLMError(f"vlm:{type(e).__name__}") from e
     base = data.get("base_resp", {})
     if base.get("status_code") not in (0, None):

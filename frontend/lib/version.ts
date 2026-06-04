@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.12.1";
+export const CURRENT_VERSION = "0.12.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.12.2",
+    date: "2026-06-04",
+    title: "Smart extraction: survive transient network blips",
+    changes: [
+      "A flaky TLS/network glitch during AI reading no longer fails the whole extraction.",
+      "Each screenshot retries on a transient error and degrades gracefully if it can't recover.",
+    ],
+  },
   {
     version: "0.12.1",
     date: "2026-06-04",

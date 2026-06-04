@@ -128,7 +128,7 @@ async def _vlm_one(media_type: str, raw: bytes, attempts: int = 2) -> dict | Non
             )
             logger.info("vlm content (%d bytes img): %s", len(raw), (text or "")[:300])
             return _coerce(_parse_json(text))
-        except (llm.LLMError, ValueError, json.JSONDecodeError) as e:
+        except Exception as e:  # transient TLS/network/parse → retry, then skip
             last = e
     logger.warning("vlm image skipped after retries: %s", last)
     return None
@@ -141,11 +141,13 @@ async def _extract_coding_vlm(images: list[tuple[str, bytes]]) -> dict:
     fields."""
     import asyncio
 
-    results = await asyncio.gather(*(_vlm_one(mt, raw) for mt, raw in images))
+    results = await asyncio.gather(
+        *(_vlm_one(mt, raw) for mt, raw in images), return_exceptions=True
+    )
     merged: dict = {k: None for k in RESERVATION_KEYS}
     ok = 0
     for fields in results:
-        if fields is None:
+        if not isinstance(fields, dict):  # None, or an Exception from gather
             continue
         ok += 1
         for k, v in fields.items():
@@ -171,6 +173,6 @@ async def extract_reservation(images: list[tuple[str, bytes]]) -> dict:
         if settings.SMART_VISION_PROVIDER == "minimax_anthropic":
             return await _extract_anthropic(images)
         return await _extract_coding_vlm(images)
-    except (llm.LLMError, ValueError, json.JSONDecodeError) as e:
+    except Exception as e:  # safety net — extraction must never 500 the endpoint
         logger.warning("smart extract failed: %s", e)
         return {k: None for k in RESERVATION_KEYS}

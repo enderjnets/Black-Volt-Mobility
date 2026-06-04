@@ -60,6 +60,28 @@ def test_coerce_empty_is_all_null():
     assert all(v is None for v in out.values())
 
 
+@pytest.mark.asyncio
+async def test_extract_survives_vlm_exception(monkeypatch):
+    """A transient TLS/network error from the VLM must degrade to all-null, never
+    crash the request (regression for SSLV3_ALERT_BAD_RECORD_MAC → 500)."""
+    import ssl
+
+    from app.services import llm
+
+    s = get_settings()
+    monkeypatch.setattr(s, "SMART_SIMULATED", False)
+    monkeypatch.setattr(s, "SMART_VISION_API_KEY", "k")
+    monkeypatch.setattr(s, "SMART_VISION_PROVIDER", "minimax_coding_vlm")
+
+    async def boom(**kw):
+        raise ssl.SSLError("bad record mac")
+
+    monkeypatch.setattr(llm, "minimax_vlm_understand", boom)
+    out = await smart.extract_reservation([("image/png", b"x"), ("image/png", b"y")])
+    assert set(out.keys()) == set(smart.RESERVATION_KEYS)
+    assert all(v is None for v in out.values())
+
+
 def test_endpoint_requires_staff():
     c = TestClient(app)  # no session
     r = c.post("/api/v1/rides/extract", files={"files": ("a.png", _PNG, "image/png")})

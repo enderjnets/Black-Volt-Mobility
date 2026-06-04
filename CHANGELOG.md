@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.12.2 — 2026-06-04 — Smart extraction: survive transient network blips
+
+Fixes a 500 ("Couldn't reach the AI service") when one of several screenshots hit
+a transient TLS error (`SSLV3_ALERT_BAD_RECORD_MAC`) mid-call.
+
+- The raw `ssl.SSLError` escaped the handlers (which only caught `httpx.HTTPError`)
+  and crashed the request. `llm.minimax_vlm_understand` now wraps **any** transport
+  failure as `LLMError`; `smart._vlm_one` catches broadly and retries; the gather
+  uses `return_exceptions=True`; and `extract_reservation`'s safety net catches
+  `Exception` so extraction **never** 500s — worst case returns all-null and the UI
+  asks for manual entry. One bad image no longer sinks the others.
+- Regression test: a VLM raising `ssl.SSLError` degrades to all-null.
+
 ## v0.12.1 — 2026-06-04 — Smart extraction: cross-device reliability + visible errors
 
 Fixes a report where a screenshot returned "AI found 0 of 9" with no explanation.
