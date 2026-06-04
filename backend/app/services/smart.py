@@ -103,18 +103,16 @@ async def _extract_anthropic(images: list[tuple[str, bytes]]) -> dict:
     return _coerce(_parse_json(text))
 
 
-async def _extract_coding_vlm(images: list[tuple[str, bytes]]) -> dict:
-    """MiniMax Coding Plan VLM: one image per call, merged into one reservation
-    (later images override earlier — newer messages win). A single image failing
-    to read/parse is skipped, not fatal, so partial input still yields fields."""
+async def _vlm_one(media_type: str, raw: bytes, attempts: int = 2) -> dict | None:
+    """Extract one image via the coding-plan VLM, retrying transient failures
+    (the endpoint is slow and occasionally returns a system error). Returns the
+    coerced fields, or None if every attempt failed."""
     import base64
 
     settings = get_settings()
-    merged: dict = {k: None for k in RESERVATION_KEYS}
-    ok = 0
-    for media_type, raw in images:
-        b64 = base64.b64encode(raw).decode("ascii")
-        data_url = f"data:{media_type};base64,{b64}"
+    data_url = f"data:{media_type};base64,{base64.b64encode(raw).decode('ascii')}"
+    last: Exception | None = None
+    for _ in range(max(1, attempts)):
         try:
             text = await llm.minimax_vlm_understand(
                 host=settings.SMART_VISION_HOST,
@@ -123,9 +121,25 @@ async def _extract_coding_vlm(images: list[tuple[str, bytes]]) -> dict:
                 image_data_url=data_url,
                 timeout=settings.SMART_VISION_TIMEOUT,
             )
-            fields = _coerce(_parse_json(text))
+            return _coerce(_parse_json(text))
         except (llm.LLMError, ValueError, json.JSONDecodeError) as e:
-            logger.warning("vlm image skipped: %s", e)
+            last = e
+    logger.warning("vlm image skipped after retries: %s", last)
+    return None
+
+
+async def _extract_coding_vlm(images: list[tuple[str, bytes]]) -> dict:
+    """MiniMax Coding Plan VLM: one (concurrent) call per image, merged into one
+    reservation in order — later images override earlier (newer messages win). A
+    single image failing is skipped, not fatal, so partial input still yields
+    fields."""
+    import asyncio
+
+    results = await asyncio.gather(*(_vlm_one(mt, raw) for mt, raw in images))
+    merged: dict = {k: None for k in RESERVATION_KEYS}
+    ok = 0
+    for fields in results:
+        if fields is None:
             continue
         ok += 1
         for k, v in fields.items():
