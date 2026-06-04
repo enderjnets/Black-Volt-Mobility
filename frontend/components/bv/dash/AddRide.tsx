@@ -11,6 +11,11 @@ import { Button, Pill } from "../ui";
 import { SuggestionDropdown, useAddressSuggest } from "../AddressAutocomplete";
 import { useI18n } from "@/lib/i18n";
 import { createRide, getQuote } from "@/lib/booking";
+import { extractReservation } from "@/lib/smart";
+
+const SMART_MAX_IMAGES = 5;
+
+type Shot = { file: File; url: string };
 
 type Form = Record<string, string>;
 const BV_BLANK: Form = {
@@ -38,11 +43,15 @@ const BV_T: Record<string, any> = {
     create: "Create reservation", creating: "Creating…",
     squareNote: "Payment collected on card via Square.",
     needRequired: "Complete the required fields to continue.",
-    dropTitle: "Drop, paste or upload a screenshot",
-    dropSub: "An SMS, WhatsApp, email or note from the client — AI reads the details.",
-    dropBtn: "Choose image", paste: "or press ⌘V / Ctrl+V to paste",
+    dropTitle: "Drop, paste or upload screenshots",
+    dropSub: "One or several SMS, WhatsApp, email or notes from the client — AI reads the details.",
+    dropBtn: "Choose images", paste: "or press ⌘V / Ctrl+V to paste",
     sample: "Try a sample", change: "Replace", extract: "Extract with AI",
-    scanning: "Reading the screenshot…", scanningSub: "Pulling out the reservation details.",
+    addMore: "Add more", removeImg: "Remove", maxImgs: (n: number) => `Up to ${n} screenshots.`,
+    shotsCount: (n: number) => `${n} ${n === 1 ? "screenshot" : "screenshots"}`,
+    demoNote: "Demo mode — set the vision key on the server for real extraction.",
+    scanning: "Reading the screenshots…", scanningSub: "Pulling out the reservation details.",
+    scanningN: (n: number) => `Reading ${n} ${n === 1 ? "screenshot" : "screenshots"}…`,
     foundOf: (a: number, b: number) => `AI found ${a} of ${b} details.`,
     allGood: "All details captured — review and create.",
     confirm: (n: number) => `Confirm ${n} highlighted ${n === 1 ? "field" : "fields"}.`,
@@ -78,11 +87,15 @@ const BV_T: Record<string, any> = {
     create: "Crear reserva", creating: "Creando…",
     squareNote: "El pago se cobra con tarjeta vía Square.",
     needRequired: "Completa los campos obligatorios para continuar.",
-    dropTitle: "Arrastra, pega o sube una captura",
-    dropSub: "Un SMS, WhatsApp, correo o nota del cliente — la IA lee los datos.",
-    dropBtn: "Elegir imagen", paste: "o pulsa ⌘V / Ctrl+V para pegar",
+    dropTitle: "Arrastra, pega o sube capturas",
+    dropSub: "Uno o varios SMS, WhatsApp, correos o notas del cliente — la IA lee los datos.",
+    dropBtn: "Elegir imágenes", paste: "o pulsa ⌘V / Ctrl+V para pegar",
     sample: "Probar un ejemplo", change: "Reemplazar", extract: "Extraer con IA",
-    scanning: "Leyendo la captura…", scanningSub: "Extrayendo los datos de la reserva.",
+    addMore: "Añadir más", removeImg: "Quitar", maxImgs: (n: number) => `Hasta ${n} capturas.`,
+    shotsCount: (n: number) => `${n} ${n === 1 ? "captura" : "capturas"}`,
+    demoNote: "Modo demo — configura la clave de visión en el servidor para extracción real.",
+    scanning: "Leyendo las capturas…", scanningSub: "Extrayendo los datos de la reserva.",
+    scanningN: (n: number) => `Leyendo ${n} ${n === 1 ? "captura" : "capturas"}…`,
     foundOf: (a: number, b: number) => `La IA encontró ${a} de ${b} datos.`,
     allGood: "Todos los datos capturados — revisa y crea.",
     confirm: (n: number) => `Confirma ${n} campo${n === 1 ? "" : "s"} resaltado${n === 1 ? "" : "s"}.`,
@@ -135,62 +148,14 @@ function buildScheduledAt(date: string, time: string): string | null {
   return isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
-const BV_EXTRACT_PROMPT = `You read a screenshot of a customer ride request for Black Volt Mobility, a premium chauffeur / airport-transfer service in Denver. The screenshot may be an SMS, WhatsApp, email, or a typed note. Extract the reservation details.
-Return ONLY a JSON object — no prose, no markdown fences — with EXACTLY these keys, using null when the info is not present in the image:
-{"name": string|null, "phone": string|null, "lang": "EN"|"ES"|null, "pickup": string|null, "dropoff": string|null, "date": string|null, "time": string|null, "flight": string|null, "passengers": number|null, "fare": number|null, "notes": string|null}
-Notes:
-- "lang": guess from the language the customer wrote in.
-- "date"/"time": keep them short and human (e.g. "Jun 14", "06:30"). Use 24h time when possible.
-- "fare": numeric dollars only if explicitly stated, else null.
-- Denver International should be normalized to "Denver Intl (DEN)".`;
-
+// Offline sample for "Try a sample" — the real extraction runs server-side
+// (MiniMax-M3 vision) via /api/v1/rides/extract.
 const BV_SAMPLE_EXTRACTION: Record<string, unknown> = {
   name: "Daniel Ortega", phone: null, lang: "ES",
   pickup: "The Crawford Hotel", dropoff: "Denver Intl (DEN)",
   date: "Jun 14", time: "06:30", flight: "UA 1455",
   passengers: 2, fare: null, notes: "2 maletas grandes",
 };
-
-type ClaudeWindow = Window & {
-  claude?: { complete: (args: { messages: unknown[] }) => Promise<string> };
-};
-
-async function bvExtractFromImage(dataURL: string | null): Promise<Record<string, unknown>> {
-  try {
-    const w = typeof window !== "undefined" ? (window as ClaudeWindow) : undefined;
-    if (w?.claude?.complete && dataURL) {
-      const m = /^data:(image\/[a-zA-Z+]+);base64,(.*)$/.exec(dataURL);
-      if (m) {
-        const out = await w.claude.complete({
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: BV_EXTRACT_PROMPT },
-                { type: "image", source: { type: "base64", media_type: m[1], data: m[2] } },
-              ],
-            },
-          ],
-        });
-        const txt = (out || "").trim();
-        const a = txt.indexOf("{");
-        const b = txt.lastIndexOf("}");
-        if (a >= 0 && b > a) return JSON.parse(txt.slice(a, b + 1));
-      }
-    }
-  } catch {
-    /* fall through to sample */
-  }
-  return BV_SAMPLE_EXTRACTION;
-}
-
-function bvFileToURL(file: File): Promise<string> {
-  return new Promise((res) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result as string);
-    r.readAsDataURL(file);
-  });
-}
 
 function fieldState(key: string, form: Form, aiFields: Record<string, boolean>, mode: string, aiRan: boolean) {
   const empty = !String(form[key] || "").trim();
@@ -209,7 +174,8 @@ export function AddRide() {
   const [form, setForm] = useState<Form>(BV_BLANK);
   const [aiFields, setAiFields] = useState<Record<string, boolean>>({});
   const [aiRan, setAiRan] = useState(false);
-  const [img, setImg] = useState<string | null>(null);
+  const [shots, setShots] = useState<Shot[]>([]);
+  const [smartDemo, setSmartDemo] = useState(false);
   const [created, setCreated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [suggested, setSuggested] = useState<number | null>(null);
@@ -217,11 +183,33 @@ export function AddRide() {
   const [drag, setDrag] = useState(false);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const addFiles = (files: FileList | File[]) =>
+    setShots((prev) => {
+      const room = SMART_MAX_IMAGES - prev.length;
+      if (room <= 0) return prev;
+      const next = Array.from(files)
+        .filter((f) => f.type.startsWith("image/"))
+        .slice(0, room)
+        .map((file) => ({ file, url: URL.createObjectURL(file) }));
+      return [...prev, ...next];
+    });
+  const removeShot = (i: number) =>
+    setShots((prev) => {
+      const s = prev[i];
+      if (s) URL.revokeObjectURL(s.url);
+      return prev.filter((_, j) => j !== i);
+    });
+  const clearShots = () =>
+    setShots((prev) => {
+      prev.forEach((s) => URL.revokeObjectURL(s.url));
+      return [];
+    });
   const reset = () => {
     setForm(BV_BLANK);
     setAiFields({});
     setAiRan(false);
-    setImg(null);
+    clearShots();
+    setSmartDemo(false);
     setCreated(false);
     setSuggested(null);
     setSmartStage("capture");
@@ -287,21 +275,36 @@ export function AddRide() {
     const onPaste = (e: ClipboardEvent) => {
       const items = e.clipboardData && e.clipboardData.items;
       if (!items) return;
-      for (const it of Array.from(items)) {
-        if (it.type && it.type.indexOf("image") === 0) {
-          const file = it.getAsFile();
-          if (file) bvFileToURL(file).then(setImg);
-        }
-      }
+      const pics = Array.from(items)
+        .filter((it) => it.type && it.type.indexOf("image") === 0)
+        .map((it) => it.getAsFile())
+        .filter((f): f is File => !!f);
+      if (pics.length) addFiles(pics);
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
   }, [mode, smartStage]);
 
+  // Free object URLs on unmount.
+  useEffect(() => () => shots.forEach((s) => URL.revokeObjectURL(s.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function runExtract(useSample: boolean) {
     setSmartStage("scanning");
-    const obj = await bvExtractFromImage(useSample ? null : img);
-    await new Promise((r) => setTimeout(r, useSample ? 1500 : 600));
+    let obj: Record<string, unknown> = {};
+    if (useSample) {
+      await new Promise((r) => setTimeout(r, 1200));
+      obj = BV_SAMPLE_EXTRACTION;
+      setSmartDemo(false);
+    } else {
+      try {
+        const res = await extractReservation(shots.map((s) => s.file));
+        obj = res.fields || {};
+        setSmartDemo(res.simulated);
+      } catch {
+        obj = {};
+        setSmartDemo(false);
+      }
+    }
     const next: Form = { ...BV_BLANK };
     const ai: Record<string, boolean> = {};
     Object.keys(BV_BLANK).forEach((k) => {
@@ -398,23 +401,23 @@ export function AddRide() {
       {mode === "smart" && smartStage !== "form" ? (
         <SmartCapture
           t={t}
-          img={img}
+          shots={shots}
           drag={drag}
           setDrag={setDrag}
           fileRef={fileRef}
           scanning={smartStage === "scanning"}
-          onFile={(f) => bvFileToURL(f).then(setImg)}
+          onFiles={addFiles}
+          onRemove={removeShot}
           onExtract={() => runExtract(false)}
           onSample={() => {
-            setImg(null);
+            clearShots();
             runExtract(true);
           }}
-          onClear={() => setImg(null)}
         />
       ) : (
         <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1.65fr 1fr", gap: 22, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {mode === "smart" && aiRan && <ReviewBanner t={t} missing={missing} form={form} onBack={reset} />}
+            {mode === "smart" && aiRan && <ReviewBanner t={t} missing={missing} form={form} demo={smartDemo} onBack={reset} />}
 
             <FormSection title={t.secClient} icon="user">
               <RideField id="name" label={t.name} icon="user" ph={t.namePh} value={form.name} onChange={(v) => set("name", v)} state={fieldState("name", form, aiFields, mode, aiRan)} t={t} />
@@ -484,7 +487,7 @@ export function AddRide() {
   );
 }
 
-function ReviewBanner({ t, missing, form, onBack }: { t: any; missing: string[]; form: Form; onBack: () => void }) {
+function ReviewBanner({ t, missing, form, demo, onBack }: { t: any; missing: string[]; form: Form; demo?: boolean; onBack: () => void }) {
   const tracked = ["name", "phone", "pickup", "dropoff", "date", "time", "flight", "passengers", "fare"];
   const found = tracked.filter((k) => String(form[k] || "").trim()).length;
   const total = tracked.length;
@@ -519,6 +522,12 @@ function ReviewBanner({ t, missing, form, onBack }: { t: any; missing: string[];
             {t.foundOf(found, total)}{" "}
             {n ? <span style={{ color: "var(--warning)" }}>{t.confirm(n)}</span> : <span style={{ color: "var(--volt)" }}>{t.allGood}</span>}
           </div>
+          {demo && (
+            <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="alert-circle" size={12} color="var(--fg3)" />
+              {t.demoNote}
+            </div>
+          )}
           {n > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               {missing.map((k) => (
@@ -560,37 +569,55 @@ function ReviewBanner({ t, missing, form, onBack }: { t: any; missing: string[];
 
 function SmartCapture({
   t,
-  img,
+  shots,
   drag,
   setDrag,
   fileRef,
   scanning,
-  onFile,
+  onFiles,
+  onRemove,
   onExtract,
   onSample,
-  onClear,
 }: {
   t: any;
-  img: string | null;
+  shots: Shot[];
   drag: boolean;
   setDrag: (v: boolean) => void;
   fileRef: React.RefObject<HTMLInputElement>;
   scanning: boolean;
-  onFile: (f: File) => void;
+  onFiles: (files: FileList | File[]) => void;
+  onRemove: (i: number) => void;
   onExtract: () => void;
   onSample: () => void;
-  onClear: () => void;
 }) {
+  const full = shots.length >= SMART_MAX_IMAGES;
+  const pick = () => fileRef.current && fileRef.current.click();
+  const hidden = (
+    <input
+      ref={fileRef}
+      type="file"
+      accept="image/*"
+      multiple
+      style={{ display: "none" }}
+      onChange={(e) => {
+        if (e.target.files && e.target.files.length) onFiles(e.target.files);
+        e.target.value = "";
+      }}
+    />
+  );
+
   if (scanning) {
     return (
       <div style={{ background: "var(--obsidian)", border: "1px solid var(--volt-border)", borderRadius: "var(--radius-lg)", padding: 0, overflow: "hidden", maxWidth: 760, margin: "8px auto" }}>
         <div style={{ position: "relative", height: 280, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: "var(--obsidian-3)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {img && <img src={img} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.18 }} />}
+          {shots[0] && <img src={shots[0].url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.18 }} />}
           <div style={{ position: "absolute", left: 0, right: 0, height: 2, background: "linear-gradient(90deg, transparent, var(--volt), transparent)", boxShadow: "var(--shadow-volt)", animation: "bv-scan 1.6s ease-in-out infinite alternate", top: 0 }} />
           <div style={{ position: "relative", width: 52, height: 52, borderRadius: "50%", border: "2px solid var(--volt-border)", borderTopColor: "var(--volt)", animation: "bv-spin 0.9s linear infinite" }} />
           <div style={{ position: "relative", textAlign: "center" }}>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 17, color: "var(--arctic)" }}>{t.scanning}</div>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 17, color: "var(--arctic)" }}>
+              {shots.length ? t.scanningN(shots.length) : t.scanning}
+            </div>
             <div style={{ fontSize: 13, color: "var(--silver)", marginTop: 5 }}>{t.scanningSub}</div>
           </div>
         </div>
@@ -599,16 +626,40 @@ function SmartCapture({
   }
   return (
     <div style={{ maxWidth: 760, margin: "8px auto" }}>
-      {img ? (
+      {shots.length ? (
         <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: 16 }}>
-          <div style={{ borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--line)", background: "var(--void)", maxHeight: 360, display: "flex", justifyContent: "center" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img} alt="screenshot" style={{ maxWidth: "100%", maxHeight: 360, objectFit: "contain", display: "block" }} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: "var(--silver)", fontFamily: "var(--font-sans)" }}>{t.shotsCount(shots.length)}</span>
+            <span style={{ fontSize: 12, color: "var(--fg3)" }}>{t.maxImgs(SMART_MAX_IMAGES)}</span>
           </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "space-between" }}>
-            <Button variant="plain" icon="image" onClick={onClear}>{t.change}</Button>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
+            {shots.map((s, i) => (
+              <div key={s.url} style={{ position: "relative", borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--line)", background: "var(--void)", aspectRatio: "3 / 4" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={s.url} alt={`screenshot ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                <button
+                  onClick={() => onRemove(i)}
+                  title={t.removeImg}
+                  style={{ position: "absolute", top: 6, right: 6, width: 26, height: 26, borderRadius: "50%", border: "none", cursor: "pointer", background: "rgba(10,10,15,0.78)", color: "var(--arctic)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  <Icon name="x" size={14} color="currentColor" />
+                </button>
+              </div>
+            ))}
+            {!full && (
+              <button
+                onClick={pick}
+                style={{ borderRadius: "var(--radius-md)", border: "1.5px dashed var(--line-strong)", background: "var(--obsidian-3)", color: "var(--silver)", cursor: "pointer", aspectRatio: "3 / 4", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 12, fontFamily: "var(--font-sans)" }}
+              >
+                <Icon name="plus" size={20} color="var(--volt)" />
+                {t.addMore}
+              </button>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
             <Button variant="solid" icon="sparkles" onClick={onExtract}>{t.extract}</Button>
           </div>
+          {hidden}
         </div>
       ) : (
         <div
@@ -620,8 +671,7 @@ function SmartCapture({
           onDrop={(e) => {
             e.preventDefault();
             setDrag(false);
-            const f = e.dataTransfer.files && e.dataTransfer.files[0];
-            if (f) onFile(f);
+            if (e.dataTransfer.files && e.dataTransfer.files.length) onFiles(e.dataTransfer.files);
           }}
           style={{
             border: `2px dashed ${drag ? "var(--volt)" : "var(--line-strong)"}`,
@@ -636,16 +686,16 @@ function SmartCapture({
             <Icon name="image" size={28} color="var(--volt)" />
           </div>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 21, color: "var(--arctic)", marginBottom: 8 }}>{t.dropTitle}</div>
-          <p style={{ fontSize: 14, color: "var(--silver)", maxWidth: 420, margin: "0 auto 22px", lineHeight: 1.5 }}>{t.dropSub}</p>
+          <p style={{ fontSize: 14, color: "var(--silver)", maxWidth: 440, margin: "0 auto 22px", lineHeight: 1.5 }}>{t.dropSub}</p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
-            <Button variant="solid" icon="upload" onClick={() => fileRef.current && fileRef.current.click()}>{t.dropBtn}</Button>
+            <Button variant="solid" icon="upload" onClick={pick}>{t.dropBtn}</Button>
             <Button variant="ghost" icon="sparkles" onClick={onSample}>{t.sample}</Button>
           </div>
           <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 16, display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
             <Icon name="clipboard" size={13} color="var(--fg3)" />
-            {t.paste}
+            {t.paste} · {t.maxImgs(SMART_MAX_IMAGES)}
           </div>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) onFile(f); }} />
+          {hidden}
         </div>
       )}
     </div>

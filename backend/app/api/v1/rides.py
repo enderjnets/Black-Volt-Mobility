@@ -7,14 +7,19 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_payload, require_auth, require_staff, resolve_tenant_id
+from app.config import get_settings
 from app.db.base import get_db
 from app.models import PaymentMethod, Ride, RideStatus
-from app.services import auth, booking, dashboard, maps
+from app.services import auth, booking, dashboard, maps, smart
+
+# Vision providers accept these; anything else is rejected before the model call.
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB per image (MiniMax-M3 limit)
 
 router = APIRouter(tags=["booking"])
 
@@ -158,6 +163,42 @@ async def put_rate_config(
         db, tenant_id=tenant_id, changes=body.model_dump(exclude_none=True)
     )
     return _rate_out(rc)
+
+
+# ─── Smart reservation (screenshots → fields) ──────────────────────────────────
+@router.post("/rides/extract")
+async def extract_reservation(
+    files: list[UploadFile] = File(...),
+    payload: dict = Depends(require_staff),
+):
+    """Read 1..N screenshots of a client's message and return reservation fields
+    to pre-fill the form. Staff only. Best-effort: a vision failure returns
+    all-null fields (the driver then types them). No ride is persisted here."""
+    settings = get_settings()
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_files")
+    if len(files) > settings.SMART_MAX_IMAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"too_many_images_max_{settings.SMART_MAX_IMAGES}",
+        )
+    images: list[tuple[str, bytes]] = []
+    for f in files:
+        media_type = (f.content_type or "").split(";")[0].strip().lower()
+        if media_type not in _ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported_image_type"
+            )
+        raw = await f.read()
+        if not raw:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty_image")
+        if len(raw) > _MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="image_too_large"
+            )
+        images.append((media_type, raw))
+    fields = await smart.extract_reservation(images)
+    return {"fields": fields, "simulated": not settings.smart_live, "image_count": len(images)}
 
 
 # ─── Rides ────────────────────────────────────────────────────────────────────

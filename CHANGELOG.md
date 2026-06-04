@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.11.0 — 2026-06-04 — Smart reservation: real AI from multiple screenshots
+
+The Smart "Add reservation" tab now does real vision extraction (it used to only
+work inside the design preview and otherwise fell back to a fake sample).
+
+- **Vision LLM** (`services/llm.py`): thin `anthropic`-SDK client with a per-call
+  `base_url`; `vision_complete` sends a text prompt + N base64 images in one
+  message. Kimi/MiniMax only — never Anthropic OAuth.
+- **Smart extractor** (`services/smart.py`): merges several screenshots of a
+  client's SMS/WhatsApp/email into ONE reservation via **MiniMax-M3** (the only
+  MiniMax model that reads images). `SMART_SIMULATED` (default) returns a
+  deterministic sample so the flow works without a key/billing; best-effort —
+  a vision failure degrades to manual entry, never blocks.
+- **Endpoint** `POST /api/v1/rides/extract` (staff-only, multipart): 1–5 images,
+  `image/*` only, ≤10 MB each.
+- **Add ride → Smart**: pick/drag/paste **multiple** screenshots, remove or add
+  before extracting; thumbnails + count; real extraction replaces the old
+  `window.claude` browser path. A subtle "demo mode" note shows until the key
+  is set.
+- See `docs/setup-minimax-vision.md`.
+
 ## v0.10.0 — 2026-06-02 — Google Calendar sync for scheduled rides
 
 Scheduled rides flow into the Black Volt Google Calendar.

@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.10.0";
+export const CURRENT_VERSION = "0.11.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.11.0",
+    date: "2026-06-04",
+    title: "Smart reservation — real AI from multiple screenshots",
+    changes: [
+      "Smart 'Add reservation' now reads screenshots with real AI (MiniMax-M3 vision).",
+      "Drop, paste or upload several screenshots — they merge into one reservation.",
+      "Remove or add screenshots before extracting; up to 5 at once.",
+      "Falls back to a demo sample until the vision key is set on the server.",
+    ],
+  },
   {
     version: "0.10.0",
     date: "2026-06-02",

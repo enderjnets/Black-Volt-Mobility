@@ -76,6 +76,12 @@ services:
       GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-}
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
       CALENDAR_TIMEZONE: ${CALENDAR_TIMEZONE:-America/Denver}
+      # Smart reservation (screenshot → fields, MiniMax-M3 vision)
+      SMART_SIMULATED: ${SMART_SIMULATED:-true}
+      SMART_VISION_BASE_URL: ${SMART_VISION_BASE_URL:-https://api.minimax.io/anthropic}
+      SMART_VISION_MODEL: ${SMART_VISION_MODEL:-MiniMax-M3}
+      SMART_VISION_API_KEY: ${SMART_VISION_API_KEY:-}
+      SMART_MAX_IMAGES: ${SMART_MAX_IMAGES:-5}
     volumes:
       # Service-account JSON for Google Calendar (gitignored; absent in dev).
       - ./secrets:/secrets:ro

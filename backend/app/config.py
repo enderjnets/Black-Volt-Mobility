@@ -110,6 +110,24 @@ class Settings(BaseSettings):
             and bool(self.GOOGLE_CALENDAR_ID)
         )
 
+    # ─── Smart reservation (screenshot → reservation, vision) ───────────
+    # The driver pastes screenshots of a client's SMS/WhatsApp/email; a vision
+    # model reads them and pre-fills the reservation. Only MiniMax-M3 (not the
+    # M2.x text models, not kimi-for-coding) accepts image content blocks over
+    # the anthropic-compatible endpoint. SMART_SIMULATED (or a missing key)
+    # returns a deterministic sample so the flow works without billing.
+    # Uses a dedicated key so the vision model can differ from the chat LLM.
+    SMART_SIMULATED: bool = True
+    SMART_VISION_BASE_URL: str = "https://api.minimax.io/anthropic"
+    SMART_VISION_MODEL: str = "MiniMax-M3"
+    SMART_VISION_API_KEY: str = ""
+    SMART_MAX_IMAGES: int = 5
+
+    @property
+    def smart_live(self) -> bool:
+        """Real vision extraction requires opting out of simulation AND a key."""
+        return not self.SMART_SIMULATED and bool(self.SMART_VISION_API_KEY)
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
 
