@@ -121,6 +121,7 @@ async def _extract_coding_vlm(images: list[tuple[str, bytes]]) -> dict:
                 api_key=settings.SMART_VISION_API_KEY,
                 prompt=EXTRACT_PROMPT,
                 image_data_url=data_url,
+                timeout=settings.SMART_VISION_TIMEOUT,
             )
             fields = _coerce(_parse_json(text))
         except (llm.LLMError, ValueError, json.JSONDecodeError) as e:
