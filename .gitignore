@@ -29,6 +29,9 @@ package-lock.json
 postgres-data/
 *.log
 
+# Owner-uploaded brand assets (logo/photo) — runtime, on a Docker volume
+backend/media/
+
 # Service-account JSON keys (Google Calendar, etc.)
 secrets/*
 !secrets/.gitkeep

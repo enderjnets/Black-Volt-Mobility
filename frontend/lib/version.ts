@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.14.0";
+export const CURRENT_VERSION = "0.15.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.15.0",
+    date: "2026-06-05",
+    title: "Settings — your brand & public profile, for real",
+    changes: [
+      "Edit your business profile (name, tagline, bio, vehicle, service area, Instagram, website).",
+      "Pick your brand accent color and upload a logo + hero photo.",
+      "Set your rating and the year you started — they power your public profile stats.",
+      "Your public page at /d/your-slug now shows your real, edited details (not a demo).",
+      "See your Square payout status at a glance; SMS/AI-call channels are flagged as coming soon.",
+    ],
+  },
   {
     version: "0.14.0",
     date: "2026-06-05",

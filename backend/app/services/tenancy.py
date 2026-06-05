@@ -1,10 +1,13 @@
 """Tenant + client helpers. MVP seeds a single tenant (Black Volt)."""
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import UTC, datetime
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Client, RateConfig, Tenant
+from app.config import get_settings
+from app.models import Client, RateConfig, Ride, RideStatus, Tenant
 from app.models.rate_config import DEFAULT_RATES
 
 DEFAULT_TENANT_SLUG = "black-volt"
@@ -49,6 +52,139 @@ async def get_tenant_by_slug(db: AsyncSession, slug: str) -> Tenant | None:
     return (
         await db.execute(select(Tenant).where(Tenant.slug == slug))
     ).scalar_one_or_none()
+
+
+async def get_tenant(db: AsyncSession, tenant_id: int) -> Tenant | None:
+    return (
+        await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+    ).scalar_one_or_none()
+
+
+# Brand/profile fields the owner may edit from Settings. slug/created_at are
+# immutable; uploads (logo/photo) go through dedicated endpoints, not here.
+TENANT_EDITABLE_FIELDS = (
+    "name",
+    "tagline",
+    "bio",
+    "instagram",
+    "website",
+    "vehicle",
+    "city",
+    "brand_color",
+    "rating",
+    "since_year",
+)
+
+
+def media_url(path: str | None) -> str | None:
+    """Public URL for a stored media path (served by the /media mount), or None."""
+    if not path:
+        return None
+    return f"/media/{path.lstrip('/')}"
+
+
+async def _completed_rides(db: AsyncSession, tenant_id: int) -> int:
+    return int(
+        (
+            await db.execute(
+                select(func.count(Ride.id)).where(
+                    Ride.tenant_id == tenant_id, Ride.status == RideStatus.COMPLETED
+                )
+            )
+        ).scalar_one()
+    )
+
+
+def _years_active(since_year: int | None) -> int | None:
+    if not since_year:
+        return None
+    return max(0, datetime.now(UTC).year - int(since_year))
+
+
+async def tenant_settings(db: AsyncSession, *, tenant_id: int) -> dict | None:
+    """Full editable settings for the dashboard + read-only integration status."""
+    t = await get_tenant(db, tenant_id)
+    if t is None:
+        return None
+    s = get_settings()
+    return {
+        "slug": t.slug,
+        "name": t.name,
+        "tagline": t.tagline,
+        "bio": t.bio,
+        "instagram": t.instagram,
+        "website": t.website,
+        "vehicle": t.vehicle,
+        "city": t.city,
+        "brand_color": t.brand_color,
+        "rating": t.rating,
+        "since_year": t.since_year,
+        "logo_url": media_url(t.logo_path),
+        "photo_url": media_url(t.photo_path),
+        # Read-only status of integrations (configured env-level for the MVP).
+        "payments": {
+            "connected": bool(s.SQUARE_ACCESS_TOKEN and s.SQUARE_LOCATION_ID),
+            "live": s.payments_live,
+            "env": s.SQUARE_ENV,
+        },
+        "notifications": {
+            # Phase 7 wires real sending; the channels are not active yet.
+            "available": False,
+            "sms": False,
+            "calls": False,
+        },
+    }
+
+
+async def update_tenant(db: AsyncSession, *, tenant_id: int, changes: dict) -> Tenant | None:
+    """Update the owner-editable brand/profile fields. Unknown keys ignored."""
+    t = await get_tenant(db, tenant_id)
+    if t is None:
+        return None
+    for k, v in changes.items():
+        if k in TENANT_EDITABLE_FIELDS:
+            setattr(t, k, v)
+    await db.commit()
+    await db.refresh(t)
+    return t
+
+
+async def set_tenant_asset(
+    db: AsyncSession, *, tenant_id: int, kind: str, path: str | None
+) -> Tenant | None:
+    """Point the tenant's logo or photo at a stored media path (or clear it)."""
+    if kind not in ("logo", "photo"):
+        raise ValueError("kind must be 'logo' or 'photo'")
+    t = await get_tenant(db, tenant_id)
+    if t is None:
+        return None
+    setattr(t, f"{kind}_path", path)
+    await db.commit()
+    await db.refresh(t)
+    return t
+
+
+async def public_profile(db: AsyncSession, *, slug: str) -> dict | None:
+    """Public-safe profile for /d/{slug}: brand + computed stats. No secrets."""
+    t = await get_tenant_by_slug(db, slug)
+    if t is None:
+        return None
+    return {
+        "slug": t.slug,
+        "name": t.name,
+        "tagline": t.tagline,
+        "bio": t.bio,
+        "instagram": t.instagram,
+        "website": t.website,
+        "vehicle": t.vehicle,
+        "city": t.city,
+        "brand_color": t.brand_color,
+        "logo_url": media_url(t.logo_path),
+        "photo_url": media_url(t.photo_path),
+        "rating": t.rating,
+        "rides_total": await _completed_rides(db, t.id),
+        "years_active": _years_active(t.since_year),
+    }
 
 
 async def find_or_create_client(

@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.15.0 — 2026-06-05 — Settings: brand & public profile editor (live)
+
+The dashboard Settings page is now a real editor backed by the Tenant, and the
+public profile at `/d/{slug}` renders the owner's actual data.
+
+- **Backend**: new `GET/PUT /tenant/settings` (staff-only, tenant-scoped) edit
+  the brand/profile fields; `POST /tenant/logo` + `/tenant/photo` accept image
+  uploads validated by **magic-byte sniffing** (not the client content-type),
+  capped at 5 MB, written under `media/tenants/{tenant_id}/` with a
+  server-generated versioned filename (no path traversal, no cross-tenant write).
+  Public `GET /tenants/{slug}` returns a profile-safe payload (no email, no
+  Square token, no ids) with computed `rides_total` (completed) + `years_active`.
+  New Tenant columns `bio, website, brand_color, logo_path, photo_path, rating,
+  since_year` (migration `0009_tenant_settings`). `/media` is served by a
+  StaticFiles mount (Next.js `/media/*` rewrite → backend; Docker named volume
+  `blackvolt-media` persists uploads). Tests in `test_tenant_api.py`.
+- **Frontend**: `Settings.tsx` editor (mirrors the Rates layout) — business
+  profile fields, brand accent swatches + custom color, logo/hero uploaders with
+  preview, Save (dirty/saved/error states), read-only Square + notifications
+  status cards, and a "View public profile" link. `Profile.tsx` now fetches
+  `GET /tenants/{slug}` and renders real brand/stats with loading + not-found
+  states. `lib/tenant.ts` client helpers. i18n EN+ES (`dash.settings.*`).
+
 ## v0.14.0 — 2026-06-05 — Client detail (CRM): tap a client to view + edit + act
 
 Client rows in the Clients section are now tappable and open a full detail drawer.

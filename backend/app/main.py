@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
@@ -13,6 +15,7 @@ from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.health import router as health_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.rides import router as booking_router
+from app.api.v1.tenant import router as tenant_router
 from app.config import get_settings
 from app.db.base import dispose_engine, get_session_factory
 
@@ -57,6 +60,12 @@ app.include_router(booking_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(tenant_router, prefix="/api/v1")
+
+# Owner-uploaded brand assets (logo/photo). The directory must exist before the
+# mount or StaticFiles raises at import; create it up front (idempotent).
+os.makedirs(settings.MEDIA_DIR, exist_ok=True)
+app.mount("/media", StaticFiles(directory=settings.MEDIA_DIR), name="media")
 
 
 @app.get("/")

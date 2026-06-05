@@ -88,6 +88,8 @@ services:
     volumes:
       # Service-account JSON for Google Calendar (gitignored; absent in dev).
       - ./secrets:/secrets:ro
+      # Owner-uploaded brand assets (logo/photo) — persist across rebuilds.
+      - blackvolt-media:/app/media
     ports:
       # 8012 — coexist with Eko backends (8000/8002/8010/8011).
       - "8012:8000"
@@ -113,3 +115,4 @@ services:
 
 volumes:
   postgres-data:
+  blackvolt-media:

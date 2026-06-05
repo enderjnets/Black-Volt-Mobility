@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy import DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -16,9 +16,18 @@ class Tenant(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
-    # Public-profile / brand fields (extended in later phases).
+    # Public-profile / brand fields (edited from the dashboard Settings page).
     tagline: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     instagram: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(200), nullable=True)
     vehicle: Mapped[str | None] = mapped_column(String(120), nullable=True)
     city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Brand accent (hex) + uploaded asset paths (served from /media).
+    brand_color: Mapped[str | None] = mapped_column(String(9), nullable=True)
+    logo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    photo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Public-profile vanity stats the owner sets (rides are computed live).
+    rating: Mapped[float | None] = mapped_column(Float, nullable=True)
+    since_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

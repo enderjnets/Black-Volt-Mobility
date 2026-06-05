@@ -142,6 +142,13 @@ class Settings(BaseSettings):
         """Real vision extraction requires opting out of simulation AND a key."""
         return not self.SMART_SIMULATED and bool(self.SMART_VISION_API_KEY)
 
+    # ─── Media (brand logo / hero photo uploads) ────────────────────────
+    # Owner-uploaded brand assets are written under MEDIA_DIR and served by the
+    # /media static mount (proxied through the Next.js /media rewrite). The dir
+    # is a Docker bind-mount on the ROG so files survive container rebuilds.
+    MEDIA_DIR: str = "media"  # relative to the backend WORKDIR (/app)
+    MEDIA_MAX_BYTES: int = 5 * 1024 * 1024  # 5 MB per brand asset
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
 

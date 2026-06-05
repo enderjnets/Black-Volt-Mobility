@@ -23,6 +23,12 @@ const nextConfig = {
           source: "/api/:path*",
           destination: `${INTERNAL_API_URL}/api/:path*`,
         },
+        {
+          // Owner-uploaded brand assets (logo/photo) served by the backend's
+          // /media StaticFiles mount; reachable through the app host.
+          source: "/media/:path*",
+          destination: `${INTERNAL_API_URL}/media/:path*`,
+        },
       ],
     };
   },
