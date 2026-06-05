@@ -20,6 +20,13 @@ export interface ClientRow {
   created_at: string | null;
 }
 
+import type { RideRow } from "./booking";
+import { fmtApiDetail } from "./booking";
+
+export interface ClientDetail extends ClientRow {
+  rides: RideRow[];
+}
+
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`/api${path}`, { credentials: "include", cache: "no-store" });
   if (!r.ok) throw new Error(`${path}:${r.status}`);
@@ -33,4 +40,25 @@ export async function getDashboardStats(): Promise<DashStats> {
 export async function listClients(): Promise<ClientRow[]> {
   const r = await jget<{ clients: ClientRow[] }>("/v1/clients");
   return r.clients;
+}
+
+export async function getClientDetail(id: number): Promise<ClientDetail> {
+  return jget<ClientDetail>(`/v1/clients/${id}`);
+}
+
+export async function updateClient(
+  id: number,
+  body: { name?: string; phone?: string | null; email?: string | null; lang?: string },
+): Promise<ClientDetail> {
+  const r = await fetch(`/api/v1/clients/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(fmtApiDetail((d as { detail?: unknown }).detail, `client:${r.status}`));
+  }
+  return r.json();
 }

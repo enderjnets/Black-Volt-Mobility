@@ -24,4 +24,5 @@ class Client(Base):
     email: Mapped[str | None] = mapped_column(String(254), nullable=True, index=True)
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    lang: Mapped[str | None] = mapped_column(String(2), nullable=True)  # preferred EN | ES
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

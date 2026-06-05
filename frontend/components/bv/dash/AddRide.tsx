@@ -4,7 +4,7 @@
    Ported from the design system's dashboard kit. Smart mode reads a screenshot
    via window.claude vision when available, else a believable sample extraction. */
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
@@ -180,6 +180,7 @@ function fieldState(key: string, form: Form, aiFields: Record<string, boolean>, 
 export function AddRide() {
   const { lang } = useI18n();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const t = BV_T[lang] || BV_T.en;
   const [mode, setMode] = useState<"manual" | "smart">("manual");
   const [smartStage, setSmartStage] = useState<"capture" | "scanning" | "form">("capture");
@@ -233,6 +234,21 @@ export function AddRide() {
     setSuggested(null);
     setSmartStage("capture");
   };
+
+  // Prefill from "New ride for this client" (Clients → client detail). Runs once.
+  useEffect(() => {
+    const name = searchParams.get("name");
+    const phone = searchParams.get("phone");
+    const ql = searchParams.get("lang");
+    if (!name && !phone && !ql) return;
+    setForm((f) => ({
+      ...f,
+      ...(name ? { name } : {}),
+      ...(phone ? { phone } : {}),
+      ...(ql ? { lang: ql.toUpperCase() === "ES" ? "ES" : "EN" } : {}),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Live fare suggestion from the backend (Google Maps route + pricing engine).
   // Debounced; the static heuristic stays as an instant fallback.

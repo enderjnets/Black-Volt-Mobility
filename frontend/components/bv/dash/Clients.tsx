@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n";
 import { useViewport } from "@/lib/useViewport";
 import { listClients, type ClientRow } from "@/lib/dashboard";
 import { EmptyState } from "./Overview";
+import { ClientDetail } from "./ClientDetail";
 
 const TIER_TONE: Record<string, "volt" | "muted" | "success"> = {
   VIP: "volt",
@@ -15,7 +16,7 @@ const TIER_TONE: Record<string, "volt" | "muted" | "success"> = {
   New: "success",
 };
 
-function ClientRowView({ c }: { c: ClientRow }) {
+function ClientRowView({ c, onOpen }: { c: ClientRow; onOpen: (id: number) => void }) {
   const { t } = useI18n();
   const [h, setH] = useState(false);
   const { compact } = useViewport();
@@ -23,6 +24,10 @@ function ClientRowView({ c }: { c: ClientRow }) {
   if (compact) {
     return (
       <div
+        onClick={() => onOpen(c.id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen(c.id)}
         style={{
           display: "flex",
           alignItems: "center",
@@ -32,6 +37,7 @@ function ClientRowView({ c }: { c: ClientRow }) {
           background: "var(--obsidian-2)",
           border: "1px solid var(--line-strong)",
           borderRadius: "var(--radius-lg)",
+          cursor: "pointer",
         }}
       >
         <div
@@ -69,6 +75,10 @@ function ClientRowView({ c }: { c: ClientRow }) {
     <div
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
+      onClick={() => onOpen(c.id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen(c.id)}
       style={{
         display: "grid",
         gridTemplateColumns: "1.4fr 1fr 80px 110px 90px",
@@ -79,6 +89,7 @@ function ClientRowView({ c }: { c: ClientRow }) {
         background: h ? "var(--obsidian-2)" : "transparent",
         transition: "background .12s",
         minWidth: 620,
+        cursor: "pointer",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -116,6 +127,8 @@ export function Clients() {
   const [q, setQ] = useState("");
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detail, setDetail] = useState<number | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -126,9 +139,15 @@ export function Clients() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [reload]);
 
-  const shown = clients.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
+  const needle = q.toLowerCase().trim();
+  const shown = clients.filter(
+    (c) =>
+      c.name.toLowerCase().includes(needle) ||
+      (c.phone || "").toLowerCase().includes(needle) ||
+      (c.email || "").toLowerCase().includes(needle),
+  );
 
   return (
     <div style={{ padding: 28 }}>
@@ -165,9 +184,17 @@ export function Clients() {
         ) : shown.length === 0 ? (
           <EmptyState icon="users" text={t("dash.empty.clients")} />
         ) : (
-          shown.map((c) => <ClientRowView key={c.id} c={c} />)
+          shown.map((c) => <ClientRowView key={c.id} c={c} onOpen={setDetail} />)
         )}
       </div>
+
+      {detail != null && (
+        <ClientDetail
+          clientId={detail}
+          onClose={() => setDetail(null)}
+          onChanged={() => setReload((n) => n + 1)}
+        />
+      )}
     </div>
   );
 }

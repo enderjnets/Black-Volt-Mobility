@@ -185,7 +185,8 @@ async def list_clients(db: AsyncSession, *, tenant_id: int) -> list[dict]:
                 "name": c.name or (c.email.split("@")[0] if c.email else "Client"),
                 "phone": c.phone,
                 "email": c.email,
-                "lang": (lang_by.get(c.id) or "EN").upper(),
+                # Preferred language: client's own setting first, else latest ride.
+                "lang": (c.lang or lang_by.get(c.id) or "EN").upper(),
                 "rides_count": rides_count,
                 "lifetime_spend": spend,
                 "tier": _tier(rides_count, spend),
@@ -196,6 +197,86 @@ async def list_clients(db: AsyncSession, *, tenant_id: int) -> list[dict]:
     # Most valuable first.
     out.sort(key=lambda x: (x["lifetime_spend"], x["rides_count"]), reverse=True)
     return out
+
+
+def _ride_brief(r: Ride) -> dict:
+    """Compact ride row for a client's history list."""
+    return {
+        "id": r.id,
+        "status": r.status.value if isinstance(r.status, RideStatus) else r.status,
+        "pickup": r.pickup_text,
+        "dropoff": r.dropoff_text,
+        "scheduled_at": r.scheduled_at.isoformat() if r.scheduled_at else None,
+        "fare_total": r.fare_total,
+        "flight_number": r.flight_number,
+        "paid": r.paid,
+    }
+
+
+async def client_detail(db: AsyncSession, *, tenant_id: int, client_id: int) -> dict | None:
+    """Full client profile + stats + their ride history. Tenant-scoped (a client
+    of another tenant returns None — no cross-tenant leakage)."""
+    c = (
+        await db.execute(
+            select(Client).where(Client.tenant_id == tenant_id, Client.id == client_id)
+        )
+    ).scalar_one_or_none()
+    if c is None:
+        return None
+    rides = list(
+        (
+            await db.execute(
+                select(Ride)
+                .where(Ride.tenant_id == tenant_id, Ride.client_id == client_id)
+                .order_by(Ride.scheduled_at.is_(None), Ride.scheduled_at.desc(), Ride.id.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    active = [r for r in rides if r.status not in _CANCELLED]
+    rides_count = len(active)
+    spend = round(sum((r.fare_total or 0.0) for r in rides if r.paid), 2)
+    last = max((r.scheduled_at or r.created_at for r in active), default=None)
+    latest_lang = next(
+        (r.lang for r in sorted(rides, key=lambda r: r.created_at, reverse=True) if r.lang),
+        None,
+    )
+    return {
+        "id": c.id,
+        "name": c.name or (c.email.split("@")[0] if c.email else "Client"),
+        "phone": c.phone,
+        "email": c.email,
+        "lang": (c.lang or latest_lang or "EN").upper(),
+        "rides_count": rides_count,
+        "lifetime_spend": spend,
+        "tier": _tier(rides_count, spend),
+        "last_ride_at": last.isoformat() if last else None,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "rides": [_ride_brief(r) for r in rides],
+    }
+
+
+_CLIENT_EDITABLE = ("name", "phone", "email", "lang")
+
+
+async def update_client(
+    db: AsyncSession, *, tenant_id: int, client_id: int, changes: dict
+) -> Client | None:
+    """Update a client's editable profile fields. Tenant-scoped."""
+    c = (
+        await db.execute(
+            select(Client).where(Client.tenant_id == tenant_id, Client.id == client_id)
+        )
+    ).scalar_one_or_none()
+    if c is None:
+        return None
+    for k in _CLIENT_EDITABLE:
+        if k in changes and changes[k] is not None:
+            setattr(c, k, changes[k] or None)
+    await db.commit()
+    await db.refresh(c)
+    return c
 
 
 async def latest_payment(db: AsyncSession, *, tenant_id: int, ride_id: int) -> Payment | None:

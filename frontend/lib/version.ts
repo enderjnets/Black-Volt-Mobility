@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.13.1";
+export const CURRENT_VERSION = "0.14.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.14.0",
+    date: "2026-06-05",
+    title: "Client profiles — tap a client to see everything",
+    changes: [
+      "Tap any client to open their full profile: contact, tier, lifetime spend, member since.",
+      "Edit the client's name, phone, email and preferred language inline.",
+      "See their complete ride history; tap a ride to open it.",
+      "One tap to start a new ride pre-filled for that client.",
+    ],
+  },
   {
     version: "0.13.1",
     date: "2026-06-04",

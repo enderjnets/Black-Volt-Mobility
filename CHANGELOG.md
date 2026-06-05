@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.14.0 — 2026-06-05 — Client detail (CRM): tap a client to view + edit + act
+
+Client rows in the Clients section are now tappable and open a full detail drawer.
+
+- **Backend**: `GET /clients/{id}` (`dashboard.client_detail`) returns the profile
+  + stats (rides_count, lifetime_spend, tier, last_ride_at, member-since) + the
+  client's full ride history. `PATCH /clients/{id}` (`update_client`, `ClientPatch`)
+  edits name/phone/email/language (lang reuses the EN/ES normalizer). New
+  `Client.lang` preferred-language column (migration `0008_client_lang`), preferred
+  over the ride-derived language. Both staff-only, tenant-scoped (no cross-tenant
+  leakage). Tests in `test_clients_api.py`.
+- **Frontend**: `ClientDetail.tsx` drawer (mirrors RideDetail) — profile header +
+  tier, 2×2 stats, inline-editable profile with Save, and the ride history (each
+  ride opens its own RideDetail). "New ride for this client" opens `/dashboard/add`
+  pre-filled (name/phone/lang via query params). Client rows are now clickable;
+  search also matches phone/email. i18n EN+ES (`dash.client.*`).
+
 ## v0.13.1 — 2026-06-04 — Smart extraction reads the right pickup date
 
 A Demetra ride added "for today" landed on **Jul 4**: the vision model returned
