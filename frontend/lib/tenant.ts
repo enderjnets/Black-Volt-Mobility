@@ -2,6 +2,11 @@
 
 import { fmtApiDetail } from "./booking";
 
+// The single-tenant MVP's public profile slug — matches the seeded tenant
+// (backend tenancy.DEFAULT_TENANT_SLUG = "black-volt"). The app's own nav/CTAs
+// must point here; a wrong slug 404s the live profile lookup.
+export const PUBLIC_PROFILE_SLUG = "black-volt";
+
 export interface PaymentsStatus {
   connected: boolean;
   live: boolean;

@@ -10,6 +10,7 @@ import { VersionButton } from "../../ui/VersionButton";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { fetchMe, logout } from "@/lib/auth";
+import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
 import { track } from "@/lib/analytics";
 import { ChatAssistant } from "./Chat";
 import { ClientTabBar } from "./ClientTabBar";
@@ -32,7 +33,7 @@ const NAV = [
   { href: "/", key: "nav.home" },
   { href: "/book", key: "nav.book" },
   { href: "/trips", key: "nav.trips" },
-  { href: "/d/ender", key: "nav.driver" },
+  { href: `/d/${PUBLIC_PROFILE_SLUG}`, key: "nav.driver" },
 ];
 
 function MenuItem({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {

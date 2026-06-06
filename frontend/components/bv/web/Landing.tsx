@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
 import { useI18n } from "@/lib/i18n";
+import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
 
 function Feature({ icon, title, body }: { icon: string; title: string; body: string }) {
   return (
@@ -103,7 +104,7 @@ export function Landing() {
             <Button variant="solid" icon="zap" size="lg" onClick={() => router.push("/book")}>
               {t("home.cta.book")}
             </Button>
-            <Button variant="ghost" size="lg" iconRight="arrow-right" onClick={() => router.push("/d/ender")}>
+            <Button variant="ghost" size="lg" iconRight="arrow-right" onClick={() => router.push(`/d/${PUBLIC_PROFILE_SLUG}`)}>
               {t("nav.driver")}
             </Button>
           </div>

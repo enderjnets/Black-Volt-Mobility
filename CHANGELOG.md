@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.15.1 — 2026-06-06 — Fix: public "Your Driver" link 404'd (slug regression)
+
+After v0.15.0 wired the public profile to a live `GET /tenants/{slug}` lookup, the
+web nav "Your Driver", the mobile tab bar, and the landing CTA still pointed at the
+old demo URL `/d/ender` — a slug that doesn't exist — so they rendered
+"Profile not found." (the real tenant slug is `black-volt`).
+
+- **Fix**: single source of truth `PUBLIC_PROFILE_SLUG = "black-volt"` in
+  `lib/tenant.ts`; `WebShell.tsx`, `ClientTabBar.tsx`, `Landing.tsx` and the
+  `Profile` default now use it. The tenant slug itself is unchanged (it's the
+  tenancy fallback key).
+- **Quality**: a genuinely unknown profile slug now shows a branded not-found
+  block with a "Book a ride" CTA instead of bare text.
+- Frontend-only; no backend/DB change.
+
 ## v0.15.0 — 2026-06-05 — Settings: brand & public profile editor (live)
 
 The dashboard Settings page is now a real editor backed by the Tenant, and the

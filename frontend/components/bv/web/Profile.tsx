@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "../Icon";
 import { Button, Card, Pill } from "../ui";
 import { useI18n } from "@/lib/i18n";
-import { getPublicProfile, type PublicProfile } from "@/lib/tenant";
+import { getPublicProfile, PUBLIC_PROFILE_SLUG, type PublicProfile } from "@/lib/tenant";
 
 function FauxQR({ size = 132 }: { size?: number }) {
   const n = 11;
@@ -42,7 +42,7 @@ function Stat({ value, label, icon, accent }: { value: string; label: string; ic
   );
 }
 
-export function Profile({ slug = "black-volt" }: { slug?: string }) {
+export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
   const { t } = useI18n();
   const router = useRouter();
   const [p, setP] = useState<PublicProfile | null>(null);
@@ -70,8 +70,28 @@ export function Profile({ slug = "black-volt" }: { slug?: string }) {
   }
   if (state === "missing" || !p) {
     return (
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "64px 0", textAlign: "center", color: "var(--silver)" }}>
-        {t("profile.notFound")}
+      <div style={{ maxWidth: 460, margin: "0 auto", padding: "72px 20px", textAlign: "center" }}>
+        <div
+          style={{
+            display: "inline-flex",
+            width: 56,
+            height: 56,
+            borderRadius: 14,
+            background: "var(--obsidian-3)",
+            border: "1px solid var(--line-strong)",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 16,
+          }}
+        >
+          <Icon name="user" size={26} color="var(--silver)" />
+        </div>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: "var(--arctic)", marginBottom: 18 }}>
+          {t("profile.notFound")}
+        </div>
+        <Button variant="solid" size="lg" icon="zap" onClick={() => router.push("/book")}>
+          {t("profile.book")}
+        </Button>
       </div>
     );
   }

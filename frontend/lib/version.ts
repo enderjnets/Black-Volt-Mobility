@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.15.0";
+export const CURRENT_VERSION = "0.15.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.15.1",
+    date: "2026-06-06",
+    title: "Fix: 'Your Driver' link no longer 404s",
+    changes: [
+      "The public 'Your Driver' nav, mobile tab, and landing button now open the real profile.",
+      "They pointed at an old demo URL that broke once profiles went live in 0.15.0.",
+      "An unknown profile link now shows a friendly page with a 'Book a ride' button.",
+    ],
+  },
   {
     version: "0.15.0",
     date: "2026-06-05",
