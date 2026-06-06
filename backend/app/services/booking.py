@@ -3,9 +3,9 @@ persistence. All queries are tenant-scoped."""
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -151,6 +151,50 @@ async def create_ride(
 
 # Statuses that should NOT appear on the calendar.
 _INACTIVE = (RideStatus.CANCELLED, RideStatus.NO_SHOW, RideStatus.COMPLETED)
+
+
+def is_overdue(ride: Ride, now: datetime | None = None) -> bool:
+    """A scheduled, still-active ride whose pickup time has already passed —
+    it needs the driver to confirm the pickup happened (or auto-closes if paid)."""
+    if ride.scheduled_at is None or ride.status in _INACTIVE:
+        return False
+    sched = ride.scheduled_at
+    if sched.tzinfo is None:  # a naive client value (PATCH without offset) is UTC
+        sched = sched.replace(tzinfo=UTC)
+    return sched < (now or datetime.now(UTC))
+
+
+def complete_if_overdue_paid(ride: Ride, now: datetime | None = None) -> bool:
+    """Auto-close a ride once it is both paid and past its pickup time (e.g. a
+    Square capture or a recorded cash payment on a ride whose time has passed).
+    Returns True if it transitioned the ride to COMPLETED."""
+    if ride.paid and is_overdue(ride, now):
+        ride.status = RideStatus.COMPLETED
+        return True
+    return False
+
+
+async def reconcile_overdue_paid(
+    db: AsyncSession, *, tenant_id: int, now: datetime | None = None
+) -> int:
+    """Bulk-complete every paid, still-active ride whose pickup time has passed
+    (settled in advance or by Square) — a lazy, idempotent sweep run when the
+    dashboard lists rides, so paid past rides don't linger as 'upcoming'. Does
+    not commit; the caller decides. Returns the number of rides closed."""
+    cutoff = now or datetime.now(UTC)
+    result = await db.execute(
+        update(Ride)
+        .where(
+            Ride.tenant_id == tenant_id,
+            Ride.paid.is_(True),
+            Ride.scheduled_at.is_not(None),
+            Ride.scheduled_at < cutoff,
+            Ride.status.not_in(_INACTIVE),
+        )
+        .values(status=RideStatus.COMPLETED)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount or 0
 
 
 def house_to_house_window(

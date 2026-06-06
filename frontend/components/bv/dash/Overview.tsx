@@ -115,7 +115,7 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 11, color: "var(--fg3)" }}>{r.time}</span>
-            <StatusPill status={r.status} />
+            <StatusPill status={r.overdue ? "overdue" : r.status} />
             {r.flight && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--silver)" }}>
                 <Icon name="plane" size={11} color="var(--volt)" />
@@ -185,7 +185,7 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
         )}
       </div>
       <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--arctic)" }}>${r.fare}</div>
-      <StatusPill status={r.status} />
+      <StatusPill status={r.overdue ? "overdue" : r.status} />
     </div>
   );
 }

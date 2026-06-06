@@ -142,6 +142,7 @@ export interface RideRow {
   payment_method?: string;
   paid?: boolean;
   paid_at?: string | null;
+  overdue?: boolean;
 }
 
 export type PaymentMethod = "cash" | "square" | "venmo" | "zelle" | "other";

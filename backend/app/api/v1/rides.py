@@ -134,6 +134,7 @@ def _ride_out(r: Ride) -> dict:
         "paid": r.paid,
         "paid_at": r.paid_at.isoformat() if r.paid_at else None,
         "google_event_id": r.google_event_id,
+        "overdue": booking.is_overdue(r),
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -286,8 +287,12 @@ async def list_rides(
 ):
     """Staff: all tenant rides. Passenger: only their own."""
     tenant_id = await resolve_tenant_id(db, payload)
+    is_passenger = payload.get("role") == auth.ROLE_PASSENGER
+    # Staff dashboard view lazily closes paid rides whose pickup time has passed.
+    if not is_passenger and await booking.reconcile_overdue_paid(db, tenant_id=tenant_id):
+        await db.commit()
     rides = await booking.list_rides(db, tenant_id=tenant_id, status=status_filter, limit=limit)
-    if payload.get("role") == auth.ROLE_PASSENGER:
+    if is_passenger:
         cid = payload.get("cid")
         rides = [r for r in rides if r.client_id == cid]
     names = await dashboard.client_names(
@@ -316,6 +321,10 @@ async def get_ride(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
     if payload.get("role") == auth.ROLE_PASSENGER and ride.client_id != payload.get("cid"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    # Keep detail consistent with the list sweep: a paid past ride auto-closes.
+    if booking.complete_if_overdue_paid(ride):
+        await db.commit()
+        await db.refresh(ride)
     out = _ride_out(ride)
     out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))
     return out
@@ -359,6 +368,9 @@ async def patch_ride(
             ride.paid_at = datetime.now(UTC)
         if not body.paid:
             ride.paid_at = None
+    # A paid ride whose pickup time has passed auto-closes as completed (an
+    # explicit cancel/no-show still wins — those are never "overdue").
+    booking.complete_if_overdue_paid(ride)
     await db.commit()
     await db.refresh(ride)
     # Re-sync the (possibly moved) calendar event after an edit to an active ride.

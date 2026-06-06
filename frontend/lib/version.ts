@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.16.0";
+export const CURRENT_VERSION = "0.17.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.17.0",
+    date: "2026-06-06",
+    title: "Overdue rides — confirm the pickup happened",
+    changes: [
+      "A ride whose pickup time has passed now shows an amber 'Overdue' badge instead of staying 'Upcoming'.",
+      "Open it and tap 'Confirm pickup completed' to close it in one step — no need to mark 'en route' first.",
+      "If the ride is already paid (e.g. Square captured the payment), it auto-completes — no tap needed.",
+      "Overdue rides still appear under the Upcoming filter so nothing gets lost.",
+    ],
+  },
   {
     version: "0.16.0",
     date: "2026-06-06",

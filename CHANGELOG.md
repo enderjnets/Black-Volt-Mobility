@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.17.0 — 2026-06-06 — Overdue rides: confirm the pickup happened
+
+A scheduled ride whose pickup time has passed no longer lingers as "Upcoming".
+
+- **Backend**: `_ride_out` exposes a derived `overdue` flag (`booking.is_overdue`:
+  scheduled in the past + still active). Paid rides whose time has passed
+  auto-complete: `booking.complete_if_overdue_paid` fires on payment capture
+  (`payments.capture_payment`) and on the manual paid toggle (`patch_ride`), and
+  `booking.reconcile_overdue_paid` is a lazy idempotent sweep run at the top of
+  `list_rides` for rides settled in advance. Manual completion of an unpaid past
+  ride already worked via `PATCH status=completed`.
+- **Frontend**: an amber "Overdue" `StatusPill` (new `RideUiStatus` member, fed by
+  `RideRow.overdue` through `apiToUiRide`) shows in the rides list — but filtering
+  still uses the underlying bucket, so overdue rides stay under "Upcoming". The
+  ride detail shows an overdue notice and a one-tap **"Confirm pickup completed"**
+  button (`changeStatus("completed")`, skipping the en-route step). New i18n keys
+  `dash.status.overdue`, `dash.ride.confirmPickup`, `dash.ride.overdueNotice` (EN/ES).
+
 ## v0.16.0 — 2026-06-06 — Manual update + pickup-protocol calendar events
 
 A saved ride can now be edited **by hand**, and every scheduled ride lands on Google

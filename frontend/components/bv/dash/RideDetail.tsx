@@ -480,9 +480,16 @@ export function RideDetail({
         <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: "var(--arctic)" }}>
           {ride.client?.name || ride.passenger_name || t("dash.ride.guest")}
         </span>
-        <StatusPill status={bucket} />
+        <StatusPill status={ride.overdue ? "overdue" : bucket} />
       </div>
       <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 16 }}>BV-{ride.id}</div>
+
+      {ride.overdue && (
+        <div style={{ display: "flex", alignItems: "center", gap: 9, background: "rgba(255,138,61,0.1)", border: "1px solid rgba(255,138,61,0.4)", borderRadius: "var(--radius-md)", padding: "11px 13px", marginBottom: 16 }}>
+          <Icon name="alert-circle" size={15} color="#FF8A3D" />
+          <span style={{ fontSize: 12.5, color: "var(--silver)" }}>{t("dash.ride.overdueNotice")}</span>
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 11, marginBottom: 18 }}>
         <Row icon="circle-dot">{ride.pickup}</Row>
@@ -557,6 +564,11 @@ export function RideDetail({
 
       {/* Actions */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {ride.overdue && (
+          <Button variant="solid" icon="circle-check" disabled={busy} onClick={() => changeStatus("completed")}>
+            {t("dash.ride.confirmPickup")}
+          </Button>
+        )}
         {canSmartUpdate && (
           <Button variant="solid" icon="sparkles" disabled={busy} onClick={() => setMode("capture")}>
             {t("dash.ride.smartUpdate")}

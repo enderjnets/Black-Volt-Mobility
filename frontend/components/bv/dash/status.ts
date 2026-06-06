@@ -46,6 +46,7 @@ export function apiToUiRide(r: RideRow): Ride {
     time: fmtWhen(r.scheduled_at) === "—" ? "Not scheduled" : fmtWhen(r.scheduled_at),
     fare: Math.round(r.fare_total || 0),
     status: uiStatus(r.status),
+    overdue: r.overdue,
     flight: r.flight_number || null,
   };
 }

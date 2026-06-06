@@ -69,6 +69,10 @@ async def capture_payment(db: AsyncSession, *, tenant_id: int, payment: Payment)
             ride.paid = True
             ride.paid_at = datetime.now(UTC)
             ride.payment_method = PaymentMethod.SQUARE
+            # Settling a ride whose pickup time has passed closes it.
+            from app.services import booking
+
+            booking.complete_if_overdue_paid(ride)
     await db.commit()
     await db.refresh(payment)
     return payment

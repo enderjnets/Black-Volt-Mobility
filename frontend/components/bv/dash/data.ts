@@ -1,6 +1,6 @@
 /* Black Volt Mobility — driver dashboard sample data (mock). */
 
-export type RideUiStatus = "upcoming" | "active" | "done" | "cancelled";
+export type RideUiStatus = "upcoming" | "active" | "done" | "cancelled" | "overdue";
 
 export interface Ride {
   id: string;
@@ -11,6 +11,7 @@ export interface Ride {
   time: string;
   fare: number;
   status: RideUiStatus;
+  overdue?: boolean; // pickup time passed, still active — needs confirmation
   flight: string | null;
 }
 
