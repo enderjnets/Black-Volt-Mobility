@@ -11,6 +11,7 @@ from sqlalchemy import (
     JSON,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     func,
@@ -37,6 +38,12 @@ EVENT_TYPES = (
 
 class AnalyticsEvent(Base):
     __tablename__ = "analytics_events"
+    # Composite indexes (created by migration 0003) for the dashboard's
+    # tenant-scoped time-range and event-type aggregations.
+    __table_args__ = (
+        Index("ix_analytics_tenant_created", "tenant_id", "created_at"),
+        Index("ix_analytics_tenant_type", "tenant_id", "event_type"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tenant_id: Mapped[int] = mapped_column(

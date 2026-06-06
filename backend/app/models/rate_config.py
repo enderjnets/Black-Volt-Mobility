@@ -5,7 +5,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -31,10 +40,13 @@ DEFAULT_RATES = {
 
 class RateConfig(Base):
     __tablename__ = "rate_configs"
+    # One config per tenant — enforced by a named unique constraint (migration
+    # 0002) plus a plain lookup index on tenant_id.
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_rate_config_tenant"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tenant_id: Mapped[int] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), unique=True, index=True
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True
     )
     currency: Mapped[str] = mapped_column(String(3), default="USD")
 
