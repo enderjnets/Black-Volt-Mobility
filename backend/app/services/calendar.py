@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 
@@ -18,6 +19,21 @@ logger = logging.getLogger("blackvolt.calendar")
 
 _SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 _service_cache = None
+
+# Default reminders per the pickup protocol: popup 30 and 60 minutes before.
+_DEFAULT_REMINDERS = [
+    {"method": "popup", "minutes": 30},
+    {"method": "popup", "minutes": 60},
+]
+
+
+def _fmt_local(dt: datetime, tz: str) -> str:
+    """Wall-clock pickup time in the calendar's timezone, e.g. '3:30 AM'.
+    Naive datetimes are treated as UTC (how the booking layer stores them)."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    local = dt.astimezone(ZoneInfo(tz))
+    return local.strftime("%I:%M %p").lstrip("0")
 
 
 class CalendarError(RuntimeError):
@@ -42,36 +58,74 @@ def _service():
     return _service_cache
 
 
+def _event_body(
+    *,
+    summary: str,
+    description: str,
+    location: str,
+    start: datetime,
+    end: datetime,
+    tz: str,
+    attendees: list[str] | None,
+    reminders: list[dict] | None,
+) -> dict:
+    """Compose the Google Calendar event body (pure — no API calls)."""
+    body = {
+        "summary": summary,
+        "description": description,
+        "location": location,
+        "start": {"dateTime": start.isoformat(), "timeZone": tz},
+        "end": {"dateTime": end.isoformat(), "timeZone": tz},
+        "reminders": {
+            "useDefault": False,
+            "overrides": reminders if reminders is not None else _DEFAULT_REMINDERS,
+        },
+    }
+    if attendees:
+        body["attendees"] = [{"email": e} for e in attendees]
+    return body
+
+
 def upsert_event(
     *,
     summary: str,
     description: str,
     location: str,
     start: datetime,
-    duration_min: int,
+    end: datetime,
+    tz: str | None = None,
+    attendees: list[str] | None = None,
+    reminders: list[dict] | None = None,
     event_id: str | None = None,
 ) -> str | None:
-    """Create or update a calendar event. Returns the event id (or a simulated
-    one). Returns None and logs on failure — never raises to the caller."""
+    """Create or update a house→house calendar event spanning [start, end].
+    Returns the event id (or a simulated one). Returns the prior id and logs on
+    failure — never raises to the caller."""
     settings = get_settings()
     svc = _service()
     if svc is None:
         return event_id or f"SIM-EVT-{uuid.uuid4().hex[:18]}"
-    tz = settings.CALENDAR_TIMEZONE
-    body = {
-        "summary": summary,
-        "description": description,
-        "location": location,
-        "start": {"dateTime": start.isoformat(), "timeZone": tz},
-        "end": {"dateTime": (start + timedelta(minutes=duration_min)).isoformat(), "timeZone": tz},
-        "reminders": {"useDefault": False, "overrides": [{"method": "popup", "minutes": 30}]},
-    }
+    body = _event_body(
+        summary=summary,
+        description=description,
+        location=location,
+        start=start,
+        end=end,
+        tz=tz or settings.CALENDAR_TIMEZONE,
+        attendees=attendees,
+        reminders=reminders,
+    )
     try:
         cal = settings.GOOGLE_CALENDAR_ID
+        # sendUpdates="all" so attendees (dispatcher + driver) are notified; the
+        # protocol notes that modifying attendees on an existing event can fail,
+        # so the full attendee list is re-sent on every patch.
         if event_id:
-            ev = svc.events().patch(calendarId=cal, eventId=event_id, body=body).execute()
+            ev = svc.events().patch(
+                calendarId=cal, eventId=event_id, body=body, sendUpdates="all"
+            ).execute()
         else:
-            ev = svc.events().insert(calendarId=cal, body=body).execute()
+            ev = svc.events().insert(calendarId=cal, body=body, sendUpdates="all").execute()
         return ev.get("id")
     except Exception as e:  # network / auth / API — best-effort
         logger.warning("calendar upsert failed: %s", e)
@@ -102,10 +156,22 @@ def build_ride_event(
     flight: str | None,
     phone: str | None,
     notes: str | None,
+    pickup_time: datetime | None = None,
+    tz: str = "America/Denver",
 ) -> dict:
-    """Compose the summary/description/location for a ride event."""
+    """Compose the summary/description/location for a ride event, per the pickup
+    protocol: title `🚗 Pickup [Client] [real pickup time] — [Origin] → [Dest]`,
+    with the real pickup time also in the description so the block's house→house
+    span is never confused with the actual pickup."""
     name = client_name or "Guest"
-    parts = [f"{pickup}  →  {dropoff}"]
+    when = f" {_fmt_local(pickup_time, tz)}" if pickup_time else ""
+    route = f"{pickup} → {dropoff}"
+    summary = f"🚗 Pickup {name}{when} — {route}"
+
+    parts = []
+    if pickup_time:
+        parts.append(f"Pickup{when}")
+    parts.append(route)
     if flight:
         parts.append(f"Flight {flight}")
     if fare:
@@ -115,7 +181,7 @@ def build_ride_event(
     if notes:
         parts.append(notes)
     return {
-        "summary": f"Black Volt · {name}",
+        "summary": summary,
         "description": "\n".join(parts),
         "location": pickup,
     }

@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.16.0 — 2026-06-06 — Manual update + pickup-protocol calendar events
+
+A saved ride can now be edited **by hand**, and every scheduled ride lands on Google
+Calendar shaped like the dispatch **pickup protocol** (house→house block, real pickup
+time in the title, dispatcher + driver invited).
+
+- **Frontend**: the ride detail gains a **"Manual update"** button beside "Smart
+  update". It opens the same editable form (`RideDetail.tsx` `mode === "manual"`,
+  reusing the Smart review render, `EditField`, `changesFrom`, `previewRideUpdate`
+  and `applyUpdate`) pre-filled with the ride's current values, skipping the
+  screenshot/AI capture step. Edits re-quote the fare, surface scheduling
+  conflicts, and on apply re-sync the calendar via the existing
+  `PATCH /v1/rides/{id}` → `sync_ride_to_calendar`. New i18n key
+  `dash.ride.manualUpdate` (EN/ES).
+- **Backend (calendar, pickup protocol)**:
+  - Event title `🚗 Pickup [Client] [real pickup time] — [Origin] → [Destination]`
+    with the real pickup time also in the description (`calendar.build_ride_event`).
+  - **House→house block**: `booking.sync_ride_to_calendar` now spans
+    `pickup − deadhead(base→pickup)` to `pickup + trip + return(dropoff→base) +
+    buffer`, deadhead/return measured with Google Maps (`booking._deadhead_window`
+    + pure `house_to_house_window`). Falls back to the passenger trip when no
+    dispatch base is set.
+  - Attendees (`CALENDAR_INVITEES`) added with `sendUpdates="all"`; reminders are
+    now **popup 30 and 60 min** before (`calendar.upsert_event` rebuilt around an
+    explicit `[start, end]` window + pure `_event_body`).
+  - New config: `DISPATCH_ADDRESS`, `CALENDAR_INVITEES`, `CALENDAR_BLOCK_BUFFER_MIN`.
+- **Deferred** (separate work): Gmail draft to the dispatcher, Google Sheets CRM
+  row, and the client confirmation message.
+- **Caveat**: a service account on a personal Gmail calendar records attendees but
+  may not email invites without domain-wide delegation; `sendUpdates="all"` + the
+  full attendee list are re-sent on every patch.
+
 ## v0.15.1 — 2026-06-06 — Fix: public "Your Driver" link 404'd (slug regression)
 
 After v0.15.0 wired the public profile to a live `GET /tenants/{slug}` lookup, the

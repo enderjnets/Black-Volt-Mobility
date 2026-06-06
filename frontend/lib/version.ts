@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.15.1";
+export const CURRENT_VERSION = "0.16.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.16.0",
+    date: "2026-06-06",
+    title: "Manual update + pickup-protocol calendar events",
+    changes: [
+      "On a saved ride, tap 'Manual update' to edit the details by hand — the same form as Smart update, without screenshots.",
+      "Your edits re-quote the fare, warn about a clashing ride, and re-sync the Google Calendar event automatically.",
+      "Calendar events now follow the pickup protocol: the title shows the real pickup time and route (🚗 Pickup …).",
+      "Each event blocks the full house→house time (drive to pickup + trip + drive home + buffer), reminds 30 and 60 min before, and invites your dispatcher + driver.",
+    ],
+  },
   {
     version: "0.15.1",
     date: "2026-06-06",

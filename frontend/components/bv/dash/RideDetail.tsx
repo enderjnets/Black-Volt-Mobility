@@ -29,7 +29,7 @@ const METHODS: PaymentMethod[] = ["cash", "square", "venmo", "zelle", "other"];
 const SU_MAX_IMAGES = 5;
 
 type Shot = { file: File; url: string };
-type Mode = "view" | "capture" | "scanning" | "review" | "confirm";
+type Mode = "view" | "capture" | "scanning" | "review" | "manual" | "confirm";
 
 // A flat, editable snapshot of the ride fields the Smart update touches.
 type Draft = {
@@ -218,6 +218,19 @@ export function RideDetail({
     setSuNoRead(false);
     setMode("view");
   };
+  // Manual update: open the same editable form as the Smart review, pre-filled
+  // with the ride's current values, skipping the screenshot/AI capture step.
+  const startManual = () => {
+    if (!ride) return;
+    const d = draftOf(ride);
+    setOrig(d);
+    setDraft(d);
+    setPreview(null);
+    setDemo(false);
+    setSuNoRead(false);
+    setErr(null);
+    setMode("manual");
+  };
   useEffect(() => () => shots.forEach((s) => URL.revokeObjectURL(s.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Paste-to-add while capturing.
@@ -271,9 +284,9 @@ export function RideDetail({
     setMode("review");
   };
 
-  // Re-quote + conflict check whenever the draft changes in review.
+  // Re-quote + conflict check whenever the draft changes in review/manual edit.
   useEffect(() => {
-    if (mode !== "review" || !draft || !orig) return;
+    if ((mode !== "review" && mode !== "manual") || !draft || !orig) return;
     const changes = changesFrom(draft, orig);
     if (Object.keys(changes).length === 0) {
       setPreview(null);
@@ -369,8 +382,9 @@ export function RideDetail({
     );
   }
 
-  // ── Smart update: review diff + conflicts ──────────────────────────────────
-  if (mode === "review" && draft && orig) {
+  // ── Smart update / Manual update: editable diff + conflicts ─────────────────
+  if ((mode === "review" || mode === "manual") && draft && orig) {
+    const manual = mode === "manual";
     const changes = changesFrom(draft, orig);
     const changedKeys = new Set(Object.keys(changes));
     const conflicts = preview?.conflicts || [];
@@ -379,8 +393,8 @@ export function RideDetail({
     return shell(
       <>
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 4 }}>
-          <Icon name="sparkles" size={18} color="var(--volt)" />
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, color: "var(--arctic)" }}>{t("dash.ride.su.review")}</span>
+          <Icon name={manual ? "pencil" : "sparkles"} size={18} color="var(--volt)" />
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, color: "var(--arctic)" }}>{manual ? t("dash.ride.manualUpdate") : t("dash.ride.su.review")}</span>
         </div>
         <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 16 }}>BV-{ride.id}</div>
         {demo && (
@@ -432,7 +446,7 @@ export function RideDetail({
         )}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
-          <Button variant="ghost" icon="arrow-left" disabled={busy} onClick={() => { clearShots(); setMode("capture"); }}>
+          <Button variant="ghost" icon="arrow-left" disabled={busy} onClick={manual ? closeSmart : () => { clearShots(); setMode("capture"); }}>
             {t("dash.ride.su.back")}
           </Button>
           {changedKeys.size === 0 ? (
@@ -546,6 +560,11 @@ export function RideDetail({
         {canSmartUpdate && (
           <Button variant="solid" icon="sparkles" disabled={busy} onClick={() => setMode("capture")}>
             {t("dash.ride.smartUpdate")}
+          </Button>
+        )}
+        {canSmartUpdate && (
+          <Button variant="tint" icon="pencil" disabled={busy} onClick={startManual}>
+            {t("dash.ride.manualUpdate")}
           </Button>
         )}
         {pay?.status === "authorized" && (

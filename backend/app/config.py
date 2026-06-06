@@ -102,6 +102,15 @@ class Settings(BaseSettings):
     GOOGLE_SERVICE_ACCOUNT_FILE: str = ""  # path to the mounted SA JSON
     CALENDAR_TIMEZONE: str = "America/Denver"
 
+    # Pickup-protocol calendar shaping. The event block runs house→house: leave
+    # the dispatch base (deadhead to pickup) → return to base (after drop-off +
+    # turnaround buffer). DISPATCH_ADDRESS empty disables deadhead/return shaping
+    # (event = passenger trip only). CALENDAR_INVITEES is a comma-separated list
+    # added as event attendees (e.g. the dispatcher + driver).
+    DISPATCH_ADDRESS: str = ""  # e.g. "6000 S Fraser St, Aurora, CO 80016"
+    CALENDAR_INVITEES: str = ""  # CSV, e.g. "margie240478@gmail.com,enderjnets@gmail.com"
+    CALENDAR_BLOCK_BUFFER_MIN: int = 20  # turnaround buffer at the end of the block
+
     @property
     def calendar_live(self) -> bool:
         return (
@@ -109,6 +118,12 @@ class Settings(BaseSettings):
             and bool(self.GOOGLE_SERVICE_ACCOUNT_FILE)
             and bool(self.GOOGLE_CALENDAR_ID)
         )
+
+    @property
+    def calendar_invitees(self) -> list[str]:
+        # Drop blanks and malformed entries — one bad value would otherwise make
+        # Google reject the whole event body and silently kill all calendar sync.
+        return [e.strip() for e in self.CALENDAR_INVITEES.split(",") if "@" in e.strip()]
 
     # Minimum gap (minutes) required between two rides before they count as a
     # scheduling conflict (travel + turnaround for the single driver).

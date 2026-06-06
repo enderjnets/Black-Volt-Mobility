@@ -2,14 +2,18 @@
 persistence. All queries are tenant-scoped."""
 from __future__ import annotations
 
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models import RateConfig, Ride, RideStatus
 from app.models.rate_config import DEFAULT_RATES
 from app.services import maps, pricing
+
+logger = logging.getLogger("blackvolt.booking")
 
 
 async def get_or_create_rate_config(db: AsyncSession, *, tenant_id: int) -> RateConfig:
@@ -149,16 +153,44 @@ async def create_ride(
 _INACTIVE = (RideStatus.CANCELLED, RideStatus.NO_SHOW, RideStatus.COMPLETED)
 
 
+def house_to_house_window(
+    scheduled_at: datetime, *, lead_min: float, trip_min: float, trail_min: float
+) -> tuple[datetime, datetime]:
+    """Calendar block for a pickup (pickup-protocol house→house rule): leave the
+    dispatch base `lead_min` (deadhead) before the pickup and return home
+    `trip_min + trail_min` after it (passenger trip + return drive + turnaround
+    buffer). The real pickup time stays in the event title/description."""
+    start = scheduled_at - timedelta(minutes=lead_min)
+    end = scheduled_at + timedelta(minutes=trip_min + trail_min)
+    return start, end
+
+
+async def _deadhead_window(ride: Ride) -> tuple[float, float]:
+    """Deadhead (base→pickup) and trail (dropoff→base + buffer) minutes for the
+    house→house block. Returns (0, 0) when no dispatch base is configured, so the
+    event falls back to the passenger trip only. Best-effort: a maps failure
+    fails soft to a simulated route inside maps.route."""
+    settings = get_settings()
+    home = settings.DISPATCH_ADDRESS.strip()
+    if not home:
+        return 0.0, 0.0
+    lead = (await maps.route(home, ride.pickup_text)).duration_minutes
+    ret = (await maps.route(ride.dropoff_text, home)).duration_minutes
+    return lead, ret + settings.CALENDAR_BLOCK_BUFFER_MIN
+
+
 async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
     """Push a scheduled, active ride to Google Calendar (create or update) and
-    store the event id. Best-effort — never raises (calendar must not block
-    bookings)."""
+    store the event id. The event spans the house→house block per the pickup
+    protocol, carries the dispatcher+driver as attendees, and reminds 30/60 min
+    before. Best-effort — never raises (calendar must not block bookings)."""
     if ride.scheduled_at is None or ride.status in _INACTIVE:
         return
     try:
         from app.models import Client
         from app.services import calendar
 
+        settings = get_settings()
         name = ride.passenger_name
         if ride.client_id:
             c = (
@@ -166,6 +198,14 @@ async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
             ).scalar_one_or_none()
             if c and c.name:
                 name = c.name
+
+        lead, trail = await _deadhead_window(ride)
+        start, end = house_to_house_window(
+            ride.scheduled_at,
+            lead_min=lead,
+            trip_min=ride.duration_minutes or 60,
+            trail_min=trail,
+        )
         ev = calendar.build_ride_event(
             client_name=name,
             pickup=ride.pickup_text,
@@ -174,19 +214,26 @@ async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
             flight=ride.flight_number,
             phone=ride.passenger_phone,
             notes=ride.notes,
+            pickup_time=ride.scheduled_at,
+            tz=settings.CALENDAR_TIMEZONE,
         )
         event_id = calendar.upsert_event(
             summary=ev["summary"],
             description=ev["description"],
             location=ev["location"],
-            start=ride.scheduled_at,
-            duration_min=int(ride.duration_minutes or 60),
+            start=start,
+            end=end,
+            tz=settings.CALENDAR_TIMEZONE,
+            attendees=settings.calendar_invitees,
             event_id=ride.google_event_id,
         )
         if event_id and event_id != ride.google_event_id:
             ride.google_event_id = event_id
             await db.commit()
-    except Exception:  # noqa: BLE001 — best-effort, never block the booking
+    except Exception as e:  # noqa: BLE001 — best-effort, never block the booking
+        # Surface the failure (bad invitee, invalid timezone, maps/creds error)
+        # so a systematically-broken calendar is detectable, then roll back.
+        logger.warning("calendar sync failed for ride %s: %s", ride.id, e)
         await db.rollback()
 
 
