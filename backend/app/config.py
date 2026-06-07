@@ -100,6 +100,11 @@ class Settings(BaseSettings):
     CALENDAR_SIMULATED: bool = True
     GOOGLE_CALENDAR_ID: str = ""  # e.g. blackvoltmobility@gmail.com
     GOOGLE_SERVICE_ACCOUNT_FILE: str = ""  # path to the mounted SA JSON
+    # OAuth user credentials (authorized_user JSON with a refresh_token) for the
+    # calendar OWNER. Required to invite attendees — a service account cannot
+    # (403 forbiddenForServiceAccounts without domain-wide delegation). When set,
+    # it takes precedence over the service account.
+    GOOGLE_OAUTH_TOKEN_FILE: str = ""  # path to the mounted authorized_user JSON
     CALENDAR_TIMEZONE: str = "America/Denver"
 
     # Pickup-protocol calendar shaping. The event block runs house→house: leave
@@ -115,9 +120,16 @@ class Settings(BaseSettings):
     def calendar_live(self) -> bool:
         return (
             not self.CALENDAR_SIMULATED
-            and bool(self.GOOGLE_SERVICE_ACCOUNT_FILE)
             and bool(self.GOOGLE_CALENDAR_ID)
+            and bool(self.GOOGLE_OAUTH_TOKEN_FILE or self.GOOGLE_SERVICE_ACCOUNT_FILE)
         )
+
+    @property
+    def calendar_can_invite(self) -> bool:
+        """Attendees can only be invited via OAuth (owner) creds, not a service
+        account. Used to gate attendees so a service-account deploy still creates
+        events (without invites) instead of 403'ing."""
+        return bool(self.GOOGLE_OAUTH_TOKEN_FILE)
 
     @property
     def calendar_invitees(self) -> list[str]:

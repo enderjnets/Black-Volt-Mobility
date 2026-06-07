@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.17.0";
+export const CURRENT_VERSION = "0.18.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.18.0",
+    date: "2026-06-07",
+    title: "Calendar fixed — pickups post again + real invites",
+    changes: [
+      "Fixed: new pickups stopped landing on the Google Calendar (adding guests via a service account was rejected by Google).",
+      "Pickups post again immediately; with the owner's Google account connected, Margie and Ender now get a real event invitation per pickup.",
+      "Reminders are now 2 hours and 1 hour before you leave the house (house→house departure time).",
+      "The driver's home (6000 S Fraser St) deadhead is subtracted so the event blocks the full door-to-door time.",
+    ],
+  },
   {
     version: "0.17.0",
     date: "2026-06-06",

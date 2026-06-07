@@ -20,9 +20,10 @@ logger = logging.getLogger("blackvolt.calendar")
 _SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 _service_cache = None
 
-# Default reminders per the pickup protocol: popup 30 and 60 minutes before.
+# Default reminders per the pickup protocol: popup 2h and 1h before the event
+# start (= the driver's house-departure time for the house→house block).
 _DEFAULT_REMINDERS = [
-    {"method": "popup", "minutes": 30},
+    {"method": "popup", "minutes": 120},
     {"method": "popup", "minutes": 60},
 ]
 
@@ -40,6 +41,27 @@ class CalendarError(RuntimeError):
     pass
 
 
+def _credentials(settings):
+    """Calendar credentials: prefer OAuth user creds (can invite attendees),
+    fall back to the service account (cannot invite). Refreshes an expired OAuth
+    access token in place (the refresh_token persists)."""
+    if settings.GOOGLE_OAUTH_TOKEN_FILE:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+
+        creds = Credentials.from_authorized_user_file(
+            settings.GOOGLE_OAUTH_TOKEN_FILE, _SCOPES
+        )
+        if not creds.valid and creds.refresh_token:
+            creds.refresh(Request())
+        return creds
+    from google.oauth2 import service_account
+
+    return service_account.Credentials.from_service_account_file(
+        settings.GOOGLE_SERVICE_ACCOUNT_FILE, scopes=_SCOPES
+    )
+
+
 def _service():
     """Cached Google Calendar v3 service, or None when simulated/unconfigured."""
     global _service_cache
@@ -48,12 +70,9 @@ def _service():
         return None
     if _service_cache is not None:
         return _service_cache
-    from google.oauth2 import service_account
     from googleapiclient.discovery import build
 
-    creds = service_account.Credentials.from_service_account_file(
-        settings.GOOGLE_SERVICE_ACCOUNT_FILE, scopes=_SCOPES
-    )
+    creds = _credentials(settings)
     _service_cache = build("calendar", "v3", credentials=creds, cache_discovery=False)
     return _service_cache
 
@@ -129,6 +148,10 @@ def upsert_event(
         return ev.get("id")
     except Exception as e:  # network / auth / API — best-effort
         logger.warning("calendar upsert failed: %s", e)
+        # Drop the cached service so the next call rebuilds it — recovers after a
+        # rotated OAuth token (e.g. re-consent) without a process restart.
+        global _service_cache
+        _service_cache = None
         return event_id
 
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.18.0 — 2026-06-07 — Calendar OAuth: pickups post again + real invites
+
+Since v0.16.0 **no new pickup landed on the `blackvoltmobility@gmail.com` calendar**.
+Root cause (confirmed in prod logs): adding Margie+Ender as `attendees` made Google
+reject the whole event — `403 forbiddenForServiceAccounts: "Service accounts cannot
+invite attendees without Domain-Wide Delegation of Authority."` (a service account on
+a personal Gmail cannot invite). v0.16.0's caveat understated it: it broke sync entirely.
+
+- **Fix + graceful degradation** (`config.calendar_can_invite`, `booking.sync_ride_to_calendar`):
+  attendees are only attached when OAuth owner creds are configured. Without OAuth the
+  event is created **without** attendees (no 403) — so pickups post again immediately.
+- **OAuth owner credentials** (`config.GOOGLE_OAUTH_TOKEN_FILE`, `calendar._credentials`):
+  when an authorized-user token for `blackvoltmobility@gmail.com` is mounted, the backend
+  acts as the owner and **invites Margie + Ender per event** (`sendUpdates="all"`), with the
+  cached service auto-refreshing the access token. One-time setup via the new
+  `app/scripts/calendar_oauth_setup.py` (consent screen must be **"In production"** so the
+  refresh token doesn't expire after 7 days). `calendar_live` now accepts OAuth **or** SA.
+- **Reminders** are now **popup 120 and 60 minutes** before the event start — i.e. 2h and 1h
+  before the driver's house-departure time (the house→house block already subtracts the
+  deadhead from `DISPATCH_ADDRESS` = 6000 S Fraser St).
+- **Self-heal**: a failed calendar call drops the cached service so a rotated OAuth token is
+  picked up without a restart. Setup script asserts a `refresh_token` was issued; `.gitignore`
+  hardened against committing `gcal-oauth.json` / `client_secret*.json`.
+- Backfill the rides that failed under the 403: `docker compose exec -T backend python -m app.scripts.sync_calendar`.
+
 ## v0.17.0 — 2026-06-06 — Overdue rides: confirm the pickup happened
 
 A scheduled ride whose pickup time has passed no longer lingers as "Upcoming".

@@ -32,6 +32,9 @@ postgres-data/
 # Owner-uploaded brand assets (logo/photo) — runtime, on a Docker volume
 backend/media/
 
-# Service-account JSON keys (Google Calendar, etc.)
+# Service-account / OAuth JSON keys (Google Calendar, etc.)
 secrets/*
 !secrets/.gitkeep
+# OAuth secrets, even if written outside secrets/ (the setup script's default out)
+gcal-oauth.json
+client_secret*.json

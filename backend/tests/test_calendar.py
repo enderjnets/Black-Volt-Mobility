@@ -15,6 +15,7 @@ from app.config import get_settings  # noqa: E402
 
 get_settings.cache_clear()
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
@@ -156,3 +157,56 @@ def test_unscheduled_ride_no_event():
         "/api/v1/rides", json={"pickup": "Cherry Creek", "dropoff": "DEN", "confirm": True}
     ).json()["id"]
     assert c.get(f"/api/v1/rides/{rid}").json()["google_event_id"] is None
+
+
+def test_calendar_can_invite_and_live_with_oauth_or_sa():
+    from app.config import Settings
+
+    base = dict(CALENDAR_SIMULATED=False, GOOGLE_CALENDAR_ID="cal@x")
+    oauth = Settings(**base, GOOGLE_OAUTH_TOKEN_FILE="/secrets/o.json")
+    sa = Settings(**base, GOOGLE_SERVICE_ACCOUNT_FILE="/secrets/sa.json")
+    # Only OAuth can invite attendees; a service account cannot.
+    assert oauth.calendar_can_invite is True
+    assert sa.calendar_can_invite is False
+    # Calendar is live with either OAuth or a service account, but not neither.
+    assert oauth.calendar_live is True
+    assert sa.calendar_live is True
+    assert Settings(**base).calendar_live is False
+
+
+def test_default_reminders_are_2h_and_1h():
+    body = calendar._event_body(
+        summary="s",
+        description="d",
+        location="l",
+        start=datetime(2026, 6, 14, 9, 0, tzinfo=UTC),
+        end=datetime(2026, 6, 14, 11, 0, tzinfo=UTC),
+        tz="America/Denver",
+        attendees=None,
+        reminders=None,
+    )
+    # Reminders default to 2h and 1h before the house-departure (event start).
+    assert {r["minutes"] for r in body["reminders"]["overrides"]} == {120, 60}
+
+
+@pytest.mark.asyncio
+async def test_sync_omits_attendees_without_oauth(monkeypatch):
+    # Test env has CALENDAR_INVITEES set but no OAuth token → can_invite is False,
+    # so a service-account event must NOT carry attendees (that triggers a 403).
+    import app.services.calendar as cal
+
+    captured = {}
+
+    def fake_upsert(**kw):
+        captured.update(kw)
+        return "SIM-EVT-cap"
+
+    monkeypatch.setattr(cal, "upsert_event", fake_upsert)
+    c = _owner()
+    when = (datetime.now(UTC) + timedelta(days=3)).isoformat()
+    c.post(
+        "/api/v1/rides",
+        json={"pickup": "Parker, CO", "dropoff": "DEN", "scheduled_at": when, "confirm": True},
+    )
+    assert "attendees" in captured
+    assert captured["attendees"] is None

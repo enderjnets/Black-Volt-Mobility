@@ -268,7 +268,9 @@ async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
             start=start,
             end=end,
             tz=settings.CALENDAR_TIMEZONE,
-            attendees=settings.calendar_invitees,
+            # Only attach attendees when we can actually invite (OAuth). A service
+            # account 403s on attendees, which would drop the whole event.
+            attendees=settings.calendar_invitees if settings.calendar_can_invite else None,
             event_id=ride.google_event_id,
         )
         if event_id and event_id != ride.google_event_id:
