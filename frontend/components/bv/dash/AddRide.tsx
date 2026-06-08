@@ -9,7 +9,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
 import { SuggestionDropdown, useAddressSuggest } from "../AddressAutocomplete";
+import { ClientSuggestionDropdown, useClientSuggest } from "../ClientAutocomplete";
 import { useI18n } from "@/lib/i18n";
+import type { ClientLite } from "@/lib/dashboard";
 import { createRide, getQuote } from "@/lib/booking";
 import { extractReservation, hasAnyField, SmartError } from "@/lib/smart";
 
@@ -21,6 +23,9 @@ type Form = Record<string, string>;
 const BV_BLANK: Form = {
   name: "", phone: "", lang: "EN", pickup: "", dropoff: "", date: "", time: "",
   flight: "", passengers: "", fare: "", notes: "",
+  // Set when the name is picked from an existing client so the ride links to that
+  // client; cleared as soon as the name is edited by hand (→ get-or-create).
+  client_id: "",
 };
 const BV_REQUIRED = ["name", "phone", "pickup", "dropoff", "date", "time", "fare"];
 
@@ -295,6 +300,7 @@ export function AddRide() {
         notes: form.notes || null,
         passenger_name: form.name || null,
         passenger_phone: form.phone || null,
+        client_id: form.client_id ? Number(form.client_id) : null,
         fare_override: form.fare ? Number(form.fare) : null,
         confirm: true,
       });
@@ -475,7 +481,21 @@ export function AddRide() {
             {mode === "smart" && aiRan && <ReviewBanner t={t} missing={missing} form={form} demo={smartDemo} noRead={noRead} onBack={reset} />}
 
             <FormSection title={t.secClient} icon="user">
-              <RideField id="name" label={t.name} icon="user" ph={t.namePh} value={form.name} onChange={(v) => set("name", v)} state={fieldState("name", form, aiFields, mode, aiRan)} t={t} />
+              <ClientNameField
+                value={form.name}
+                state={fieldState("name", form, aiFields, mode, aiRan)}
+                t={t}
+                onName={(v) => setForm((f) => ({ ...f, name: v, client_id: "" }))}
+                onPick={(c) =>
+                  setForm((f) => ({
+                    ...f,
+                    name: c.name,
+                    phone: c.phone || f.phone,
+                    lang: (c.lang || f.lang || "EN").toUpperCase() === "ES" ? "ES" : "EN",
+                    client_id: String(c.id),
+                  }))
+                }
+              />
               <RideField id="phone" label={t.phone} icon="phone" ph={t.phonePh} value={form.phone} onChange={(v) => set("phone", v)} state={fieldState("phone", form, aiFields, mode, aiRan)} t={t} />
               <LangSeg label={t.prefLang} value={form.lang} onChange={(v) => set("lang", v)} t={t} />
             </FormSection>
@@ -901,6 +921,38 @@ function AutocompleteField(props: {
         onKeyDown={ctl.handleKeyDown}
       />
       <SuggestionDropdown ctl={ctl} />
+    </div>
+  );
+}
+
+// Client full-name with CRM autocomplete. Typing searches saved clients; picking
+// one fills phone + language and links the ride (client_id). Editing the name by
+// hand clears the link so a brand-new name becomes a new client on submit.
+function ClientNameField(props: {
+  value: string;
+  state: string;
+  t: any;
+  onName: (v: string) => void;
+  onPick: (c: ClientLite) => void;
+}) {
+  const ctl = useClientSuggest({ onPick: props.onPick });
+  return (
+    <div ref={ctl.containerRef} style={{ position: "relative", gridColumn: "1 / -1" }}>
+      <RideField
+        id="name"
+        label={props.t.name}
+        icon="user"
+        ph={props.t.namePh}
+        value={props.value}
+        state={props.state}
+        t={props.t}
+        onChange={(v) => {
+          props.onName(v);
+          ctl.handleType(v);
+        }}
+        onKeyDown={ctl.handleKeyDown}
+      />
+      <ClientSuggestionDropdown ctl={ctl} />
     </div>
   );
 }

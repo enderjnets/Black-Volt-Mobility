@@ -46,6 +46,51 @@ export async function getClientDetail(id: number): Promise<ClientDetail> {
   return jget<ClientDetail>(`/v1/clients/${id}`);
 }
 
+/* Compact client match for the Add-ride name autocomplete. */
+export interface ClientLite {
+  id: number;
+  name: string;
+  phone: string | null;
+  lang: string;
+}
+
+export async function searchClients(q: string): Promise<ClientLite[]> {
+  const r = await jget<{ clients: ClientLite[] }>(
+    `/v1/clients/search?q=${encodeURIComponent(q)}`,
+  );
+  return r.clients;
+}
+
+export async function createClient(body: {
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  lang?: string;
+}): Promise<ClientDetail> {
+  const r = await fetch("/api/v1/clients", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(fmtApiDetail((d as { detail?: unknown }).detail, `client:${r.status}`));
+  }
+  return r.json();
+}
+
+export async function deleteClient(id: number): Promise<void> {
+  const r = await fetch(`/api/v1/clients/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!r.ok && r.status !== 204) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(fmtApiDetail((d as { detail?: unknown }).detail, `client:${r.status}`));
+  }
+}
+
 export async function updateClient(
   id: number,
   body: { name?: string; phone?: string | null; email?: string | null; lang?: string },

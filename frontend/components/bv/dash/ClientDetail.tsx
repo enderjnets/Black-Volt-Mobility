@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
 import { useI18n } from "@/lib/i18n";
-import { getClientDetail, updateClient, type ClientDetail as CD } from "@/lib/dashboard";
+import { deleteClient, getClientDetail, updateClient, type ClientDetail as CD } from "@/lib/dashboard";
 import type { RideRow } from "@/lib/booking";
 import { StatusPill } from "./DashShell";
 import { fmtWhen, uiStatus } from "./status";
@@ -47,6 +47,7 @@ export function ClientDetail({
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [openRide, setOpenRide] = useState<number | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const load = () =>
     getClientDetail(clientId)
@@ -87,6 +88,21 @@ export function ClientDetail({
       setErr(e instanceof Error && e.message ? e.message : "save");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const del = async () => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await deleteClient(clientId);
+      onChanged?.();
+      onClose();
+    } catch {
+      setErr("delete");
+      setBusy(false);
+      setConfirmDel(false);
     }
   };
 
@@ -165,7 +181,7 @@ export function ClientDetail({
               {err && err !== "load" && (
                 <div style={{ fontSize: 12.5, color: "var(--danger)", marginBottom: 10, display: "flex", alignItems: "flex-start", gap: 6 }}>
                   <Icon name="alert-circle" size={14} color="var(--danger)" />
-                  <span>{err === "save" ? t("dash.client.saveErr") : err}</span>
+                  <span>{err === "save" ? t("dash.client.saveErr") : err === "delete" ? t("dash.client.deleteErr") : err}</span>
                 </div>
               )}
 
@@ -187,6 +203,32 @@ export function ClientDetail({
                   ))}
                 </div>
               )}
+
+              {/* Danger zone: delete keeps the ride history (rides are detached, the
+                  passenger name/phone snapshot survives on each ride). */}
+              <div style={{ marginTop: 22, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                {confirmDel ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ fontSize: 12.5, color: "var(--silver)" }}>{t("dash.client.deleteConfirm")}</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Button variant="solid" icon="trash-2" disabled={busy} onClick={del} style={{ background: "var(--danger)", color: "var(--void)" }}>
+                        {busy ? t("dash.client.deleting") : t("dash.client.deleteYes")}
+                      </Button>
+                      <Button variant="ghost" disabled={busy} onClick={() => setConfirmDel(false)}>
+                        {t("dash.addClient.cancel")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDel(true)}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--danger)", fontFamily: "var(--font-sans)" }}
+                  >
+                    <Icon name="trash-2" size={14} color="var(--danger)" />
+                    {t("dash.client.delete")}
+                  </button>
+                )}
+              </div>
             </>
           )}
         </div>

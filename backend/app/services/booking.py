@@ -121,6 +121,16 @@ async def create_ride(
         is_loyalty=is_loyalty,
         is_peak=is_peak,
     )
+    # Persist a driver-entered passenger as a real Client (CRM + autocomplete);
+    # the ad-hoc name/phone stay on the ride as a snapshot for history.
+    if client_id is None and (passenger_name or passenger_phone):
+        from app.services.tenancy import find_or_create_client_by_contact
+
+        c = await find_or_create_client_by_contact(
+            db, tenant_id=tenant_id, name=passenger_name, phone=passenger_phone, lang=lang
+        )
+        if c is not None:
+            client_id = c.id
     ride = Ride(
         tenant_id=tenant_id,
         client_id=client_id,

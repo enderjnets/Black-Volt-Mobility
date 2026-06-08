@@ -187,6 +187,75 @@ async def public_profile(db: AsyncSession, *, slug: str) -> dict | None:
     }
 
 
+def _digits(phone: str | None) -> str:
+    """Digits-only form of a phone for tolerant matching (+1 303-555 == 1303555)."""
+    return "".join(ch for ch in (phone or "") if ch.isdigit())
+
+
+def _lang2(lang: str | None) -> str | None:
+    """Map a free language value to the stored 2-letter code, or None."""
+    val = (lang or "").strip().lower()
+    if val in ("es", "spanish", "español", "espanol"):
+        return "ES"
+    if val in ("en", "english", "inglés", "ingles"):
+        return "EN"
+    return None
+
+
+async def find_or_create_client_by_contact(
+    db: AsyncSession,
+    *,
+    tenant_id: int,
+    name: str | None,
+    phone: str | None,
+    lang: str | None = None,
+) -> Client | None:
+    """Get-or-create a driver-entered passenger (manual/smart ride) as a real
+    Client so they show up in the CRM and accrue rides. Matches an existing client
+    by phone (digits-only) first, else by exact name (case-insensitive) when no
+    phone is given. Fills missing fields without overwriting. Returns None when
+    there's nothing to identify a person. Flushes so the caller sees `id`."""
+    name = (name or "").strip() or None
+    phone = (phone or "").strip() or None
+    lang = _lang2(lang)
+    if not name and not phone:
+        return None
+
+    row = None
+    digits = _digits(phone)
+    if digits:
+        candidates = (
+            await db.execute(
+                select(Client).where(
+                    Client.tenant_id == tenant_id, Client.phone.isnot(None)
+                )
+            )
+        ).scalars().all()
+        row = next((c for c in candidates if _digits(c.phone) == digits), None)
+    if row is None and name and not phone:
+        row = (
+            await db.execute(
+                select(Client).where(
+                    Client.tenant_id == tenant_id,
+                    func.lower(Client.name) == name.lower(),
+                )
+            )
+        ).scalars().first()
+
+    if row is None:
+        row = Client(tenant_id=tenant_id, name=name, phone=phone, lang=lang)
+        db.add(row)
+    else:
+        if name and not row.name:
+            row.name = name
+        if phone and not row.phone:
+            row.phone = phone
+        if lang and not row.lang:
+            row.lang = lang
+    await db.flush()
+    return row
+
+
 async def find_or_create_client(
     db: AsyncSession,
     *,

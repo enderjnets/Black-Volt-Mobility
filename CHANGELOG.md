@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.19.0 — 2026-06-08 — Clients saved automatically + name autocomplete + CRUD
+
+The owner reported that adding a ride with a new client never saved that client to the
+CRM. Root cause: `booking.create_ride` only stored `passenger_name`/`passenger_phone` as
+loose text on the ride and left `client_id = NULL` — the person never became a `Client`
+row, so they never appeared in Clients or accrued rides/spend. (The clients that did show
+up only existed via passenger-portal Google sign-in.)
+
+Three connected changes:
+
+- **Persist on create** — new `find_or_create_client_by_contact` (in
+  `backend/app/services/tenancy.py`): when a ride is created without a `client_id` but with
+  a name/phone, get-or-create a real `Client` (match by digits-only phone first, else exact
+  name when no phone), fill missing fields without overwriting, and link the ride. Runs in
+  the same transaction as the ride (`flush` → ride insert → one `commit`), so no orphan.
+- **Name autocomplete** — `GET /clients/search` (tenant-scoped, ILIKE on name/phone/email,
+  capped at 50 candidates → top 8 by ride count). Frontend `useClientSuggest` hook +
+  dropdown (`ClientAutocomplete.tsx`) on the Add ride Full-name field (Manual + Smart):
+  picking a client fills phone + language and links `client_id`; editing the name clears the
+  link so a brand-new name becomes a new client.
+- **CRUD** — `POST /clients` (Add-client modal on the Clients page) and
+  `DELETE /clients/{id}` (delete from the client profile). Delete **preserves ride history**:
+  it backfills `passenger_name`/`passenger_phone` onto each ride that lacks them, detaches
+  `client_id`, then removes the client — rides and revenue survive.
+
+TDD: 11 new tests in `backend/tests/test_client_persist.py` (persist+dedup, search,
+create, delete-preserves-history, staff-only); full suite 119 passing. Frontend `tsc` +
+`next lint` clean. Verified end-to-end with Playwright on the local stack (autocomplete
+pick fills phone, create+delete round-trip, count 42→41 after delete). Multi-tenant
+scoping and FastAPI route ordering (`/clients/search` before `/clients/{id}`) reviewed.
+
 ## v0.18.1 — 2026-06-07 — Responsive: dashboard looks like a phone app on any screen
 
 On an unfolded Galaxy Z Fold (~884px, under the 900px breakpoint) the dashboard showed

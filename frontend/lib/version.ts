@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.18.1";
+export const CURRENT_VERSION = "0.19.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.19.0",
+    date: "2026-06-08",
+    title: "Clients are saved automatically + name autocomplete + add/edit/delete",
+    changes: [
+      "Add ride now saves the client to your CRM automatically — typing a name (or a Smart extraction) creates or links a real client, so they show up in Clients and build up rides + lifetime spend.",
+      "The Full name field autocompletes from your saved clients (Manual and Smart) — pick one and it fills the phone + language and links the ride to them.",
+      "Clients page: 'Add client' to create one by hand, and delete a client from their profile.",
+      "Deleting a client keeps their past rides (the name + phone stay on each ride) — no history or revenue is lost.",
+    ],
+  },
   {
     version: "0.18.1",
     date: "2026-06-07",

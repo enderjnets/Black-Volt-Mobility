@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Client, Payment, PaymentStatus, Ride, RideStatus
@@ -277,6 +277,109 @@ async def update_client(
     await db.commit()
     await db.refresh(c)
     return c
+
+
+async def search_clients(
+    db: AsyncSession, *, tenant_id: int, q: str, limit: int = 8
+) -> list[dict]:
+    """Compact client matches for the Add-ride name autocomplete. Matches name,
+    phone, or email (case-insensitive), most-active first. Tenant-scoped."""
+    term = (q or "").strip()
+    if not term:
+        return []
+    like = f"%{term}%"
+    clients = (
+        await db.execute(
+            select(Client)
+            .where(
+                Client.tenant_id == tenant_id,
+                or_(
+                    Client.name.ilike(like),
+                    Client.phone.ilike(like),
+                    Client.email.ilike(like),
+                ),
+            )
+            # Cap the candidate set on the hot (per-keystroke) path; we only need
+            # the top `limit` by ride count, not every ILIKE match for a 2-char q.
+            .limit(50)
+        )
+    ).scalars().all()
+    if not clients:
+        return []
+    ids = [c.id for c in clients]
+    agg = (
+        await db.execute(
+            select(Ride.client_id, func.count())
+            .where(
+                Ride.tenant_id == tenant_id,
+                Ride.client_id.in_(ids),
+                Ride.status.notin_(_CANCELLED),
+            )
+            .group_by(Ride.client_id)
+        )
+    ).all()
+    rides_by = {r[0]: r[1] for r in agg}
+    clients.sort(key=lambda c: rides_by.get(c.id, 0), reverse=True)
+    return [
+        {
+            "id": c.id,
+            "name": c.name or (c.email.split("@")[0] if c.email else "Client"),
+            "phone": c.phone,
+            "lang": (c.lang or "EN").upper(),
+        }
+        for c in clients[:limit]
+    ]
+
+
+async def create_client(
+    db: AsyncSession,
+    *,
+    tenant_id: int,
+    name: str,
+    phone: str | None = None,
+    email: str | None = None,
+    lang: str | None = None,
+) -> Client:
+    """Create a client by hand from the Clients page (staff). Tenant-scoped."""
+    c = Client(
+        tenant_id=tenant_id,
+        name=name.strip(),
+        phone=(phone or "").strip() or None,
+        email=(email or "").strip() or None,
+        lang=lang or None,
+    )
+    db.add(c)
+    await db.commit()
+    await db.refresh(c)
+    return c
+
+
+async def delete_client(db: AsyncSession, *, tenant_id: int, client_id: int) -> bool:
+    """Delete a client while preserving ride history: backfill the passenger
+    name/phone snapshot onto each ride that lacks it, detach client_id (the FK is
+    ON DELETE SET NULL, but we backfill first so the name survives), then remove
+    the client. Returns False if the client doesn't exist. Tenant-scoped."""
+    c = (
+        await db.execute(
+            select(Client).where(Client.tenant_id == tenant_id, Client.id == client_id)
+        )
+    ).scalar_one_or_none()
+    if c is None:
+        return False
+    rides = (
+        await db.execute(
+            select(Ride).where(Ride.tenant_id == tenant_id, Ride.client_id == client_id)
+        )
+    ).scalars().all()
+    for r in rides:
+        if not r.passenger_name and c.name:
+            r.passenger_name = c.name
+        if not r.passenger_phone and c.phone:
+            r.passenger_phone = c.phone
+        r.client_id = None
+    await db.delete(c)
+    await db.commit()
+    return True
 
 
 async def latest_payment(db: AsyncSession, *, tenant_id: int, ride_id: int) -> Payment | None:

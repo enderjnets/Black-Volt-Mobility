@@ -46,6 +46,7 @@ export interface RideInput {
   notes?: string | null;
   passenger_name?: string | null;
   passenger_phone?: string | null;
+  client_id?: number | null;
   fare_override?: number | null;
   confirm?: boolean;
 }
