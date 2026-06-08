@@ -16,6 +16,9 @@ import hmac
 import json
 import time
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import get_settings
 
 COOKIE_NAME = "bv_auth"
@@ -55,6 +58,7 @@ def make_token(
     tenant_id: int,
     email: str | None = None,
     client_id: int | None = None,
+    is_admin: bool = False,
     ttl_hours: int | None = None,
 ) -> str:
     s = get_settings()
@@ -69,6 +73,8 @@ def make_token(
         payload["email"] = email
     if client_id is not None:
         payload["cid"] = client_id
+    if is_admin:
+        payload["adm"] = True
     payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     sig = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
     return f"{payload_b64}.{sig}"
@@ -127,3 +133,45 @@ def verify_google_id_token(id_token_str: str) -> dict:
     if not email or not sub:
         raise GoogleAuthError("missing_email_or_sub")
     return {"email": email, "sub": sub, "name": claims.get("name") or ""}
+
+
+# ─── Access list (DB-backed allow-list for the dashboard) ────────────────────
+async def resolve_user_access(db: AsyncSession, email: str):
+    """Return the `AllowedUser` a verified email may sign into the dashboard as,
+    or None to deny. Precedence:
+      1. env GOOGLE_ADMIN_EMAILS → admin (immutable bootstrap; row ensured).
+      2. allowed_users row that is `active` → its role/tenant.
+      3. otherwise → None (denied; the caller falls back to passenger).
+    """
+    from app.models import AllowedUser
+    from app.models.allowed_user import ROLE_ADMIN
+    from app.services.tenancy import get_default_tenant
+
+    email = (email or "").lower().strip()
+    if not email:
+        return None
+    row = (
+        await db.execute(select(AllowedUser).where(AllowedUser.email == email))
+    ).scalar_one_or_none()
+
+    if email in get_settings().google_admin_emails_list:
+        # Pinned super-admin: ensure an active admin row tied to the default tenant.
+        if row is None:
+            tenant = await get_default_tenant(db)
+            row = AllowedUser(
+                email=email, role=ROLE_ADMIN, active=True,
+                tenant_id=tenant.id, added_by="bootstrap",
+            )
+            db.add(row)
+            await db.commit()
+            await db.refresh(row)
+        elif row.role != ROLE_ADMIN or not row.active or row.tenant_id is None:
+            row.role = ROLE_ADMIN
+            row.active = True
+            if row.tenant_id is None:
+                row.tenant_id = (await get_default_tenant(db)).id
+            await db.commit()
+            await db.refresh(row)
+        return row
+
+    return row if (row is not None and row.active) else None

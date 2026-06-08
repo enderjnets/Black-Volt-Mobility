@@ -1,6 +1,8 @@
-"""Tenant + client helpers. MVP seeds a single tenant (Black Volt)."""
+"""Tenant + client helpers. Seeds the Black Volt tenant and provisions a fresh
+tenant per driver on their first sign-in (multi-driver SaaS path)."""
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
@@ -45,6 +47,37 @@ async def get_default_tenant(db: AsyncSession) -> Tenant:
     ).scalar_one_or_none()
     if t is None:
         t = await ensure_seed(db)
+    return t
+
+
+def _slugify(text: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", (text or "").strip().lower()).strip("-")
+    return s or "driver"
+
+
+async def _unique_slug(db: AsyncSession, base: str) -> str:
+    """Slugify `base` and de-duplicate against existing tenant slugs (-2, -3…)."""
+    base = _slugify(base)
+    slug, n = base, 2
+    while (
+        await db.execute(select(Tenant.id).where(Tenant.slug == slug))
+    ).scalar_one_or_none() is not None:
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+async def create_tenant_for(db: AsyncSession, *, name: str, slug: str | None = None) -> Tenant:
+    """Provision a brand-new driver tenant (their own workspace) + default rates.
+    The slug is derived from the name (or `slug`) and de-duplicated. Called when
+    an allow-listed driver signs in for the first time."""
+    nm = (name or "").strip() or "Driver"
+    uslug = await _unique_slug(db, slug or nm)
+    t = Tenant(slug=uslug, name=nm)
+    db.add(t)
+    await db.flush()  # populate t.id for the RateConfig FK
+    db.add(RateConfig(tenant_id=t.id, **DEFAULT_RATES))
+    await db.commit()
+    await db.refresh(t)
     return t
 
 

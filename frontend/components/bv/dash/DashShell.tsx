@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Button } from "../ui";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
-import { logout } from "@/lib/auth";
+import { fetchMe, logout, type Me } from "@/lib/auth";
 import { DriverTabBar } from "./DriverTabBar";
 
 export function StatusPill({
@@ -70,6 +70,14 @@ const NAV: { seg: string; href: string; icon: string; key: string }[] = [
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];
 
+// Super-admin only (the access list). Appended to the nav when me.is_admin.
+const ADMIN_NAV = {
+  seg: "team",
+  href: "/dashboard/team",
+  icon: "shield-check",
+  key: "dash.nav.team",
+};
+
 function SideLink({ href, icon, label, active }: { href: string; icon: string; label: string; active: boolean }) {
   const [h, setH] = useState(false);
   return (
@@ -109,6 +117,19 @@ export function DashShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const seg = segOf(pathname);
+  const [me, setMe] = useState<Me | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchMe().then((m) => alive && setMe(m)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const nav = me?.is_admin ? [...NAV, ADMIN_NAV] : NAV;
+  const identity = me?.email ? me.email.split("@")[0] : me?.is_admin ? "Owner" : "Driver";
+  const roleLabel = t(me?.is_admin ? "dash.role.admin" : "dash.role.driver");
 
   return (
     <div style={{ display: "flex", minHeight: "100dvh", background: "var(--void)" }}>
@@ -147,7 +168,7 @@ export function DashShell({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <SideLink key={n.seg} href={n.href} icon={n.icon} label={t(n.key)} active={seg === n.seg} />
           ))}
         </nav>
@@ -179,8 +200,8 @@ export function DashShell({ children }: { children: ReactNode }) {
             <Icon name="user" size={17} color="var(--silver)" />
           </div>
           <div className="bv-dash-text" style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)" }}>Ender</div>
-            <div style={{ fontSize: 11, color: "var(--fg3)" }}>{t("dash.owner")}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{identity}</div>
+            <div style={{ fontSize: 11, color: "var(--fg3)" }}>{roleLabel}</div>
           </div>
           <button
             onClick={async () => {

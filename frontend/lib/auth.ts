@@ -9,6 +9,7 @@ export interface Me {
   email?: string | null;
   client_id?: number | null;
   tenant_id?: number | null;
+  is_admin?: boolean;
 }
 
 async function jpost(path: string, body?: unknown): Promise<Response> {

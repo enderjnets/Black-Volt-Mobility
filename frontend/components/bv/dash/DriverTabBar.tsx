@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { useI18n } from "@/lib/i18n";
-import { logout } from "@/lib/auth";
+import { fetchMe, logout, type Me } from "@/lib/auth";
 
 const PRIMARY = [
   { seg: "overview", href: "/dashboard", icon: "layout-dashboard", key: "dash.nav.overview" },
@@ -20,6 +20,7 @@ const MORE = [
   { seg: "rates", href: "/dashboard/rates", icon: "dollar-sign", key: "dash.nav.rates" },
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];
+const ADMIN_ITEM = { seg: "team", href: "/dashboard/team", icon: "shield-check", key: "dash.nav.team" };
 
 function segOf(pathname: string) {
   return pathname.split("/").filter(Boolean)[1] ?? "overview";
@@ -31,7 +32,20 @@ export function DriverTabBar() {
   const router = useRouter();
   const seg = segOf(pathname);
   const [moreOpen, setMoreOpen] = useState(false);
-  const moreActive = MORE.some((m) => m.seg === seg);
+  const [me, setMe] = useState<Me | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchMe().then((m) => alive && setMe(m)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const more = me?.is_admin ? [...MORE, ADMIN_ITEM] : MORE;
+  const moreActive = more.some((m) => m.seg === seg);
+  const identity = me?.email ? me.email.split("@")[0] : me?.is_admin ? "Owner" : "Driver";
+  const roleLabel = t(me?.is_admin ? "dash.role.admin" : "dash.role.driver");
 
   const tab = (active: boolean): React.CSSProperties => ({
     display: "flex",
@@ -109,7 +123,7 @@ export function DriverTabBar() {
           >
             <div style={{ width: 38, height: 4, borderRadius: 99, background: "var(--line-strong)", margin: "0 auto 14px" }} />
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {MORE.map((it) => {
+              {more.map((it) => {
                 const active = seg === it.seg;
                 return (
                   <Link
@@ -155,8 +169,8 @@ export function DriverTabBar() {
                 <Icon name="user" size={19} color="var(--silver)" />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)" }}>Ender</div>
-                <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t("dash.owner")}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{identity}</div>
+                <div style={{ fontSize: 12, color: "var(--fg3)" }}>{roleLabel}</div>
               </div>
               <button
                 onClick={async () => {

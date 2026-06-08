@@ -33,6 +33,13 @@ def require_staff(payload: dict = Depends(require_auth)) -> dict:
     return payload
 
 
+def require_admin(payload: dict = Depends(require_auth)) -> dict:
+    """Super-admin only (the access-list / Team panel). No-op in open mode."""
+    if get_settings().AUTH_ENABLED and not payload.get("adm"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admins_only")
+    return payload
+
+
 async def resolve_tenant_id(db: AsyncSession, payload: dict | None) -> int:
     """Tenant id from the session, falling back to the single default tenant
     (single-driver MVP / open mode where the token carries no tenant)."""

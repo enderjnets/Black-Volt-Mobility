@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.20.2";
+export const CURRENT_VERSION = "0.21.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.21.0",
+    date: "2026-06-08",
+    title: "Invite drivers: access list + each driver gets their own workspace",
+    changes: [
+      "New Team section (admin only): add a driver's Google email to grant dashboard access, and toggle them active/inactive anytime — only people on your list can sign in.",
+      "When an invited driver signs in with Google the first time, their own private workspace is created automatically — their rides, clients and settings are fully separate from yours.",
+      "Deactivating a driver instantly blocks their access without deleting any of their data; reactivating restores it.",
+      "Next up: each driver connecting their own Square account to take card payments.",
+    ],
+  },
   {
     version: "0.20.2",
     date: "2026-06-08",

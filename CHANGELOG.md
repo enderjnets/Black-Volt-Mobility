@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.21.0 — 2026-06-08 — Multi-driver onboarding (Phase A): access list + per-driver workspaces
+
+Lets the owner invite friends (other drivers) to use the platform for feedback. Mirrors Eko AI Realtors' allow-list-gated sign-in, adapted to multi-tenant (each driver = their own tenant). Phase B (per-driver Square OAuth) is next.
+
+**Access list (DB-backed).** New `allowed_users` table (migration `0011_allowed_users`): `email` (unique), `role` (`admin` super-admin / `driver`), `active` toggle, `tenant_id` (filled on first sign-in), `name`, `added_by`. `services/auth.resolve_user_access` resolves a verified Google email with precedence env `GOOGLE_ADMIN_EMAILS` → active `allowed_users` row → denied. Bootstrap admins are seeded + pinned (immutable) on startup (`_seed_admin_users`).
+
+**Allow-list-gated Google sign-in + auto-provisioning.** `POST /auth/login/google`: an allow-listed (active) email signs in as the **owner of their own tenant**, which is **auto-provisioned on first login** (`tenancy.create_tenant_for` → fresh tenant + default RateConfig, unique slug). Non-listed / deactivated emails fall back to passenger (the dashboard rejects them). The owner password login is the super-admin master key. Sessions carry an `adm` flag; `me` exposes `is_admin`.
+
+**Admin Team panel.** New `GET/POST/PATCH/DELETE /api/v1/team` (mounted under a new `require_admin` dep) to list, add, activate/deactivate, and remove drivers — with lockout guards (env-pinned admins immutable, can't deactivate/remove the last admin). Frontend: `components/bv/dash/Team.tsx` + `/dashboard/team` route + `lib/team.ts`; the **Team** nav item (sidebar + mobile More sheet) shows only for `is_admin`; the shell header now shows the real signed-in identity + role. New i18n keys (`dash.nav.team`, `dash.role.*`, `dash.team.*`) in EN + ES.
+
+**Isolation.** Every query already scopes by `resolve_tenant_id`; with each driver's token carrying their own `tid`, drivers see only their own rides/clients/stats/settings. Covered by a dedicated isolation test (driver A never sees tenant B's data).
+
+128 backend tests pass (new `test_team_onboarding.py`: gating, auto-provision, isolation, inactive-denied, Team CRUD + last-admin guard); `ruff` + `tsc` + `next lint` clean; no autogenerate drift. Production env already had `AUTH_ENABLED=true` + `GOOGLE_CLIENT_ID` + `GOOGLE_ADMIN_EMAILS`.
+
 ## v0.20.2 — 2026-06-08 — Dashboard real metrics: revenue, next-pickup countdown, weekly earnings
 
 The owner reported three wrong/placeholder dashboard figures. Decisions: revenue = **paid** rides only, attributed to the **ride's service day** (`scheduled_at`, fallback `created_at`). No cost model → "profit" = gross paid fares.
