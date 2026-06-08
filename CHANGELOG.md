@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.18.1 — 2026-06-07 — Responsive: dashboard looks like a phone app on any screen
+
+On an unfolded Galaxy Z Fold (~884px, under the 900px breakpoint) the dashboard showed
+the mobile bottom-tab layout but the content stretched edge-to-edge (very wide form
+fields) — "not like a phone app". Fix is CSS-only in `frontend/app/globals.css`'s
+`@media (max-width: 899px)`:
+
+- `.bv-mobile-pad` is now a centered app column (`flex: 0 1 720px !important; margin-inline:
+  auto`) instead of `flex:1` edge-to-edge. Normal phones (<720px) still fill the width;
+  desktop (≥900px, with sidebar) is unchanged.
+- `.bv-mobile-pad * { min-width: 0 }` kills horizontal scrolling on phones: `min-width:auto`
+  on flex/grid items (e.g. the Add ride 2-column field rows like Date | Pickup time) was
+  resolving to min-content and overflowing the viewport. On non-flex/grid elements this is
+  already 0, so it only affects the items that would otherwise overflow.
+
+Verified with Playwright at 884px (centered column) and 390px (full width, 0 horizontal
+overflow). No PWA manifest was ever present, so this was a responsive-layout fix, not PWA.
+
 ## v0.18.0 — 2026-06-07 — Calendar OAuth: pickups post again + real invites
 
 Since v0.16.0 **no new pickup landed on the `blackvoltmobility@gmail.com` calendar**.

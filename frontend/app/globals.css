@@ -129,9 +129,21 @@ body {
   .bv-dash-grid {
     grid-template-columns: 1fr !important;
   }
-  /* clearance so the fixed tab bar never covers content */
+  /* clearance so the fixed tab bar never covers content + keep the dashboard a
+     centered app column so it doesn't stretch edge-to-edge on wide foldables /
+     small tablets (e.g. an unfolded Galaxy Z Fold ~884px). On a normal phone it
+     just fills the width; on desktop (>=900px) this media query doesn't apply. */
   .bv-mobile-pad {
     padding-bottom: 84px !important;
+    flex: 0 1 720px !important;
+    margin-inline: auto;
+  }
+  /* No horizontal scroll on phones: let flex/grid items shrink (min-width:auto
+     resolves to min-content on flex/grid items and forces overflow — e.g. the
+     2-col field rows in Add ride). For non-flex/grid elements this is already 0,
+     so it only affects the items that would otherwise overflow. */
+  .bv-mobile-pad * {
+    min-width: 0;
   }
   /* lift the floating AI chat above the tab bar */
   .bv-chat-launcher {

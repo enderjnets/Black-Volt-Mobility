@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.18.0";
+export const CURRENT_VERSION = "0.18.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.18.1",
+    date: "2026-06-07",
+    title: "Dashboard looks like a phone app on any screen",
+    changes: [
+      "On wide foldables/tablets (e.g. an unfolded Galaxy Z Fold) the dashboard now shows a centered app column instead of stretching edge-to-edge.",
+      "Fixed horizontal scrolling on phones — the Add ride form and other 2-column rows now shrink to fit instead of running off the screen.",
+      "Normal phones are unchanged (full width); desktop keeps the sidebar.",
+    ],
+  },
   {
     version: "0.18.0",
     date: "2026-06-07",
