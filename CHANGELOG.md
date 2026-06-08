@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.20.1 — 2026-06-08 — Fix: dashboard "Today's rides" no longer shows old completed rides
+
+The owner reported the dashboard's **Today's rides** panel showing rides that weren't from today.
+
+Root cause (reproduced live): on a day with **no rides scheduled**, `Overview` (`frontend/components/bv/dash/Overview.tsx`) fell back to `const pick = (todays.length ? todays : rides).slice(0, 6)` — with `todays` empty it listed **all** rides ascending by `scheduled_at`, i.e. the 6 **oldest completed** rides (weeks ago), under the "Today's rides" title.
+
+- When there are rides today → show the full day (unchanged), titled **Today's rides**.
+- When there are none → show the next **upcoming** rides instead (future + still-open status, excluding completed/cancelled/no-show), titled **Upcoming rides** / **Próximos viajes**. Never the old completed ones.
+- New i18n key `dash.upcomingRides` (EN + ES). Frontend-only, no backend, no migration.
+
 ## v0.20.0 — 2026-06-08 — Wider client names, smart route prefill, one-tap Navigate
 
 Three driver-facing UX improvements requested by the owner.

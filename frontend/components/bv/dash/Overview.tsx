@@ -279,6 +279,7 @@ export function Overview() {
   const { t } = useI18n();
   const [stats, setStats] = useState<DashStats | null>(null);
   const [today, setToday] = useState<Ride[]>([]);
+  const [upcomingMode, setUpcomingMode] = useState(false);
   const [detail, setDetail] = useState<number | null>(null);
   const [reload, setReload] = useState(0);
 
@@ -289,8 +290,20 @@ export function Overview() {
       .then((rides) => {
         if (!alive) return;
         const todays = rides.filter((r) => isToday(r.scheduled_at));
-        const pick = (todays.length ? todays : rides).slice(0, 6).map(apiToUiRide);
-        setToday(pick);
+        // With rides today, show the whole day. With none, fall back to the next
+        // upcoming rides (future + still open) — never the old completed ones.
+        const upcoming = todays.length === 0;
+        const now = Date.now();
+        const source = upcoming
+          ? rides.filter(
+              (r) =>
+                r.scheduled_at != null &&
+                new Date(r.scheduled_at).getTime() > now &&
+                !["completed", "cancelled", "no_show"].includes(r.status),
+            )
+          : todays;
+        setUpcomingMode(upcoming);
+        setToday(source.slice(0, 6).map(apiToUiRide));
       })
       .catch(() => {});
     return () => {
@@ -312,7 +325,7 @@ export function Overview() {
       <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 20, alignItems: "start" }}>
         <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: "6px 6px 10px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 8px" }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 16, color: "var(--arctic)" }}>{t("dash.today")}</span>
+            <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 16, color: "var(--arctic)" }}>{t(upcomingMode ? "dash.upcomingRides" : "dash.today")}</span>
           </div>
           {today.length === 0 ? (
             <EmptyState icon="navigation" text={t("dash.empty.rides")} />

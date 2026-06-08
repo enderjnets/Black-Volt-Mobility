@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.20.0";
+export const CURRENT_VERSION = "0.20.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.20.1",
+    date: "2026-06-08",
+    title: "Fix: the dashboard panel no longer shows old completed rides",
+    changes: [
+      "When you have no rides today, the dashboard panel now shows your next upcoming rides (and is titled 'Upcoming rides') instead of listing old completed ones.",
+      "Days with rides scheduled today are unchanged — the panel shows the full day under 'Today's rides'.",
+    ],
+  },
   {
     version: "0.20.0",
     date: "2026-06-08",
