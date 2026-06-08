@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.19.0";
+export const CURRENT_VERSION = "0.19.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.19.1",
+    date: "2026-06-08",
+    title: "Fix: long client names no longer overlap the route",
+    changes: [
+      "In the rides list and the dashboard, a long client name now truncates with an ellipsis.",
+      "It used to spill over and cover the pickup → drop-off route next to it.",
+      "Long pickup/drop-off addresses also shorten cleanly instead of crowding the row.",
+    ],
+  },
   {
     version: "0.19.0",
     date: "2026-06-08",

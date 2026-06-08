@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.19.1 — 2026-06-08 — Fix: long client names no longer overlap the route
+
+The owner reported that a very long client name overflowed its column and overlapped the
+adjacent **Route** info (pickup → drop-off). It happened in both `/dashboard/rides` and the
+main dashboard's "today's rides", which share the same `RideRow` component
+(`frontend/components/bv/dash/Overview.tsx`).
+
+Root cause: the client-name cell used `white-space: nowrap` without
+`overflow: hidden` + `text-overflow: ellipsis`, so a long name spilled out of its fixed
+130px column (desktop) / pushed the fare (mobile card) into the route space.
+
+- Truncate the client name with an ellipsis in both the desktop grid row and the mobile
+  card (matches the repo's standard inline truncation pattern).
+- Secondary: the desktop route pickup (`{r.from}`) was pinned with `flex-shrink: 0`; it now
+  shrinks + truncates like the drop-off, so a row with two long addresses degrades cleanly.
+
+CSS-only change to a shared component — no backend, no migration, no i18n.
+
 ## v0.19.0 — 2026-06-08 — Clients saved automatically + name autocomplete + CRUD
 
 The owner reported that adding a ride with a new client never saved that client to the

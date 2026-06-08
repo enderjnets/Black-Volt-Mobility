@@ -102,7 +102,7 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
               {r.client}
             </span>
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--arctic)" }}>${r.fare}</span>
@@ -162,7 +162,7 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
           <Icon name="user" size={16} color="var(--silver)" />
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {r.client}
           </div>
           <div style={{ fontSize: 11, color: "var(--fg3)" }}>{r.time}</div>
@@ -170,9 +170,9 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--silver)", minWidth: 0, overflow: "hidden" }}>
         <Icon name="circle-dot" size={14} color="var(--volt)" />
-        <span style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{r.from}</span>
+        <span style={{ whiteSpace: "nowrap", flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{r.from}</span>
         <Icon name="arrow-right" size={13} color="var(--fg3)" />
-        <span style={{ whiteSpace: "nowrap", flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{r.to}</span>
+        <span style={{ whiteSpace: "nowrap", flexShrink: 1, overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{r.to}</span>
       </div>
       <div style={{ fontSize: 12, color: r.flight ? "var(--silver)" : "var(--fg3)", display: "flex", alignItems: "center", gap: 6 }}>
         {r.flight ? (
