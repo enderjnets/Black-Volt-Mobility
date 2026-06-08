@@ -27,16 +27,21 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
     today = now.date()
     t = Ride.tenant_id == tenant_id
 
+    # Attribute a ride to its service day (scheduled_at, falling back to when it
+    # was created) — so "today" and the weekly chart line up with when rides
+    # actually happen, not when they were marked paid.
+    ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
+
     rides_today = (
         await db.execute(
             select(func.count()).where(t, func.date(Ride.scheduled_at) == today)
         )
     ).scalar_one()
-    # Revenue = paid rides today (any method: cash, Square, Venmo, Zelle…).
+    # Revenue = paid rides whose service day is today (any method: cash, Square…).
     revenue_today = (
         await db.execute(
             select(func.coalesce(func.sum(Ride.fare_total), 0.0)).where(
-                t, Ride.paid.is_(True), func.date(Ride.paid_at) == today
+                t, Ride.paid.is_(True), ride_day == today
             )
         )
     ).scalar_one()
@@ -77,21 +82,25 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
             "pickup": nxt_ride.pickup_text,
         }
 
-    # Rides per day, last 7 days (by scheduled_at or created_at), zero-filled.
-    start = today - timedelta(days=6)
-    day_col = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
+    # Earnings per day for the current Mon→Sun week (paid rides, by service day),
+    # zero-filled. Plus the week's total.
+    start = today - timedelta(days=today.weekday())  # Monday of this week
+    end = start + timedelta(days=6)  # Sunday
     rows = (
         await db.execute(
-            select(day_col.label("d"), func.count())
-            .where(t, day_col >= start)
-            .group_by(day_col)
+            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total), 0.0))
+            .where(t, Ride.paid.is_(True), ride_day >= start, ride_day <= end)
+            .group_by(ride_day)
         )
     ).all()
-    counts = {str(r[0]): r[1] for r in rows}
+    earned = {str(r[0]): float(r[1]) for r in rows}
     week = []
     for i in range(7):
         d = start + timedelta(days=i)
-        week.append({"day": d.strftime("%a"), "date": str(d), "rides": counts.get(str(d), 0)})
+        week.append(
+            {"day": d.strftime("%a"), "date": str(d), "revenue": round(earned.get(str(d), 0.0), 2)}
+        )
+    week_total = round(sum(x["revenue"] for x in week), 2)
 
     return {
         "today": {
@@ -102,6 +111,7 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
         "next_pickup": next_pickup,
         "totals": {"clients": total_clients, "rides": total_rides, "completed": completed},
         "week": week,
+        "week_total": week_total,
     }
 
 

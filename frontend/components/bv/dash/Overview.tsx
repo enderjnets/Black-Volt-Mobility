@@ -13,6 +13,9 @@ import { type Ride } from "./data";
 import { apiToUiRide, fmtWhen, isToday } from "./status";
 import { RideDetail } from "./RideDetail";
 
+const fmtMoney = (n: number) =>
+  Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+
 function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: string; value: string; sub?: string; accent?: boolean }) {
   return (
     <div
@@ -246,38 +249,54 @@ export function EmptyState({ icon, text }: { icon: string; text: string }) {
   );
 }
 
-function MiniBars({ data }: { data: { day: string; rides: number }[] }) {
-  const max = Math.max(...data.map((d) => d.rides), 1);
+// Weekly earnings, Monday→Sunday. The current day (today) is highlighted; bars
+// are scaled by revenue and labelled with each day's initial.
+function MiniBars({ data }: { data: { day: string; date: string; revenue: number }[] }) {
+  const today = new Date().toDateString();
+  const max = Math.max(...data.map((d) => d.revenue), 1);
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 90 }}>
-      {data.map((d, i) => (
-        <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
-          <div
-            style={{
-              width: "100%",
-              height: `${Math.max(2, (d.rides / max) * 70)}px`,
-              borderRadius: 4,
-              background: i === data.length - 1 ? "var(--volt)" : "var(--obsidian-3)",
-              boxShadow: i === data.length - 1 ? "var(--shadow-volt-sm)" : "none",
-            }}
-          />
-          <span style={{ fontSize: 11, color: "var(--fg3)" }}>{d.day[0]}</span>
-        </div>
-      ))}
+      {data.map((d, i) => {
+        const isCurrent = new Date(`${d.date}T00:00`).toDateString() === today;
+        return (
+          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
+            <div
+              title={fmtMoney(d.revenue)}
+              style={{
+                width: "100%",
+                height: `${Math.max(2, (d.revenue / max) * 70)}px`,
+                borderRadius: 4,
+                background: isCurrent ? "var(--volt)" : "var(--obsidian-3)",
+                boxShadow: isCurrent ? "var(--shadow-volt-sm)" : "none",
+              }}
+            />
+            <span style={{ fontSize: 11, color: isCurrent ? "var(--volt)" : "var(--fg3)" }}>{d.day[0]}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function nextPickupShort(iso: string | null | undefined): string {
+// Compact "time until" the next pickup: "5d 2h", "2h 30m", "12m", or `now`.
+function fmtCountdown(iso: string | null | undefined, now: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const mins = Math.floor((d.getTime() - Date.now()) / 60000);
+  if (mins <= 0) return now;
+  const days = Math.floor(mins / 1440);
+  const hrs = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  if (days > 0) return `${days}d ${hrs}h`;
+  if (hrs > 0) return `${hrs}h ${m}m`;
+  return `${m}m`;
 }
 
 export function Overview() {
   const { t } = useI18n();
   const [stats, setStats] = useState<DashStats | null>(null);
+  const nextAt = stats?.next_pickup?.at;
   const [today, setToday] = useState<Ride[]>([]);
   const [upcomingMode, setUpcomingMode] = useState(false);
   const [detail, setDetail] = useState<number | null>(null);
@@ -316,10 +335,15 @@ export function Overview() {
   return (
     <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 22 }}>
       <div className="bv-kpi-row" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <KpiCard icon="navigation" label={t("dash.kpi.rides")} value={String(stats?.today.rides ?? 0)} sub={t("dash.kpi.ridesSub")} />
-        <KpiCard icon="dollar-sign" label={t("dash.kpi.revenue")} value={`$${stats?.today.revenue ?? 0}`} sub={t("dash.kpi.revenueSub")} accent />
+        <KpiCard icon="navigation" label={t("dash.kpi.rides")} value={String(stats?.today.rides ?? 0)} />
+        <KpiCard icon="dollar-sign" label={t("dash.kpi.revenue")} value={fmtMoney(stats?.today.revenue ?? 0)} accent />
         <KpiCard icon="star" label={t("dash.kpi.rating")} value="4.98" />
-        <KpiCard icon="clock" label={t("dash.kpi.next")} value={nextPickupShort(stats?.next_pickup?.at)} sub={stats?.next_pickup?.client || undefined} />
+        <KpiCard
+          icon="clock"
+          label={t("dash.kpi.next")}
+          value={nextAt ? fmtCountdown(nextAt, t("dash.next.now")) : "—"}
+          sub={nextAt ? `${fmtWhen(nextAt)}${stats?.next_pickup?.client ? ` · ${stats.next_pickup.client}` : ""}` : undefined}
+        />
       </div>
 
       <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: 20, alignItems: "start" }}>
@@ -351,8 +375,17 @@ export function Overview() {
             </p>
           </div>
           <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: 18 }}>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)", marginBottom: 14 }}>{t("dash.week")}</div>
-            {week.length ? <MiniBars data={week} /> : <EmptyState icon="trending-up" text={t("dash.empty.week")} />}
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, gap: 8 }}>
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)" }}>{t("dash.week")}</span>
+              <span style={{ fontSize: 12, color: "var(--fg3)" }}>
+                {t("dash.week.total")} <strong style={{ fontFamily: "var(--font-display)", color: "var(--volt)" }}>{fmtMoney(stats?.week_total ?? 0)}</strong>
+              </span>
+            </div>
+            {week.length && (stats?.week_total ?? 0) > 0 ? (
+              <MiniBars data={week} />
+            ) : (
+              <EmptyState icon="trending-up" text={t("dash.empty.week")} />
+            )}
           </div>
         </div>
       </div>

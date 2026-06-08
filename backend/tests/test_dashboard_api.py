@@ -53,7 +53,24 @@ def test_stats_shape():
     assert "today" in body and "revenue" in body["today"]
     assert body["totals"]["rides"] >= 2
     assert len(body["week"]) == 7
-    assert all("rides" in d for d in body["week"])
+    # Weekly chart is earnings-based now: each day carries a revenue, plus a total.
+    assert all("revenue" in d for d in body["week"])
+    assert "week_total" in body
+
+
+def test_revenue_counts_only_paid_rides_today():
+    c = _owner()
+    before = c.get("/api/v1/dashboard/stats").json()["today"]["revenue"]
+    rid = _make_ride(c, name="Payer")
+    fare = c.get(f"/api/v1/rides/{rid}").json()["fare_total"] or 0
+    assert fare > 0
+    # An unpaid ride does not move revenue.
+    assert c.get("/api/v1/dashboard/stats").json()["today"]["revenue"] == before
+    # Marking it paid (service day = today via created_at) adds exactly its fare.
+    assert c.patch(f"/api/v1/rides/{rid}", json={"paid": True}).status_code == 200
+    body = c.get("/api/v1/dashboard/stats").json()
+    assert round(body["today"]["revenue"] - before, 2) == round(fare, 2)
+    assert body["week_total"] >= body["today"]["revenue"]
 
 
 def test_clients_requires_staff():

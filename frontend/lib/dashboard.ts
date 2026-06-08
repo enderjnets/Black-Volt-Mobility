@@ -4,7 +4,8 @@ export interface DashStats {
   today: { rides: number; revenue: number; upcoming: number };
   next_pickup: { at: string | null; client: string | null; pickup: string | null } | null;
   totals: { clients: number; rides: number; completed: number };
-  week: { day: string; date: string; rides: number }[];
+  week: { day: string; date: string; revenue: number }[];
+  week_total: number;
 }
 
 export interface ClientRow {

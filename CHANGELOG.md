@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.20.2 — 2026-06-08 — Dashboard real metrics: revenue, next-pickup countdown, weekly earnings
+
+The owner reported three wrong/placeholder dashboard figures. Decisions: revenue = **paid** rides only, attributed to the **ride's service day** (`scheduled_at`, fallback `created_at`). No cost model → "profit" = gross paid fares.
+
+**1. "Revenue today" was wrong ($480 with 0 rides today).** `stats()` counted `paid AND date(paid_at)==today`, so old rides marked paid today inflated it. Now: `paid AND date(coalesce(scheduled_at, created_at))==today` (`backend/app/services/dashboard.py`).
+
+**2. "Next pickup" only showed `HH:MM`.** Now shows a countdown (`fmtCountdown` → "5d 2h" / "2h 30m" / "12m" / "Now") as the value, with the date + time + client as the sub (reusing `fmtWhen`). Backend already returned `next_pickup.at`.
+
+**3. "This week" chart was rolling-7-days of ride counts.** Now it's the current **Monday→Sunday** week, graphing **earnings** (sum of paid fares per service day), with a new `week_total` shown above the chart. Empty state when the week's total is $0.
+
+Also removed the fabricated `+18%` / `+2 vs yesterday` KPI sub-deltas. New i18n keys `dash.next.now`, `dash.week.total` (EN+ES). Frontend: `Overview.tsx`, `lib/dashboard.ts` (`DashStats.week[].revenue` + `week_total`). 121 backend tests pass (added a paid-revenue test; `test_stats_shape` updated for the new shape); `tsc` + `next lint` clean. No migration.
+
 ## v0.20.1 — 2026-06-08 — Fix: dashboard "Today's rides" no longer shows old completed rides
 
 The owner reported the dashboard's **Today's rides** panel showing rides that weren't from today.

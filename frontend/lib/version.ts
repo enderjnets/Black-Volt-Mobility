@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.20.1";
+export const CURRENT_VERSION = "0.20.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.20.2",
+    date: "2026-06-08",
+    title: "Dashboard shows real numbers: revenue, next-pickup countdown, weekly earnings",
+    changes: [
+      "Revenue today now counts only paid rides scheduled for today — it no longer jumps when you mark an old ride as paid.",
+      "Next pickup shows how long until it (e.g. '5d 2h') plus the date, time and client.",
+      "The 'This week' chart now runs Monday→Sunday and graphs your real earnings, with the week's total shown above it.",
+      "Removed the placeholder '+18% / +2 vs yesterday' figures that weren't real.",
+    ],
+  },
   {
     version: "0.20.1",
     date: "2026-06-08",
