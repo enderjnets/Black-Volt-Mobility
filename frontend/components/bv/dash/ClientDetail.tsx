@@ -28,7 +28,7 @@ function fmtDate(iso: string | null): string {
   return d.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
 }
 
-type Form = { name: string; phone: string; email: string; lang: string };
+type Form = { name: string; phone: string; email: string; lang: string; home: string };
 
 export function ClientDetail({
   clientId,
@@ -53,7 +53,7 @@ export function ClientDetail({
     getClientDetail(clientId)
       .then((d) => {
         setC(d);
-        setForm({ name: d.name || "", phone: d.phone || "", email: d.email || "", lang: d.lang || "EN" });
+        setForm({ name: d.name || "", phone: d.phone || "", email: d.email || "", lang: d.lang || "EN", home: d.home_address || "" });
       })
       .catch(() => setErr("load"));
   useEffect(() => {
@@ -67,7 +67,8 @@ export function ClientDetail({
     (form.name !== (c.name || "") ||
       form.phone !== (c.phone || "") ||
       form.email !== (c.email || "") ||
-      form.lang !== (c.lang || "EN"));
+      form.lang !== (c.lang || "EN") ||
+      form.home !== (c.home_address || ""));
 
   const save = async () => {
     if (!form || busy) return;
@@ -79,6 +80,7 @@ export function ClientDetail({
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
         lang: form.lang,
+        home_address: form.home.trim() || null,
       });
       await load();
       onChanged?.();
@@ -162,6 +164,7 @@ export function ClientDetail({
                 <EditField label={t("dash.client.name")} icon="user" value={form.name} onChange={(v) => set("name", v)} />
                 <EditField label={t("dash.client.phone")} icon="phone" value={form.phone} onChange={(v) => set("phone", v)} />
                 <EditField label={t("dash.client.email")} icon="message-circle" value={form.email} onChange={(v) => set("email", v)} />
+                <EditField label={t("dash.client.home")} icon="home" value={form.home} onChange={(v) => set("home", v)} />
                 <div>
                   <div style={{ fontSize: 11.5, color: "var(--fg3)", marginBottom: 5 }}>{t("dash.client.language")}</div>
                   <div style={{ display: "flex", gap: 4, background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-md)", padding: 4, width: "fit-content" }}>

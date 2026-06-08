@@ -11,7 +11,7 @@ import { Button, Pill } from "../ui";
 import { SuggestionDropdown, useAddressSuggest } from "../AddressAutocomplete";
 import { ClientSuggestionDropdown, useClientSuggest } from "../ClientAutocomplete";
 import { useI18n } from "@/lib/i18n";
-import type { ClientLite } from "@/lib/dashboard";
+import { getClientDetail, inferRoute, type ClientLite } from "@/lib/dashboard";
 import { createRide, getQuote } from "@/lib/booking";
 import { extractReservation, hasAnyField, SmartError } from "@/lib/smart";
 
@@ -79,6 +79,7 @@ const BV_T: Record<string, any> = {
     another: "Choose another way",
     langEN: "English", langES: "Spanish",
     backCapture: "Back to screenshot",
+    swap: "Swap",
   },
   es: {
     manual: "Manual", smart: "Inteligente", smartTag: "IA",
@@ -129,6 +130,7 @@ const BV_T: Record<string, any> = {
     another: "Elegir otra forma",
     langEN: "Inglés", langES: "Español",
     backCapture: "Volver a la captura",
+    swap: "Invertir",
   },
 };
 
@@ -486,15 +488,27 @@ export function AddRide() {
                 state={fieldState("name", form, aiFields, mode, aiRan)}
                 t={t}
                 onName={(v) => setForm((f) => ({ ...f, name: v, client_id: "" }))}
-                onPick={(c) =>
+                onPick={(c) => {
                   setForm((f) => ({
                     ...f,
                     name: c.name,
                     phone: c.phone || f.phone,
                     lang: (c.lang || f.lang || "EN").toUpperCase() === "ES" ? "ES" : "EN",
                     client_id: String(c.id),
-                  }))
-                }
+                  }));
+                  // Prefill the route from what we know about this client (saved
+                  // home + ride history), without overwriting anything typed.
+                  getClientDetail(c.id)
+                    .then((d) => {
+                      const { home, airport } = inferRoute(d);
+                      setForm((f) => ({
+                        ...f,
+                        pickup: f.pickup.trim() ? f.pickup : home,
+                        dropoff: f.dropoff.trim() ? f.dropoff : airport,
+                      }));
+                    })
+                    .catch(() => {});
+                }}
               />
               <RideField id="phone" label={t.phone} icon="phone" ph={t.phonePh} value={form.phone} onChange={(v) => set("phone", v)} state={fieldState("phone", form, aiFields, mode, aiRan)} t={t} />
               <LangSeg label={t.prefLang} value={form.lang} onChange={(v) => set("lang", v)} t={t} />
@@ -502,6 +516,18 @@ export function AddRide() {
 
             <FormSection title={t.secTrip} icon="navigation">
               <AutocompleteField id="pickup" label={t.pickup} icon="circle-dot" ph={t.pickupPh} value={form.pickup} onChange={(v) => set("pickup", v)} state={fieldState("pickup", form, aiFields, mode, aiRan)} t={t} />
+              <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "center", margin: "-6px 0" }}>
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, pickup: f.dropoff, dropoff: f.pickup }))}
+                  aria-label={t.swap}
+                  title={t.swap}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: "var(--radius-full)", background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", color: "var(--silver)", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "var(--font-sans)" }}
+                >
+                  <Icon name="arrow-up-down" size={14} color="var(--volt)" />
+                  {t.swap}
+                </button>
+              </div>
               <AutocompleteField id="dropoff" label={t.dropoff} icon="map-pin" ph={t.dropoffPh} value={form.dropoff} onChange={(v) => set("dropoff", v)} state={fieldState("dropoff", form, aiFields, mode, aiRan)} t={t} />
               <RideField id="date" label={t.date} icon="calendar" ph={t.datePh} value={form.date} onChange={(v) => set("date", v)} state={fieldState("date", form, aiFields, mode, aiRan)} t={t} half />
               <RideField id="time" label={t.time} icon="clock" ph={t.timePh} value={form.time} onChange={(v) => set("time", v)} state={fieldState("time", form, aiFields, mode, aiRan)} t={t} half />

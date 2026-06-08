@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.20.0 — 2026-06-08 — Wider client names, smart route prefill, one-tap Navigate
+
+Three driver-facing UX improvements requested by the owner.
+
+**1. Rides list — Client column rebalanced (not truncated).** The desktop grid's Client
+column was a fixed `130px`, so long names got an ellipsis (v0.19.1). The owner wanted the
+opposite: more room for the name. The shared `RideRow` grid (`Overview.tsx`) and the header
+(`Rides.tsx`) now use `minmax(150px, 1.2fr) minmax(0, 1.4fr) …` — Client is flexible and ~2–3×
+wider, Route shrinks to give it the space. Ellipsis stays only as a fallback for extreme names.
+
+**2. Add ride — smart route prefill (hybrid) + Swap.** Picking a client from the name
+autocomplete now also prefills the route, without overwriting anything already typed:
+- **pickup** = the client's saved `home_address` if set, else the most-frequent non-airport
+  address in their ride history.
+- **drop-off** = the most-frequent airport-like address in their history, else
+  Denver International (DEN) by default for a brand-new client.
+- Inference is computed in the frontend from the existing `GET /clients/{id}` history
+  (`inferRoute` in `lib/dashboard.ts`) — no new endpoint.
+- A **Swap** button flips pickup ↔ drop-off in one tap (return trip).
+
+**3. Clients — saved Home address.** New nullable `clients.home_address` column
+(migration `0010_client_home_address`), editable on the client profile (`ClientDetail`),
+surfaced in `client_detail`, and accepted by `ClientCreate`/`ClientPatch`. Feeds the prefill above.
+
+**4. Rides — one-tap Navigate to pickup.** A Navigate button (in each upcoming/active row —
+desktop nav column + mobile card — and in the ride detail drawer) opens the maps app with
+driving directions to the pickup via a universal Google Maps URL (`lib/maps.ts`), so the
+driver never types the address. Works on phone (native app) and desktop (web).
+
+Backend: 1 nullable column + migration, no data change. Frontend: shared `RideRow`, `AddRide`,
+`ClientDetail`, new `lib/maps.ts`. i18n EN+ES for the new labels. 120 backend tests pass
+(was 119 + a `home_address` round-trip test); `tsc` + `next lint` clean; no autogenerate drift.
+
 ## v0.19.1 — 2026-06-08 — Fix: long client names no longer overlap the route
 
 The owner reported that a very long client name overflowed its column and overlapped the

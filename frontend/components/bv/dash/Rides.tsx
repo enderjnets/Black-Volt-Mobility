@@ -107,7 +107,7 @@ export function Rides() {
             className="bv-table-head"
             style={{
               display: "grid",
-              gridTemplateColumns: "130px 1fr 100px 60px 104px",
+              gridTemplateColumns: "minmax(150px, 1.2fr) minmax(0, 1.4fr) 100px 60px 104px 36px",
               gap: 12,
               padding: "12px 16px",
               fontSize: 11,
@@ -115,7 +115,7 @@ export function Rides() {
               textTransform: "uppercase",
               letterSpacing: "0.1em",
               borderBottom: "1px solid var(--line)",
-              minWidth: 620,
+              minWidth: 660,
             }}
           >
             <span>{t("dash.col.client")}</span>
@@ -123,8 +123,9 @@ export function Rides() {
             <span>{t("dash.col.flight")}</span>
             <span>{t("dash.col.fare")}</span>
             <span>{t("dash.col.status")}</span>
+            <span />
           </div>
-          <div className="bv-table-min" style={{ minWidth: 620 }}>
+          <div className="bv-table-min" style={{ minWidth: 660 }}>
             {loading ? (
               <EmptyState icon="navigation" text={t("common.loading")} />
             ) : shown.length === 0 ? (

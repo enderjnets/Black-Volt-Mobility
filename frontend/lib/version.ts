@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.19.1";
+export const CURRENT_VERSION = "0.20.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.20.0",
+    date: "2026-06-08",
+    title: "Wider client names, smart route prefill, and one-tap Navigate",
+    changes: [
+      "Rides list: the Client column is now wider so full names fit, and the Route column gives up the space instead of getting covered.",
+      "Add ride: picking a client now also prefills the route — pickup from their saved home (or most-used address) and drop-off to their usual airport (DEN by default for a brand-new client). Only fills fields you haven't typed.",
+      "Add ride: a Swap button flips pickup ↔ drop-off in one tap — handy for the return trip.",
+      "Clients: you can save a Home address on a client's profile; it's used as the default pickup next time.",
+      "Rides: a Navigate button (in the list and in the ride detail) opens your maps app with directions to the pickup — no typing the address.",
+    ],
+  },
   {
     version: "0.19.1",
     date: "2026-06-08",

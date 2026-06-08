@@ -91,6 +91,20 @@ def test_client_patch_updates_and_normalizes_lang():
     assert c.get(f"/api/v1/clients/{cid}").json()["lang"] == "ES"
 
 
+def test_client_patch_sets_and_clears_home_address():
+    cid = _seed_client(name="Home Test")
+    c = _owner()
+    # Detail exposes the field (None until set).
+    assert c.get(f"/api/v1/clients/{cid}").json()["home_address"] is None
+    home = "6000 S Fraser St, Aurora, CO 80016"
+    r = c.patch(f"/api/v1/clients/{cid}", json={"home_address": home})
+    assert r.status_code == 200, r.text
+    assert r.json()["home_address"] == home
+    assert c.get(f"/api/v1/clients/{cid}").json()["home_address"] == home
+    # Empty string clears it back to null.
+    assert c.patch(f"/api/v1/clients/{cid}", json={"home_address": ""}).json()["home_address"] is None
+
+
 def test_client_not_found():
     c = _owner()
     assert c.get("/api/v1/clients/99999999").status_code == 404

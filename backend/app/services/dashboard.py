@@ -248,6 +248,7 @@ async def client_detail(db: AsyncSession, *, tenant_id: int, client_id: int) -> 
         "phone": c.phone,
         "email": c.email,
         "lang": (c.lang or latest_lang or "EN").upper(),
+        "home_address": c.home_address,
         "rides_count": rides_count,
         "lifetime_spend": spend,
         "tier": _tier(rides_count, spend),
@@ -257,7 +258,7 @@ async def client_detail(db: AsyncSession, *, tenant_id: int, client_id: int) -> 
     }
 
 
-_CLIENT_EDITABLE = ("name", "phone", "email", "lang")
+_CLIENT_EDITABLE = ("name", "phone", "email", "lang", "home_address")
 
 
 async def update_client(
@@ -339,6 +340,7 @@ async def create_client(
     phone: str | None = None,
     email: str | None = None,
     lang: str | None = None,
+    home_address: str | None = None,
 ) -> Client:
     """Create a client by hand from the Clients page (staff). Tenant-scoped."""
     c = Client(
@@ -347,6 +349,7 @@ async def create_client(
         phone=(phone or "").strip() or None,
         email=(email or "").strip() or None,
         lang=lang or None,
+        home_address=(home_address or "").strip() or None,
     )
     db.add(c)
     await db.commit()

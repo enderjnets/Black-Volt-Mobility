@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "../Icon";
 import { useI18n } from "@/lib/i18n";
 import { useViewport } from "@/lib/useViewport";
+import { openMapsTo } from "@/lib/maps";
 import { listRides } from "@/lib/booking";
 import { getDashboardStats, type DashStats } from "@/lib/dashboard";
 import { StatusPill } from "./DashShell";
@@ -65,9 +66,17 @@ function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: str
 }
 
 export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void }) {
+  const { t } = useI18n();
   const [h, setH] = useState(false);
   const { compact } = useViewport();
   const click = r.rid != null && onOpen ? () => onOpen(r.rid!) : undefined;
+  // Quick "navigate to pickup" launcher — only for rides the driver still needs
+  // to drive to (upcoming / active) and that actually have a pickup address.
+  const canNavigate = (r.status === "upcoming" || r.status === "active") && !!r.from;
+  const navigate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    openMapsTo(r.from);
+  };
 
   if (compact) {
     return (
@@ -122,6 +131,18 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
                 {r.flight}
               </span>
             )}
+            {canNavigate && (
+              <button
+                type="button"
+                onClick={navigate}
+                aria-label={t("dash.ride.navigate")}
+                title={t("dash.ride.navigate")}
+                style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: "var(--radius-full)", background: "var(--volt-bg)", border: "1px solid var(--volt-border)", color: "var(--volt)", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "var(--font-sans)", flexShrink: 0 }}
+              >
+                <Icon name="navigation" size={12} color="var(--volt)" />
+                {t("dash.ride.nav")}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -135,7 +156,7 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
       onMouseLeave={() => setH(false)}
       style={{
         display: "grid",
-        gridTemplateColumns: "130px 1fr 100px 60px 104px",
+        gridTemplateColumns: "minmax(150px, 1.2fr) minmax(0, 1.4fr) 100px 60px 104px 36px",
         alignItems: "center",
         gap: 12,
         padding: "13px 16px",
@@ -186,6 +207,19 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
       </div>
       <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--arctic)" }}>${r.fare}</div>
       <StatusPill status={r.overdue ? "overdue" : r.status} />
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        {canNavigate && (
+          <button
+            type="button"
+            onClick={navigate}
+            aria-label={t("dash.ride.navigate")}
+            title={t("dash.ride.navigate")}
+            style={{ width: 30, height: 30, borderRadius: 8, background: "var(--volt-bg)", border: "1px solid var(--volt-border)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+          >
+            <Icon name="navigation" size={15} color="var(--volt)" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

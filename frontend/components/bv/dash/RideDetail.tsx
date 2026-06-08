@@ -21,6 +21,7 @@ import {
   updateRide,
 } from "@/lib/booking";
 import { extractReservation, hasAnyField, SmartError } from "@/lib/smart";
+import { openMapsTo } from "@/lib/maps";
 import { capturePayment } from "@/lib/payments";
 import { StatusPill } from "./DashShell";
 import { fmtWhen, uiStatus } from "./status";
@@ -564,6 +565,11 @@ export function RideDetail({
 
       {/* Actions */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {(bucket === "upcoming" || bucket === "active") && ride.pickup && (
+          <Button variant="tint" icon="navigation" onClick={() => openMapsTo(ride.pickup)}>
+            {t("dash.ride.navigate")}
+          </Button>
+        )}
         {ride.overdue && (
           <Button variant="solid" icon="circle-check" disabled={busy} onClick={() => changeStatus("completed")}>
             {t("dash.ride.confirmPickup")}

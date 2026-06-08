@@ -25,4 +25,7 @@ class Client(Base):
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     lang: Mapped[str | None] = mapped_column(String(2), nullable=True)  # preferred EN | ES
+    # Saved home/base address — prefilled as the pickup on the Add-ride form. When
+    # unset the route is inferred from the client's ride history.
+    home_address: Mapped[str | None] = mapped_column(String(400), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

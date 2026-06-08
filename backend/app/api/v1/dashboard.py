@@ -18,6 +18,7 @@ class ClientPatch(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     email: str | None = Field(default=None, max_length=254)
     lang: str | None = None
+    home_address: str | None = Field(default=None, max_length=400)
 
     _norm_lang = field_validator("lang", mode="before")(_normalize_lang)
 
@@ -27,6 +28,7 @@ class ClientCreate(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     email: str | None = Field(default=None, max_length=254)
     lang: str | None = None
+    home_address: str | None = Field(default=None, max_length=400)
 
     _norm_lang = field_validator("lang", mode="before")(_normalize_lang)
 
@@ -79,6 +81,7 @@ async def create_client(
         phone=body.phone,
         email=body.email,
         lang=body.lang,
+        home_address=body.home_address,
     )
     return await dashboard.client_detail(db, tenant_id=tenant_id, client_id=c.id)
 
