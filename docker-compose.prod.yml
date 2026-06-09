@@ -10,9 +10,12 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 services:
   backend:
-    ports:
+    # !override replaces the base `ports` list instead of appending to it — without
+    # it, Compose merges the two files by CONCATENATING ports, so the service ends
+    # up bound on both 0.0.0.0:8012 and 127.0.0.1:8012 and conflicts with itself.
+    ports: !override
       - "127.0.0.1:8012:8000"
 
   frontend:
-    ports:
+    ports: !override
       - "127.0.0.1:3005:3000"
