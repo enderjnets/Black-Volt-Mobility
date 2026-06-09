@@ -1,0 +1,18 @@
+# Production override for a PUBLIC host (VPS).
+#
+# On the ROG (home NAT) the backend/frontend ports are published on 0.0.0.0, which
+# is harmless behind the router. On a public VPS that would expose them straight to
+# the internet, bypassing Cloudflare. This override binds them to LOOPBACK so only
+# the local Cloudflare Tunnel connector (running on the host) can reach them — UFW
+# stays closed except SSH. db/redis are already 127.0.0.1-bound in the base file.
+#
+# Usage on the VPS:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  backend:
+    ports:
+      - "127.0.0.1:8012:8000"
+
+  frontend:
+    ports:
+      - "127.0.0.1:3005:3000"

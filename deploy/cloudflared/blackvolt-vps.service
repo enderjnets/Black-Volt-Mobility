@@ -1,0 +1,24 @@
+# systemd unit to run the dedicated Black Volt Cloudflare Tunnel on the VPS.
+#
+# Install (as root, after copying the tunnel credentials + config into
+# /home/enderj/.cloudflared/ — see deploy/vps-deploy.md):
+#   sudo cp deploy/cloudflared/blackvolt-vps.service /etc/systemd/system/cloudflared-blackvolt.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cloudflared-blackvolt
+#
+# The tunnel reaches the frontend on 127.0.0.1:3005 (loopback-bound by
+# docker-compose.prod.yml), so nothing is exposed on a public interface.
+[Unit]
+Description=Cloudflare Tunnel (blackvolt) — app/www/apex blackvoltmobility.com
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=enderj
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate --config /home/enderj/.cloudflared/blackvolt.yml tunnel run blackvolt
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
