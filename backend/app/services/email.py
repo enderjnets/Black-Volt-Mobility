@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import time
+from html import escape as html_escape
 from typing import Any
 
 import httpx
@@ -103,6 +104,8 @@ def _welcome_content(*, name: str | None, login_url: str, lang: str) -> tuple[st
         outro = "See you on the road."
 
     greeting = ("Hola" if lang == "es" else "Hi")
+    # Escape the owner-entered name before embedding it in the HTML email body.
+    who_html = html_escape(who)
     html = (
         '<div style="font-family:Inter,Arial,sans-serif;background:#f4f4f5;padding:32px">'
         '<div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:14px;'
@@ -111,7 +114,7 @@ def _welcome_content(*, name: str | None, login_url: str, lang: str) -> tuple[st
         '<span style="color:#00E5FF;font-size:18px;font-weight:700;letter-spacing:0.04em">'
         "BLACK VOLT MOBILITY</span></div>"
         '<div style="padding:28px;color:#333333;font-size:15px;line-height:1.6">'
-        f"<p style=\"margin:0 0 14px\">{greeting} {who},</p>"
+        f"<p style=\"margin:0 0 14px\">{greeting} {who_html},</p>"
         f'<p style="margin:0 0 22px">{intro}</p>'
         f'<a href="{login_url}" style="display:inline-block;background:#00E5FF;color:#0A0A0F;'
         "font-weight:700;text-decoration:none;padding:12px 22px;border-radius:8px;"

@@ -234,6 +234,22 @@ def test_cannot_demote_pinned_admin():
     assert a.patch(f"/api/v1/team/{OWNER}", json={"role": "driver"}).status_code == 400
 
 
+def test_demoted_admin_loses_access_immediately():
+    """Demoting an admin revokes their EXISTING session at once — `require_admin`
+    re-checks the live row, it doesn't trust the week-long `adm` token claim."""
+    _clear("ken@bv.test")
+    a = _admin()
+    a.post("/api/v1/team", json={"email": "ken@bv.test"})
+    assert a.patch("/api/v1/team/ken@bv.test", json={"role": "admin"}).json()["role"] == "admin"
+    ken, body = _google("ken@bv.test")
+    assert body["is_admin"] is True
+    assert ken.get("/api/v1/team").status_code == 200  # admin session works
+    # Owner demotes Ken while his session is live.
+    a.patch("/api/v1/team/ken@bv.test", json={"role": "driver"})
+    assert ken.get("/api/v1/team").status_code == 403  # same cookie, now blocked
+    assert ken.get("/api/v1/auth/me").json()["is_admin"] is False
+
+
 def test_last_login_and_ride_stats_in_team_list():
     """A driver's last_login is stamped on sign-in and their ride count shows in
     the Team list the owner sees."""

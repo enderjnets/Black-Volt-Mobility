@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.base import get_db
+from app.models import AllowedUser
+from app.models.allowed_user import ROLE_ADMIN
 from app.services import auth
 from app.services.tenancy import get_default_tenant
 
@@ -35,22 +38,31 @@ def require_staff(payload: dict = Depends(require_auth)) -> dict:
 
 
 async def session_is_admin(db: AsyncSession, payload: dict | None) -> bool:
-    """Whether a session is a super-admin, robust to tokens minted before the
-    `adm` flag existed. True when: the token carries `adm`; OR its email is a
-    pinned admin (GOOGLE_ADMIN_EMAILS); OR it's the owner of the default (Black
-    Volt) tenant — the owner's master session. Open mode (AUTH_ENABLED=false) is
-    treated as admin (dev). Drivers own a different tenant → never elevated."""
+    """Whether a session is a super-admin. True when: its email is a pinned admin
+    (GOOGLE_ADMIN_EMAILS); OR it's the owner of the default (Black Volt) tenant —
+    the master/password session (also recovers tokens minted before the `adm`
+    flag existed); OR the token claims `adm` AND the live allow-list row is still
+    active + admin. Open mode (AUTH_ENABLED=false) is treated as admin (dev).
+    Drivers own a different tenant → never elevated.
+
+    The `adm` claim is re-checked against the DB (not trusted blindly) so that
+    demoting or deactivating an admin revokes their access immediately rather than
+    only when their week-long session token expires."""
     if not get_settings().AUTH_ENABLED:
         return True
     if not payload:
         return False
-    if payload.get("adm"):
-        return True
     email = (payload.get("email") or "").lower().strip()
     if email and email in get_settings().google_admin_emails_list:
         return True
     if payload.get("role") == auth.ROLE_OWNER and payload.get("cid") is None:
         if payload.get("tid") == (await get_default_tenant(db)).id:
+            return True
+    if payload.get("adm") and email:
+        row = (
+            await db.execute(select(AllowedUser).where(AllowedUser.email == email))
+        ).scalar_one_or_none()
+        if row is not None and row.active and row.role == ROLE_ADMIN:
             return True
     return False
 
