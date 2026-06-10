@@ -36,6 +36,9 @@ class AllowedUser(Base):
     )
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     added_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    # Stamped on every successful dashboard sign-in so the owner can see which
+    # drivers are actually active. NULL until the member's first login.
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

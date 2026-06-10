@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.21.0";
+export const CURRENT_VERSION = "0.22.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.22.0",
+    date: "2026-06-10",
+    title: "Team panel upgrade: roles, welcome emails, per-driver activity",
+    changes: [
+      "Change a teammate's role between admin and driver right from the Team page — with safeguards so you can never lock yourself out (the owner account and the last admin are protected).",
+      "When you add a driver, they now get a bilingual welcome email with their sign-in link. You'll see whether it was sent (turn on Resend to send for real; until then it's simulated and just logged).",
+      "Each member row now shows their activity at a glance: number of rides, revenue, and when they last signed in.",
+      "New 'Copy invite' button puts a ready-to-share welcome message + link on your clipboard, and 'Resend email' re-sends the welcome anytime.",
+    ],
+  },
   {
     version: "0.21.0",
     date: "2026-06-08",

@@ -1,7 +1,8 @@
 "use client";
 
 /* Team / access list (super-admin only). Add a friend's Google email to grant
-   dashboard access, toggle them active/inactive, or remove them. Mirrors the
+   dashboard access, change their role, toggle active/inactive, copy an invite
+   message or resend the welcome email, and see per-driver activity. Mirrors the
    dark dashboard card style. */
 
 import { useEffect, useState } from "react";
@@ -9,7 +10,15 @@ import { useEffect, useState } from "react";
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
 import { useI18n } from "@/lib/i18n";
-import { addMember, listTeam, removeMember, setActive, type TeamMember } from "@/lib/team";
+import {
+  addMember,
+  listTeam,
+  removeMember,
+  resendInvite,
+  setActive,
+  setRole,
+  type TeamMember,
+} from "@/lib/team";
 
 const KNOWN_ERRS = new Set([
   "already_on_list",
@@ -18,18 +27,35 @@ const KNOWN_ERRS = new Set([
   "invalid_email",
 ]);
 
+const fmtMoney = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
+
+function fmtDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+}
+
 export function Team() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [rows, setRows] = useState<TeamMember[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const errText = (e: unknown): string => {
     const c = e instanceof Error ? e.message : "";
     return t(KNOWN_ERRS.has(c) ? `dash.team.err.${c}` : "dash.team.err.generic");
+  };
+
+  const emailFlash = (status: string | null | undefined): void => {
+    if (status === "sent") setFlash(t("dash.team.emailSent"));
+    else if (status === "simulated") setFlash(t("dash.team.emailSimulated"));
+    else if (status === "failed") setErr(t("dash.team.emailFailed"));
   };
 
   const load = () =>
@@ -47,10 +73,12 @@ export function Team() {
     if (!em || adding) return;
     setAdding(true);
     setErr(null);
+    setFlash(null);
     try {
-      await addMember(em, name.trim() || undefined);
+      const m = await addMember(em, name.trim() || undefined, lang);
       setEmail("");
       setName("");
+      emailFlash(m.email_status);
       await load();
     } catch (x) {
       setErr(errText(x));
@@ -59,13 +87,13 @@ export function Team() {
     }
   };
 
-  const toggle = async (m: TeamMember) => {
-    if (m.immutable || busy) return;
-    setBusy(m.email);
+  const act = async (key: string, fn: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(key);
     setErr(null);
+    setFlash(null);
     try {
-      await setActive(m.email, !m.active);
-      await load();
+      await fn();
     } catch (x) {
       setErr(errText(x));
     } finally {
@@ -73,19 +101,44 @@ export function Team() {
     }
   };
 
-  const remove = async (m: TeamMember) => {
-    if (m.immutable || busy) return;
+  const toggle = (m: TeamMember) =>
+    act(m.email, async () => {
+      await setActive(m.email, !m.active);
+      await load();
+    });
+
+  const changeRole = (m: TeamMember) => {
+    const next = m.role === "admin" ? "driver" : "admin";
+    if (next === "admin" && !window.confirm(t("dash.team.promoteConfirm", { email: m.email }))) return;
+    return act(m.email, async () => {
+      await setRole(m.email, next);
+      await load();
+    });
+  };
+
+  const remove = (m: TeamMember) => {
     if (!window.confirm(`${t("dash.team.removeConfirm")} ${m.email}`)) return;
-    setBusy(m.email);
-    setErr(null);
-    try {
+    return act(m.email, async () => {
       await removeMember(m.email);
       await load();
-    } catch (x) {
-      setErr(errText(x));
-    } finally {
-      setBusy(null);
-    }
+    });
+  };
+
+  const resend = (m: TeamMember) =>
+    act(`resend:${m.email}`, async () => {
+      const status = await resendInvite(m.email);
+      emailFlash(status);
+    });
+
+  const copyInvite = (m: TeamMember) => {
+    const link = (typeof window !== "undefined" ? window.location.origin : "") + "/dashboard";
+    const msg = t("dash.team.inviteMsg", { email: m.email, link });
+    const done = () => {
+      setCopied(m.email);
+      setTimeout(() => setCopied((c) => (c === m.email ? null : c)), 1800);
+    };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(msg).then(done, done);
+    else done();
   };
 
   return (
@@ -118,6 +171,12 @@ export function Team() {
         </div>
       </form>
 
+      {flash && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(43,212,160,0.08)", border: "1px solid rgba(43,212,160,0.4)", borderRadius: "var(--radius-md)", padding: "10px 13px" }}>
+          <Icon name="circle-check" size={15} color="var(--success)" />
+          <span style={{ fontSize: 12.5, color: "var(--silver)" }}>{flash}</span>
+        </div>
+      )}
       {err && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,92,110,0.08)", border: "1px solid rgba(255,92,110,0.4)", borderRadius: "var(--radius-md)", padding: "10px 13px" }}>
           <Icon name="alert-circle" size={15} color="var(--danger)" />
@@ -133,60 +192,149 @@ export function Team() {
           <div style={{ padding: "30px 0", textAlign: "center", color: "var(--fg3)", fontSize: 13 }}>{t("dash.team.empty")}</div>
         ) : (
           rows.map((m) => (
-            <div
+            <MemberRow
               key={m.email}
-              style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: "var(--radius-md)" }}
-            >
-              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Icon name={m.role === "admin" ? "shield-check" : "user"} size={16} color="var(--silver)" />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {m.name || m.email.split("@")[0]}
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--fg3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {m.email}{m.tenant_slug ? ` · ${m.tenant_slug}` : ""}
-                </div>
-              </div>
-              <Pill tone={m.role === "admin" ? "volt" : "muted"} icon={m.role === "admin" ? "shield-check" : undefined}>
-                {t(m.role === "admin" ? "dash.role.admin" : "dash.role.driver")}
-              </Pill>
-              {m.immutable ? (
-                <Pill tone="warning" icon="star">{t("dash.team.owner")}</Pill>
-              ) : (
-                <>
-                  <button
-                    onClick={() => toggle(m)}
-                    disabled={busy === m.email}
-                    title={m.active ? t("dash.team.deactivate") : t("dash.team.activate")}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px",
-                      borderRadius: "var(--radius-full)", cursor: "pointer", fontSize: 12, fontWeight: 600,
-                      fontFamily: "var(--font-sans)",
-                      background: m.active ? "rgba(43,212,160,0.12)" : "var(--obsidian-3)",
-                      color: m.active ? "var(--success)" : "var(--fg3)",
-                      border: `1px solid ${m.active ? "rgba(43,212,160,0.4)" : "var(--line-strong)"}`,
-                    }}
-                  >
-                    <Icon name={m.active ? "circle-check" : "circle-dot"} size={13} color="currentColor" />
-                    {m.active ? t("dash.team.active") : t("dash.team.inactive")}
-                  </button>
-                  <button
-                    onClick={() => remove(m)}
-                    disabled={busy === m.email}
-                    title={t("dash.team.remove")}
-                    aria-label={t("dash.team.remove")}
-                    style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", color: "var(--fg3)" }}
-                  >
-                    <Icon name="x" size={16} color="currentColor" />
-                  </button>
-                </>
-              )}
-            </div>
+              m={m}
+              busy={busy}
+              copied={copied === m.email}
+              onToggle={() => toggle(m)}
+              onRole={() => changeRole(m)}
+              onRemove={() => remove(m)}
+              onResend={() => resend(m)}
+              onCopy={() => copyInvite(m)}
+            />
           ))
         )}
       </div>
     </div>
+  );
+}
+
+function MemberRow({
+  m, busy, copied, onToggle, onRole, onRemove, onResend, onCopy,
+}: {
+  m: TeamMember;
+  busy: string | null;
+  copied: boolean;
+  onToggle: () => void;
+  onRole: () => void;
+  onRemove: () => void;
+  onResend: () => void;
+  onCopy: () => void;
+}) {
+  const { t } = useI18n();
+  const isAdmin = m.role === "admin";
+  const lastLogin = fmtDate(m.last_login);
+  const rowBusy = busy === m.email;
+  const resending = busy === `resend:${m.email}`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: "var(--radius-md)" }}>
+      {/* Identity + role/active row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon name={isAdmin ? "shield-check" : "user"} size={16} color="var(--silver)" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {m.name || m.email.split("@")[0]}
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--fg3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {m.email}{m.tenant_slug ? ` · ${m.tenant_slug}` : ""}
+          </div>
+        </div>
+        {/* Role pill — clickable to toggle for non-immutable members */}
+        {m.immutable ? (
+          <Pill tone="volt" icon="shield-check">{t("dash.role.admin")}</Pill>
+        ) : (
+          <button
+            onClick={onRole}
+            disabled={rowBusy}
+            title={isAdmin ? t("dash.team.makeDriver") : t("dash.team.makeAdmin")}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px",
+              borderRadius: "var(--radius-full)", cursor: "pointer", fontSize: 12, fontWeight: 600,
+              fontFamily: "var(--font-sans)",
+              background: isAdmin ? "var(--volt-bg)" : "var(--obsidian-3)",
+              color: isAdmin ? "var(--volt)" : "var(--silver)",
+              border: `1px solid ${isAdmin ? "var(--volt-border)" : "var(--line-strong)"}`,
+            }}
+          >
+            <Icon name={isAdmin ? "shield-check" : "user"} size={13} color="currentColor" />
+            {t(isAdmin ? "dash.role.admin" : "dash.role.driver")}
+          </button>
+        )}
+        {m.immutable ? (
+          <Pill tone="warning" icon="star">{t("dash.team.owner")}</Pill>
+        ) : (
+          <>
+            <button
+              onClick={onToggle}
+              disabled={rowBusy}
+              title={m.active ? t("dash.team.deactivate") : t("dash.team.activate")}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px",
+                borderRadius: "var(--radius-full)", cursor: "pointer", fontSize: 12, fontWeight: 600,
+                fontFamily: "var(--font-sans)",
+                background: m.active ? "rgba(43,212,160,0.12)" : "var(--obsidian-3)",
+                color: m.active ? "var(--success)" : "var(--fg3)",
+                border: `1px solid ${m.active ? "rgba(43,212,160,0.4)" : "var(--line-strong)"}`,
+              }}
+            >
+              <Icon name={m.active ? "circle-check" : "circle-dot"} size={13} color="currentColor" />
+              {m.active ? t("dash.team.active") : t("dash.team.inactive")}
+            </button>
+            <button
+              onClick={onRemove}
+              disabled={rowBusy}
+              title={t("dash.team.remove")}
+              aria-label={t("dash.team.remove")}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", color: "var(--fg3)" }}
+            >
+              <Icon name="x" size={16} color="currentColor" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Stats + secondary actions */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", paddingLeft: 46 }}>
+        <Stat icon="navigation" text={`${m.rides} ${t("dash.team.rides")}`} />
+        {m.revenue > 0 && <Stat icon="dollar-sign" text={fmtMoney(m.revenue)} />}
+        <Stat icon="clock" text={`${t("dash.team.lastLogin")}: ${lastLogin || t("dash.team.never")}`} />
+        <div style={{ flex: 1 }} />
+        <RowAction icon={copied ? "check" : "clipboard"} label={copied ? t("dash.team.copied") : t("dash.team.copyInvite")} onClick={onCopy} disabled={false} />
+        <RowAction icon="message-circle" label={resending ? t("dash.team.resending") : t("dash.team.resend")} onClick={onResend} disabled={resending} />
+      </div>
+    </div>
+  );
+}
+
+function Stat({ icon, text }: { icon: string; text: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--fg3)", whiteSpace: "nowrap" }}>
+      <Icon name={icon} size={12} color="var(--fg3)" />
+      {text}
+    </span>
+  );
+}
+
+function RowAction({ icon, label, onClick, disabled }: { icon: string; label: string; onClick: () => void; disabled: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 9px",
+        borderRadius: "var(--radius-full)", cursor: disabled ? "default" : "pointer",
+        fontSize: 11, fontWeight: 600, fontFamily: "var(--font-sans)",
+        background: "transparent", color: "var(--silver)", border: "1px solid var(--line-strong)",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      <Icon name={icon} size={12} color="currentColor" />
+      {label}
+    </button>
   );
 }
 

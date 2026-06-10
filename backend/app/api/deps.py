@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.db.base import get_db
 from app.services import auth
 from app.services.tenancy import get_default_tenant
 
@@ -33,9 +34,32 @@ def require_staff(payload: dict = Depends(require_auth)) -> dict:
     return payload
 
 
-def require_admin(payload: dict = Depends(require_auth)) -> dict:
+async def session_is_admin(db: AsyncSession, payload: dict | None) -> bool:
+    """Whether a session is a super-admin, robust to tokens minted before the
+    `adm` flag existed. True when: the token carries `adm`; OR its email is a
+    pinned admin (GOOGLE_ADMIN_EMAILS); OR it's the owner of the default (Black
+    Volt) tenant — the owner's master session. Open mode (AUTH_ENABLED=false) is
+    treated as admin (dev). Drivers own a different tenant → never elevated."""
+    if not get_settings().AUTH_ENABLED:
+        return True
+    if not payload:
+        return False
+    if payload.get("adm"):
+        return True
+    email = (payload.get("email") or "").lower().strip()
+    if email and email in get_settings().google_admin_emails_list:
+        return True
+    if payload.get("role") == auth.ROLE_OWNER and payload.get("cid") is None:
+        if payload.get("tid") == (await get_default_tenant(db)).id:
+            return True
+    return False
+
+
+async def require_admin(
+    payload: dict = Depends(require_auth), db: AsyncSession = Depends(get_db)
+) -> dict:
     """Super-admin only (the access-list / Team panel). No-op in open mode."""
-    if get_settings().AUTH_ENABLED and not payload.get("adm"):
+    if not await session_is_admin(db, payload):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admins_only")
     return payload
 

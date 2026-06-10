@@ -1,10 +1,13 @@
 """Auth endpoints: owner password login, passenger Google login, me, logout."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import session_is_admin
 from app.config import get_settings
 from app.db.base import get_db
 from app.models.allowed_user import ROLE_ADMIN
@@ -67,11 +70,12 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
 
     allowed = await auth.resolve_user_access(db, email)
     if allowed is not None:
+        allowed.last_login = datetime.now(UTC)
         # Auto-provision this driver's own workspace the first time they sign in.
         if allowed.tenant_id is None:
             t = await create_tenant_for(db, name=info["name"] or email.split("@")[0])
             allowed.tenant_id = t.id
-            await db.commit()
+        await db.commit()
         is_admin = allowed.role == ROLE_ADMIN
         token = auth.make_token(
             role=auth.ROLE_OWNER, tenant_id=allowed.tenant_id, email=email, is_admin=is_admin
@@ -121,7 +125,7 @@ async def me(request: Request, db: AsyncSession = Depends(get_db)):
             "email": payload.get("email"),
             "client_id": payload.get("cid"),
             "tenant_id": payload.get("tid"),
-            "is_admin": bool(payload.get("adm")),
+            "is_admin": await session_is_admin(db, payload),
         }
     )
     return base

@@ -89,6 +89,11 @@ services:
       SMART_VISION_HOST: ${SMART_VISION_HOST:-https://api.minimax.io}
       SMART_VISION_BASE_URL: ${SMART_VISION_BASE_URL:-https://api.minimax.io/anthropic}
       SMART_VISION_MODEL: ${SMART_VISION_MODEL:-MiniMax-M3}
+      # Email (team welcome emails via Resend)
+      EMAIL_SIMULATED: ${EMAIL_SIMULATED:-true}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-Black Volt Mobility <noreply@blackvoltmobility.com>}
+      PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-https://app.blackvoltmobility.com/dashboard}
     volumes:
       # Service-account JSON for Google Calendar (gitignored; absent in dev).
       - ./secrets:/secrets:ro

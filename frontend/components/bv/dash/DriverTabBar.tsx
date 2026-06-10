@@ -42,8 +42,7 @@ export function DriverTabBar() {
     };
   }, []);
 
-  const more = me?.is_admin ? [...MORE, ADMIN_ITEM] : MORE;
-  const moreActive = more.some((m) => m.seg === seg);
+  const moreActive = (me?.is_admin ? [...MORE, ADMIN_ITEM] : MORE).some((m) => m.seg === seg);
   const identity = me?.email ? me.email.split("@")[0] : me?.is_admin ? "Owner" : "Driver";
   const roleLabel = t(me?.is_admin ? "dash.role.admin" : "dash.role.driver");
 
@@ -123,7 +122,36 @@ export function DriverTabBar() {
           >
             <div style={{ width: 38, height: 4, borderRadius: 99, background: "var(--line-strong)", margin: "0 auto 14px" }} />
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {more.map((it) => {
+              {me?.is_admin && (
+                <>
+                  <Link
+                    href={ADMIN_ITEM.href}
+                    onClick={() => setMoreOpen(false)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 13,
+                      padding: "14px 12px",
+                      borderRadius: "var(--radius-md)",
+                      textDecoration: "none",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: 15,
+                      fontWeight: 700,
+                      background: "var(--volt-bg)",
+                      color: "var(--volt)",
+                      boxShadow: "inset 0 0 0 1px var(--volt-border)",
+                    }}
+                  >
+                    <Icon name={ADMIN_ITEM.icon} size={20} color="currentColor" />
+                    {t(ADMIN_ITEM.key)}
+                    <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--volt)", textTransform: "uppercase" }}>
+                      {t("dash.role.admin")}
+                    </span>
+                  </Link>
+                  <div style={{ height: 1, background: "var(--line)", margin: "6px 2px" }} />
+                </>
+              )}
+              {MORE.map((it) => {
                 const active = seg === it.seg;
                 return (
                   <Link

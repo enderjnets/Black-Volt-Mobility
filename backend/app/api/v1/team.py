@@ -17,6 +17,8 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.models import AllowedUser, Tenant
 from app.models.allowed_user import ROLE_ADMIN, ROLE_DRIVER
+from app.services.dashboard import team_stats_by_tenant
+from app.services.email import send_team_welcome
 
 router = APIRouter(prefix="/team", tags=["team"])
 
@@ -29,11 +31,18 @@ class TeamMemberOut(BaseModel):
     tenant_slug: str | None = None
     immutable: bool = False
     created_at: str | None = None
+    last_login: str | None = None
+    rides: int = 0
+    revenue: float = 0.0
+    last_activity: str | None = None
+    # Set only on add / resend: "sent" | "simulated" | "failed". None on plain list.
+    email_status: str | None = None
 
 
 class TeamAddIn(BaseModel):
     email: str = Field(max_length=254)
     name: str | None = Field(default=None, max_length=200)
+    lang: str | None = Field(default=None, max_length=5)  # welcome-email language
 
     @field_validator("email")
     @classmethod
@@ -47,6 +56,17 @@ class TeamAddIn(BaseModel):
 class TeamPatchIn(BaseModel):
     active: bool | None = None
     name: str | None = Field(default=None, max_length=200)
+    role: str | None = None
+
+    @field_validator("role")
+    @classmethod
+    def _valid_role(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip().lower()
+        if v not in (ROLE_ADMIN, ROLE_DRIVER):
+            raise ValueError("invalid_role")
+        return v
 
 
 def _norm(email: str) -> str:
@@ -81,7 +101,15 @@ async def _slugs(db: AsyncSession, ids: list[int]) -> dict[int, str]:
     return {r[0]: r[1] for r in rows}
 
 
-def _out(u: AllowedUser, *, slug: str | None, pinned: set[str]) -> TeamMemberOut:
+def _out(
+    u: AllowedUser,
+    *,
+    slug: str | None,
+    pinned: set[str],
+    stats: dict | None = None,
+    email_status: str | None = None,
+) -> TeamMemberOut:
+    st = stats or {}
     return TeamMemberOut(
         email=u.email,
         role=u.role,
@@ -90,6 +118,11 @@ def _out(u: AllowedUser, *, slug: str | None, pinned: set[str]) -> TeamMemberOut
         tenant_slug=slug,
         immutable=u.email in pinned,
         created_at=u.created_at.isoformat() if u.created_at else None,
+        last_login=u.last_login.isoformat() if u.last_login else None,
+        rides=st.get("rides", 0),
+        revenue=st.get("revenue", 0.0),
+        last_activity=st.get("last_activity"),
+        email_status=email_status,
     )
 
 
@@ -100,8 +133,14 @@ async def list_team(db: AsyncSession = Depends(get_db)) -> list[TeamMemberOut]:
         await db.execute(select(AllowedUser).order_by(AllowedUser.role, AllowedUser.email))
     ).scalars().all()
     slugs = await _slugs(db, [u.tenant_id for u in rows if u.tenant_id])
+    stats = await team_stats_by_tenant(db)
     return [
-        _out(u, slug=slugs.get(u.tenant_id) if u.tenant_id else None, pinned=pinned)
+        _out(
+            u,
+            slug=slugs.get(u.tenant_id) if u.tenant_id else None,
+            pinned=pinned,
+            stats=stats.get(u.tenant_id) if u.tenant_id else None,
+        )
         for u in rows
     ]
 
@@ -121,7 +160,8 @@ async def add_member(body: TeamAddIn, db: AsyncSession = Depends(get_db)) -> Tea
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return _out(row, slug=None, pinned=await _pinned())
+    email_status = await send_team_welcome(to=email, name=row.name, lang=body.lang or "en")
+    return _out(row, slug=None, pinned=await _pinned(), email_status=email_status)
 
 
 @router.patch("/{email}")
@@ -145,6 +185,20 @@ async def patch_member(
         and not await _other_active_admins_remain(db, excluding=email)
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin")
+    # Role change (admin↔driver). A pinned admin can't be demoted, and the last
+    # active admin can't be demoted to driver (mirrors the deactivate/remove guards).
+    if body.role is not None and body.role != row.role:
+        if body.role == ROLE_DRIVER and email in pinned:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="pinned_admin_immutable"
+            )
+        if (
+            body.role == ROLE_DRIVER
+            and row.role == ROLE_ADMIN
+            and not await _other_active_admins_remain(db, excluding=email)
+        ):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin")
+        row.role = body.role
     if body.active is not None:
         row.active = body.active
     if body.name is not None:
@@ -171,3 +225,20 @@ async def remove_member(email: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin")
     await db.delete(row)
     await db.commit()
+
+
+class ResendOut(BaseModel):
+    email_status: str
+
+
+@router.post("/{email}/resend-invite")
+async def resend_invite(email: str, db: AsyncSession = Depends(get_db)) -> ResendOut:
+    """Re-send the welcome email to an existing member. Returns the send status
+    ("sent" | "simulated" | "failed"); 404 if the member isn't on the list."""
+    email = _norm(email)
+    row = (
+        await db.execute(select(AllowedUser).where(AllowedUser.email == email))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_on_list")
+    return ResendOut(email_status=await send_team_welcome(to=email, name=row.name, lang="en"))

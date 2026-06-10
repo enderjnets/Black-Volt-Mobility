@@ -159,3 +159,91 @@ def test_remove_driver():
     a.post("/api/v1/team", json={"email": "erin@bv.test"})
     assert a.delete("/api/v1/team/erin@bv.test").status_code == 204
     assert "erin@bv.test" not in {x["email"] for x in a.get("/api/v1/team").json()}
+
+
+def test_stale_owner_session_recovers_admin():
+    """A pre-`adm` owner cookie (minted before v0.21.0) still counts as admin —
+    no re-login needed."""
+    from app.services import auth as A
+
+    a = _admin()
+    default_tid = a.get("/api/v1/auth/me").json()["tenant_id"]
+    stale = A.make_token(role=A.ROLE_OWNER, tenant_id=default_tid)  # no is_admin flag
+    c = TestClient(app)
+    c.cookies.set("bv_auth", stale)
+    assert c.get("/api/v1/auth/me").json()["is_admin"] is True
+    assert c.get("/api/v1/team").status_code == 200
+
+
+def test_driver_owner_token_is_not_admin():
+    """An owner session on a driver's own tenant must never be treated as admin."""
+    from app.services import auth as A
+
+    _clear("frank@bv.test")
+    a = _admin()
+    a.post("/api/v1/team", json={"email": "frank@bv.test"})
+    fr, body = _google("frank@bv.test")
+    assert body["role"] == "owner" and body["is_admin"] is False
+    driver_tid = fr.get("/api/v1/auth/me").json()["tenant_id"]
+    tok = A.make_token(role=A.ROLE_OWNER, tenant_id=driver_tid)  # owner of their own tenant
+    c = TestClient(app)
+    c.cookies.set("bv_auth", tok)
+    assert c.get("/api/v1/auth/me").json()["is_admin"] is False
+    assert c.get("/api/v1/team").status_code == 403
+
+
+# ── v0.22.0: roles, welcome email, stats, resend ────────────────────────────
+
+
+def test_add_member_returns_email_status():
+    """Adding a member triggers the welcome email; EMAIL_SIMULATED (default) →
+    'simulated' status surfaced to the owner."""
+    _clear("grace@bv.test")
+    a = _admin()
+    r = a.post("/api/v1/team", json={"email": "grace@bv.test", "name": "Grace", "lang": "es"})
+    assert r.status_code == 201, r.text
+    assert r.json()["email_status"] == "simulated"
+
+
+def test_resend_invite():
+    _clear("hank@bv.test")
+    a = _admin()
+    a.post("/api/v1/team", json={"email": "hank@bv.test"})
+    r = a.post("/api/v1/team/hank@bv.test/resend-invite")
+    assert r.status_code == 200, r.text
+    assert r.json()["email_status"] == "simulated"
+    # Unknown member → 404.
+    assert a.post("/api/v1/team/nobody@bv.test/resend-invite").status_code == 404
+
+
+def test_promote_and_demote_role():
+    _clear("ivy@bv.test")
+    a = _admin()
+    a.post("/api/v1/team", json={"email": "ivy@bv.test"})
+    assert a.patch("/api/v1/team/ivy@bv.test", json={"role": "admin"}).json()["role"] == "admin"
+    assert a.patch("/api/v1/team/ivy@bv.test", json={"role": "driver"}).json()["role"] == "driver"
+    # Bad role value → 422 (schema validation).
+    assert a.patch("/api/v1/team/ivy@bv.test", json={"role": "ceo"}).status_code == 422
+
+
+def test_cannot_demote_pinned_admin():
+    """A pinned (env) admin can't be demoted to driver."""
+    _admin()
+    _google(OWNER, name="Ender")  # materialize the pinned admin row
+    a = _admin()
+    assert a.patch(f"/api/v1/team/{OWNER}", json={"role": "driver"}).status_code == 400
+
+
+def test_last_login_and_ride_stats_in_team_list():
+    """A driver's last_login is stamped on sign-in and their ride count shows in
+    the Team list the owner sees."""
+    _clear("jane@bv.test")
+    a = _admin()
+    a.post("/api/v1/team", json={"email": "jane@bv.test", "name": "Jane"})
+    jane, _ = _google("jane@bv.test", name="Jane")
+    _make_ride(jane, "JANES-PASSENGER")
+    row = next((x for x in a.get("/api/v1/team").json() if x["email"] == "jane@bv.test"), None)
+    assert row is not None
+    assert row["last_login"] is not None
+    assert row["rides"] >= 1
+    assert "revenue" in row and row["revenue"] >= 0

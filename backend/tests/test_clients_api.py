@@ -102,7 +102,8 @@ def test_client_patch_sets_and_clears_home_address():
     assert r.json()["home_address"] == home
     assert c.get(f"/api/v1/clients/{cid}").json()["home_address"] == home
     # Empty string clears it back to null.
-    assert c.patch(f"/api/v1/clients/{cid}", json={"home_address": ""}).json()["home_address"] is None
+    cleared = c.patch(f"/api/v1/clients/{cid}", json={"home_address": ""}).json()
+    assert cleared["home_address"] is None
 
 
 def test_client_not_found():

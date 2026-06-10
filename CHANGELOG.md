@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.22.0 — 2026-06-10 — Team panel upgrade: roles, welcome emails, per-driver activity
+
+Turns the admin-only Team page into a real fleet-management panel. Same multi-tenant model (each driver = their own tenant); no booking/payment paths touched.
+
+**Role management.** `PATCH /api/v1/team/{email}` now accepts `role` (`admin`|`driver`). Promote/demote from the UI (clickable role pill, confirm on promote). Lockout guards reuse `_other_active_admins_remain`: a pinned (env) admin can't be demoted (`pinned_admin_immutable`) and the last active admin can't be demoted (`last_admin`).
+
+**Welcome email (Resend).** New `app/services/email.py` (`send_email` + `send_team_welcome`) mirrors the Eko AI Realtors pattern: Resend over httpx with an `EMAIL_SIMULATED` short-circuit (logs instead of sending). Adding a member triggers a bilingual (ES/EN) welcome email with the dashboard sign-in link; the API returns an `email_status` (`sent`|`simulated`|`failed`) the owner sees. New `POST /api/v1/team/{email}/resend-invite` re-sends it. Config: `EMAIL_SIMULATED` (default true), `RESEND_API_KEY`, `RESEND_FROM` (Black Volt's own verified domain), `PUBLIC_DASHBOARD_URL`; startup WARNs if `APP_ENV=production` + `EMAIL_SIMULATED=true`. **Email goes live once a Resend domain + key are configured** — until then it's safely simulated.
+
+**Per-driver activity.** New `last_login` column on `allowed_users` (migration `0012_allowed_user_last_login`), stamped on every dashboard sign-in. The Team list now shows each member's ride count, paid revenue, and last login — computed per tenant via a new `dashboard.team_stats_by_tenant` (same aggregation pattern as the client CRM).
+
+**Frontend.** `components/bv/dash/Team.tsx` reworked (extracted `MemberRow`): role toggle, activity line, "Copy invite" (clipboard, ready-to-share bilingual message + link) and "Resend email" per row. `lib/team.ts` adds `setRole`/`resendInvite`; new `dash.team.*` i18n keys in EN + ES.
+
+135 backend tests pass (new role/email/stats/last_login coverage in `test_team_onboarding.py`); `ruff` + `tsc` + `next lint` clean; no autogenerate drift.
+
 ## v0.21.0 — 2026-06-08 — Multi-driver onboarding (Phase A): access list + per-driver workspaces
 
 Lets the owner invite friends (other drivers) to use the platform for feedback. Mirrors Eko AI Realtors' allow-list-gated sign-in, adapted to multi-tenant (each driver = their own tenant). Phase B (per-driver Square OAuth) is next.

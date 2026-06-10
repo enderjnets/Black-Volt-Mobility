@@ -59,6 +59,8 @@ async def lifespan(app: FastAPI):
     logger.info("Starting %s v%s env=%s", settings.APP_NAME, settings.APP_VERSION, settings.APP_ENV)
     if settings.is_production and not settings.AUTH_ENABLED:
         logger.warning("APP_ENV=production but AUTH_ENABLED=false — dashboard open. Investigate.")
+    if settings.is_production and settings.EMAIL_SIMULATED:
+        logger.warning("APP_ENV=production but EMAIL_SIMULATED=true — emails off. Investigate.")
     try:
         from app.services.tenancy import ensure_seed
 

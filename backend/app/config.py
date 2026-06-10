@@ -176,6 +176,23 @@ class Settings(BaseSettings):
     MEDIA_DIR: str = "media"  # relative to the backend WORKDIR (/app)
     MEDIA_MAX_BYTES: int = 5 * 1024 * 1024  # 5 MB per brand asset
 
+    # ─── Email (team onboarding / transactional) ────────────────────────
+    # Welcome emails for newly added drivers are sent via Resend. EMAIL_SIMULATED
+    # (or a missing key) logs the would-be email instead of sending, so the Team
+    # flow works end-to-end without the provider. NEVER ship EMAIL_SIMULATED=true
+    # with APP_ENV=production. RESEND_FROM uses Black Volt's OWN verified domain
+    # (never reuse another product's sender). PUBLIC_DASHBOARD_URL is the login
+    # link embedded in the welcome email.
+    EMAIL_SIMULATED: bool = True
+    RESEND_API_KEY: str = ""
+    RESEND_FROM: str = "Black Volt Mobility <noreply@blackvoltmobility.com>"
+    PUBLIC_DASHBOARD_URL: str = "https://app.blackvoltmobility.com/dashboard"
+
+    @property
+    def email_live(self) -> bool:
+        """Real email sending requires an explicit opt-out of simulation AND a key."""
+        return not self.EMAIL_SIMULATED and bool(self.RESEND_API_KEY)
+
     # ─── CORS ───────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
 

@@ -428,3 +428,39 @@ async def ride_detail_extra(db: AsyncSession, *, tenant_id: int, ride: Ride) -> 
         else None
     )
     return {"client": client, "payment": payment}
+
+
+async def team_stats_by_tenant(db: AsyncSession) -> dict[int, dict]:
+    """Per-tenant ride count, paid revenue, and last activity for the Team panel
+    — one row per driver (each driver owns one tenant). Keyed by tenant_id.
+    Rides exclude cancelled/no-show; revenue counts paid rides (any method)."""
+    agg = (
+        await db.execute(
+            select(
+                Ride.tenant_id,
+                func.count().label("rides"),
+                func.max(func.coalesce(Ride.scheduled_at, Ride.created_at)).label("last"),
+            )
+            .where(Ride.tenant_id.isnot(None), Ride.status.notin_(_CANCELLED))
+            .group_by(Ride.tenant_id)
+        )
+    ).all()
+    rev_rows = (
+        await db.execute(
+            select(Ride.tenant_id, func.coalesce(func.sum(Ride.fare_total), 0.0))
+            .where(Ride.tenant_id.isnot(None), Ride.paid.is_(True))
+            .group_by(Ride.tenant_id)
+        )
+    ).all()
+    rev_by = {r[0]: round(float(r[1]), 2) for r in rev_rows}
+
+    out: dict[int, dict] = {}
+    for r in agg:
+        out[r.tenant_id] = {
+            "rides": int(r.rides),
+            "revenue": rev_by.get(r.tenant_id, 0.0),
+            "last_activity": r.last.isoformat() if r.last else None,
+        }
+    for tid, amt in rev_by.items():  # paid-but-all-cancelled tenants still show revenue
+        out.setdefault(tid, {"rides": 0, "revenue": amt, "last_activity": None})
+    return out

@@ -8,6 +8,11 @@ export interface TeamMember {
   tenant_slug: string | null;
   immutable: boolean;
   created_at: string | null;
+  last_login: string | null;
+  rides: number;
+  revenue: number;
+  last_activity: string | null;
+  email_status?: string | null;
 }
 
 function detailOf(d: unknown, fallback: string): string {
@@ -30,8 +35,8 @@ export async function listTeam(): Promise<TeamMember[]> {
   return r.json();
 }
 
-export async function addMember(email: string, name?: string): Promise<TeamMember> {
-  const r = await send("/v1/team", "POST", { email, name: name || null });
+export async function addMember(email: string, name?: string, lang?: string): Promise<TeamMember> {
+  const r = await send("/v1/team", "POST", { email, name: name || null, lang: lang || null });
   if (!r.ok) {
     const d = await r.json().catch(() => ({}));
     throw new Error(detailOf((d as { detail?: unknown }).detail, `team:${r.status}`));
@@ -46,6 +51,24 @@ export async function setActive(email: string, active: boolean): Promise<TeamMem
     throw new Error(detailOf((d as { detail?: unknown }).detail, `team:${r.status}`));
   }
   return r.json();
+}
+
+export async function setRole(email: string, role: "admin" | "driver"): Promise<TeamMember> {
+  const r = await send(`/v1/team/${encodeURIComponent(email)}`, "PATCH", { role });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(detailOf((d as { detail?: unknown }).detail, `team:${r.status}`));
+  }
+  return r.json();
+}
+
+export async function resendInvite(email: string): Promise<string> {
+  const r = await send(`/v1/team/${encodeURIComponent(email)}/resend-invite`, "POST");
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(detailOf((d as { detail?: unknown }).detail, `team:${r.status}`));
+  }
+  return (await r.json()).email_status as string;
 }
 
 export async function removeMember(email: string): Promise<void> {
