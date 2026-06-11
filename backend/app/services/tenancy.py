@@ -66,18 +66,23 @@ async def _unique_slug(db: AsyncSession, base: str) -> str:
     return slug
 
 
-async def create_tenant_for(db: AsyncSession, *, name: str, slug: str | None = None) -> Tenant:
+async def create_tenant_for(
+    db: AsyncSession, *, name: str, slug: str | None = None, commit: bool = True
+) -> Tenant:
     """Provision a brand-new driver tenant (their own workspace) + default rates.
     The slug is derived from the name (or `slug`) and de-duplicated. Called when
-    an allow-listed driver signs in for the first time."""
+    an allow-listed driver signs in for the first time. With commit=False the
+    rows are only flushed — the caller owns the transaction (atomic flows like
+    subscribe must not persist a tenant before the payment succeeds)."""
     nm = (name or "").strip() or "Driver"
     uslug = await _unique_slug(db, slug or nm)
     t = Tenant(slug=uslug, name=nm)
     db.add(t)
     await db.flush()  # populate t.id for the RateConfig FK
     db.add(RateConfig(tenant_id=t.id, **DEFAULT_RATES))
-    await db.commit()
-    await db.refresh(t)
+    if commit:
+        await db.commit()
+        await db.refresh(t)
     return t
 
 
