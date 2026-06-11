@@ -105,3 +105,27 @@ async def test_email_is_normalized_and_idempotent_across_case(db):
     )
     assert a.id == b.id
     assert await _count(db, mixed.lower()) == 1
+
+
+async def test_live_mode_rejects_unconfigured_plan(db, monkeypatch):
+    """A known plan_key whose variation id env is unset must fail fast in live
+    mode (before any Square call / card vaulting), not send '' to Square."""
+    s = get_settings()
+    monkeypatch.setattr(s, "PAYMENTS_SIMULATED", False)
+    monkeypatch.setattr(s, "SQUARE_ACCESS_TOKEN", "fake-token")
+    monkeypatch.setattr(s, "SQUARE_LOCATION_ID", "fake-loc")
+    assert s.payments_live is True
+    with pytest.raises(subscriptions.InvalidPlanError):
+        await subscriptions.subscribe(
+            db, plan_key="operator_annual", email=_email(), source_id="cnon:x"
+        )
+
+
+async def test_production_with_simulated_payments_is_unavailable(db, monkeypatch):
+    """Anti-pattern guard: in production with payments simulated, the public
+    endpoint must refuse instead of minting free ACTIVE subscriptions."""
+    monkeypatch.setattr(get_settings(), "APP_ENV", "production")
+    with pytest.raises(subscriptions.SubscriptionsUnavailableError):
+        await subscriptions.subscribe(
+            db, plan_key="operator", email=_email(), source_id="cnon:x"
+        )

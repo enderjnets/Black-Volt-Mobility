@@ -22,6 +22,10 @@ class InvalidPlanError(adapter.SubscriptionError):
     public_code = "invalid_plan"
 
 
+class SubscriptionsUnavailableError(adapter.SubscriptionError):
+    public_code = "subscriptions_unavailable"
+
+
 async def _active_for(db: AsyncSession, *, email: str, plan_key: str) -> Subscription | None:
     return (
         await db.execute(
@@ -43,9 +47,16 @@ async def subscribe(
     # same canonical identity as the API boundary.
     email = (email or "").strip().lower()
     settings = get_settings()
+    # Anti-pattern #5 guard: NEVER serve simulated subscriptions in production —
+    # they would mint free ACTIVE entitlements for anyone who POSTs.
+    if settings.is_production and not settings.payments_live:
+        raise SubscriptionsUnavailableError("production requires payments_live")
+
     plan_variation_id = settings.subscription_plan(plan_key)
-    if plan_variation_id is None:
-        raise InvalidPlanError(f"unknown plan_key: {plan_key}")
+    # None → unknown key. Empty string → known key whose variation id env is
+    # unset: fine while simulated, but live it must fail BEFORE vaulting a card.
+    if plan_variation_id is None or (settings.payments_live and not plan_variation_id):
+        raise InvalidPlanError(f"plan not available: {plan_key}")
 
     existing = await _active_for(db, email=email, plan_key=plan_key)
     if existing is not None:

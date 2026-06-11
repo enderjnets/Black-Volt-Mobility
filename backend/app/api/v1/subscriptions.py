@@ -56,6 +56,10 @@ async def create_subscription(
         sub = await subscriptions.subscribe(
             db, plan_key=body.plan_key, email=body.email, source_id=body.source_id
         )
+    except subscriptions.SubscriptionsUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=e.public_code
+        ) from e
     except subscriptions.InvalidPlanError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=e.public_code
