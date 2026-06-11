@@ -93,6 +93,15 @@ class Settings(BaseSettings):
     SQUARE_PLAN_OPERATOR_MONTHLY: str = ""
     SQUARE_PLAN_OPERATOR_ANNUAL: str = ""
 
+    # Square subscription webhooks — keep the local Subscription row in sync as
+    # Square fires events over time (payment made/failed, subscription updated/
+    # canceled). The signature key is created in the Square dashboard when the
+    # webhook subscription is added; SQUARE_WEBHOOK_URL is the exact public URL
+    # registered there (Square's HMAC is computed over URL + raw body). Empty by
+    # default → the endpoint refuses to process unverified events (403).
+    SQUARE_WEBHOOK_SIGNATURE_KEY: str = ""
+    SQUARE_WEBHOOK_URL: str = ""
+
     # Entitlement enforcement — when true, paid-plan features (AI extraction,
     # public profile) require an active subscription; the default Black Volt
     # tenant is always exempt (the owner doesn't subscribe to himself). Ships
@@ -113,6 +122,12 @@ class Settings(BaseSettings):
             and bool(self.SQUARE_ACCESS_TOKEN)
             and bool(self.SQUARE_LOCATION_ID)
         )
+
+    @property
+    def webhooks_live(self) -> bool:
+        """Signature verification is only possible with BOTH the key and the exact
+        registered URL — without them the webhook endpoint refuses every event."""
+        return bool(self.SQUARE_WEBHOOK_SIGNATURE_KEY) and bool(self.SQUARE_WEBHOOK_URL)
 
     def subscription_plan(self, plan_key: str) -> str | None:
         """Map a public plan_key → the configured Square plan-variation id, or
@@ -224,7 +239,13 @@ class Settings(BaseSettings):
         return not self.EMAIL_SIMULATED and bool(self.RESEND_API_KEY)
 
     # ─── CORS ───────────────────────────────────────────────────────────
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
+    # The driver subscription landing (driver.blackvoltmobility.com) calls the
+    # API same-origin through the Next /api proxy, so the browser normally never
+    # hits CORS; the origin is allow-listed as defense-in-depth. Override per
+    # environment with the CORS_ORIGINS env var (compose passes it through).
+    CORS_ORIGINS: str = (
+        "http://localhost:3000,http://localhost:3005,https://driver.blackvoltmobility.com"
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:
