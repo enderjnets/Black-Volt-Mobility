@@ -107,6 +107,25 @@ async def test_email_is_normalized_and_idempotent_across_case(db):
     assert await _count(db, mixed.lower()) == 1
 
 
+async def test_db_enforces_one_open_subscription_per_email_plan(db):
+    """The schema (not just app code) owns the no-duplicate invariant: inserting
+    a second non-canceled row for the same email+plan violates the partial
+    unique index."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import SubscriptionStatus
+
+    email = _email()
+    db.add(Subscription(tenant_id=1, email=email, plan_key="operator",
+                        status=SubscriptionStatus.ACTIVE, simulated=True))
+    await db.commit()
+    db.add(Subscription(tenant_id=1, email=email, plan_key="operator",
+                        status=SubscriptionStatus.PENDING, simulated=True))
+    with pytest.raises(IntegrityError):
+        await db.commit()
+    await db.rollback()
+
+
 async def test_live_mode_rejects_unconfigured_plan(db, monkeypatch):
     """A known plan_key whose variation id env is unset must fail fast in live
     mode (before any Square call / card vaulting), not send '' to Square."""

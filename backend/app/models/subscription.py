@@ -10,7 +10,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, pg_enum
@@ -20,21 +20,34 @@ class SubscriptionStatus(str, enum.Enum):
     ACTIVE = "active"        # paid + current
     PAST_DUE = "past_due"    # payment failed, grace period
     CANCELED = "canceled"    # ended
+    # Square returned the subscription but the first charge hasn't settled —
+    # NOT yet entitled. Appended last to mirror ALTER TYPE ADD VALUE order.
+    PENDING = "pending"
 
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
+    __table_args__ = (
+        # One OPEN (non-canceled) subscription per email+plan — the DB enforces
+        # idempotency under concurrency; app-level SELECT-then-INSERT can race.
+        Index(
+            "uq_subscriptions_email_plan_open",
+            "email",
+            "plan_key",
+            unique=True,
+            postgresql_where=text("status != 'canceled'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tenant_id: Mapped[int] = mapped_column(
         ForeignKey("tenants.id", ondelete="CASCADE"), index=True
     )
     email: Mapped[str] = mapped_column(String(255), index=True)
-    plan_key: Mapped[str] = mapped_column(String(40), index=True)
+    plan_key: Mapped[str] = mapped_column(String(40))
     status: Mapped[SubscriptionStatus] = mapped_column(
         pg_enum(SubscriptionStatus, name="subscription_status"),
         default=SubscriptionStatus.ACTIVE,
-        index=True,
     )
     square_subscription_id: Mapped[str | None] = mapped_column(
         String(120), nullable=True, index=True
