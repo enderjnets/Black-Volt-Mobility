@@ -65,3 +65,20 @@ def test_idempotent_same_email_plan():
 def test_missing_email_422():
     r = client.post("/api/v1/subscriptions", json={"plan_key": "operator", "source_id": "x"})
     assert r.status_code == 422
+
+
+def test_square_error_detail_is_sanitized(monkeypatch):
+    """A Square failure must NOT leak the raw API body to the (anonymous) caller —
+    only the stable public code. The full message is for server logs."""
+    from app.services import subscriptions_square
+
+    async def boom(*, email, idempotency_seed=None, **kw):
+        raise subscriptions_square.SubscriptionError(
+            "square_customer:400:SECRET-SQUARE-BODY", public_code="square_customer"
+        )
+
+    monkeypatch.setattr(subscriptions_square, "create_customer", boom)
+    r = _subscribe(_email())
+    assert r.status_code == 402, r.text
+    assert r.json()["detail"] == "square_customer"
+    assert "SECRET-SQUARE-BODY" not in r.text

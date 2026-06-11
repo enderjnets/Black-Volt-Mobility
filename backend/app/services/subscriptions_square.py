@@ -9,15 +9,26 @@ Two modes (settings.payments_live — the same gate as one-off payments):
 This module NEVER touches the ride one-off payment flow (payments_square.py)."""
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
 from app.config import get_settings
 
+logger = logging.getLogger("blackvolt.subscriptions")
+
 
 class SubscriptionError(RuntimeError):
-    pass
+    """`public_code` is the ONLY detail safe to return to the unauthenticated
+    caller; the full message (Square status + body) is log-only."""
+
+    public_code = "subscription_failed"
+
+    def __init__(self, message: str, *, public_code: str | None = None):
+        super().__init__(message)
+        if public_code is not None:
+            self.public_code = public_code
 
 
 @dataclass
@@ -69,7 +80,9 @@ async def create_customer(*, email: str) -> CustomerResult:
             idempotency_key=str(uuid.uuid4()), email_address=email
         )
     except ApiError as e:
-        raise SubscriptionError(f"square_customer:{e.status_code}:{e.body}") from e
+        raise SubscriptionError(
+            f"square_customer:{e.status_code}:{e.body}", public_code="square_customer"
+        ) from e
     return CustomerResult(square_customer_id=resp.customer.id, simulated=False)
 
 
@@ -88,7 +101,9 @@ async def create_card(*, customer_id: str, source_id: str) -> CardResult:
             card={"customer_id": customer_id},
         )
     except ApiError as e:
-        raise SubscriptionError(f"square_card:{e.status_code}:{e.body}") from e
+        raise SubscriptionError(
+            f"square_card:{e.status_code}:{e.body}", public_code="square_card"
+        ) from e
     return CardResult(square_card_id=resp.card.id, simulated=False)
 
 
@@ -114,7 +129,9 @@ async def create_subscription(
             card_id=card_id,
         )
     except ApiError as e:
-        raise SubscriptionError(f"square_subscription:{e.status_code}:{e.body}") from e
+        raise SubscriptionError(
+            f"square_subscription:{e.status_code}:{e.body}", public_code="square_subscription"
+        ) from e
     s = resp.subscription
     return SubscriptionResult(
         square_subscription_id=s.id,

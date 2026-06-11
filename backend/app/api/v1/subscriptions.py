@@ -6,6 +6,8 @@ the page only uses the public app/location id from GET /payments/config and send
 the tokenized card (source_id) here. This never touches the ride payment flow."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import get_db
 from app.models import Subscription, SubscriptionStatus
 from app.services import subscriptions, subscriptions_square
+
+logger = logging.getLogger("blackvolt.api.subscriptions")
 
 router = APIRouter(tags=["subscriptions"])
 
@@ -48,14 +52,17 @@ async def create_subscription(
 ):
     try:
         sub = await subscriptions.subscribe(
-            db, plan_key=body.plan_key, email=str(body.email), source_id=body.source_id
+            db, plan_key=body.plan_key, email=body.email, source_id=body.source_id
         )
-    except subscriptions_square.SubscriptionError as e:
-        if str(e) == "invalid_plan":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_plan"
-            ) from e
+    except subscriptions.InvalidPlanError as e:
         raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(e)
+            status_code=status.HTTP_400_BAD_REQUEST, detail=e.public_code
+        ) from e
+    except subscriptions_square.SubscriptionError as e:
+        # Full message (Square status + body) is log-only; the anonymous caller
+        # gets the stable public code, nothing more.
+        logger.error("subscribe failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=e.public_code
         ) from e
     return _out(sub)

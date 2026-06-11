@@ -18,6 +18,10 @@ from app.services.tenancy import create_tenant_for
 STATUS_ACTIVE = SubscriptionStatus.ACTIVE
 
 
+class InvalidPlanError(adapter.SubscriptionError):
+    public_code = "invalid_plan"
+
+
 async def _active_for(db: AsyncSession, *, email: str, plan_key: str) -> Subscription | None:
     return (
         await db.execute(
@@ -38,7 +42,7 @@ async def subscribe(
     settings = get_settings()
     plan_variation_id = settings.subscription_plan(plan_key)
     if plan_variation_id is None:
-        raise adapter.SubscriptionError("invalid_plan")
+        raise InvalidPlanError(f"unknown plan_key: {plan_key}")
 
     existing = await _active_for(db, email=email, plan_key=plan_key)
     if existing is not None:
