@@ -16,6 +16,7 @@ from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.health import router as health_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.rides import router as booking_router
+from app.api.v1.subscriptions import router as subscriptions_router
 from app.api.v1.team import router as team_router
 from app.api.v1.tenant import router as tenant_router
 from app.config import get_settings
@@ -92,6 +93,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(booking_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
+app.include_router(subscriptions_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(tenant_router, prefix="/api/v1")
 app.include_router(team_router, prefix="/api/v1", dependencies=[Depends(require_admin)])

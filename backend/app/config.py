@@ -84,6 +84,15 @@ class Settings(BaseSettings):
     SQUARE_LOCATION_ID: str = ""
     SQUARE_APPLICATION_ID: str = ""
 
+    # Square Subscriptions — recurring SaaS plans for drivers. Each plan_key maps
+    # to a Square plan-VARIATION id (created once in the Square dashboard; copied
+    # here). While simulated these may hold a placeholder; the live ids are
+    # generated later with the provisioning script. The Operator plan unlocks the
+    # paid-plan entitlements. Same simulation gate as one-off payments
+    # (payments_live) — never reuses another product's plans.
+    SQUARE_PLAN_OPERATOR_MONTHLY: str = ""
+    SQUARE_PLAN_OPERATOR_ANNUAL: str = ""
+
     @property
     def payments_live(self) -> bool:
         """Real Square calls require an explicit opt-out of simulation AND a token+location."""
@@ -92,6 +101,15 @@ class Settings(BaseSettings):
             and bool(self.SQUARE_ACCESS_TOKEN)
             and bool(self.SQUARE_LOCATION_ID)
         )
+
+    def subscription_plan(self, plan_key: str) -> str | None:
+        """Map a public plan_key → the configured Square plan-variation id, or
+        None when the key is unknown (→ the API rejects it with 400). A known key
+        with an unset id is still valid while simulated (no real Square call)."""
+        return {
+            "operator": self.SQUARE_PLAN_OPERATOR_MONTHLY,
+            "operator_annual": self.SQUARE_PLAN_OPERATOR_ANNUAL,
+        }.get(plan_key)
 
     # ─── Google Calendar (scheduled rides → Black Volt calendar) ────────
     # A service account (shared on the Black Volt calendar) pushes ride events.

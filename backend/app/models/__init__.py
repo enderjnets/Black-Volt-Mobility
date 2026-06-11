@@ -5,6 +5,7 @@ from app.models.client import Client
 from app.models.payment import Payment, PaymentStatus
 from app.models.rate_config import RateConfig
 from app.models.ride import PaymentMethod, Ride, RideStatus
+from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.tenant import Tenant
 
 __all__ = [
@@ -18,4 +19,6 @@ __all__ = [
     "Payment",
     "PaymentStatus",
     "AllowedUser",
+    "Subscription",
+    "SubscriptionStatus",
 ]
