@@ -91,3 +91,17 @@ async def test_unsubscribed_tenant_not_paid(db):
 
     tenant = await create_tenant_for(db, name=f"NoSub {uuid.uuid4().hex[:6]}")
     assert await subscriptions.tenant_is_paid(db, tenant_id=tenant.id) is False
+
+
+async def test_email_is_normalized_and_idempotent_across_case(db):
+    base = _email()
+    mixed = base.replace("svc-", "SVC-").replace("@example.com", "@Example.COM")
+    a = await subscriptions.subscribe(
+        db, plan_key="operator", email=mixed, source_id="cnon:card-nonce-ok"
+    )
+    assert a.email == mixed.strip().lower()
+    b = await subscriptions.subscribe(
+        db, plan_key="operator", email=mixed.lower(), source_id="cnon:card-nonce-ok"
+    )
+    assert a.id == b.id
+    assert await _count(db, mixed.lower()) == 1

@@ -38,7 +38,10 @@ async def subscribe(
     db: AsyncSession, *, plan_key: str, email: str, source_id: str
 ) -> Subscription:
     """Subscribe a driver to a plan. Idempotent on (email, plan_key) while active.
-    Raises adapter.SubscriptionError('invalid_plan') for an unknown plan_key."""
+    Raises InvalidPlanError for an unknown plan_key."""
+    # Normalize here too — direct callers (tests, future webhooks) must hit the
+    # same canonical identity as the API boundary.
+    email = (email or "").strip().lower()
     settings = get_settings()
     plan_variation_id = settings.subscription_plan(plan_key)
     if plan_variation_id is None:

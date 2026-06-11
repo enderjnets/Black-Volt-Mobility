@@ -31,7 +31,9 @@ class SubscribeBody(BaseModel):
     @field_validator("email")
     @classmethod
     def _looks_like_email(cls, v: str) -> str:
-        v = v.strip()
+        # Lowercase like every other email in the app (auth.py, team.py) — the
+        # (email, plan_key) idempotency key depends on one canonical form.
+        v = v.strip().lower()
         if "@" not in v or "." not in v.split("@")[-1]:
             raise ValueError("invalid email")
         return v
