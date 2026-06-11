@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db.base import get_db
 from app.models import Subscription, SubscriptionStatus
-from app.services import subscriptions, subscriptions_square
+from app.services import ratelimit, subscriptions, subscriptions_square
 
 logger = logging.getLogger("blackvolt.api.subscriptions")
 
@@ -50,8 +51,26 @@ def _out(s: Subscription) -> dict:
 @router.post("/subscriptions", status_code=status.HTTP_201_CREATED)
 async def create_subscription(
     body: SubscribeBody,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    settings = get_settings()
+    # Abuse guard: this is the only unauthenticated DB-writing endpoint in the
+    # app. Cloudflare fronts production, so the real client IP arrives in
+    # cf-connecting-ip; request.client is the tunnel otherwise.
+    ip = request.headers.get("cf-connecting-ip") or (
+        request.client.host if request.client else "unknown"
+    )
+    if not ratelimit.allow(
+        f"sub:ip:{ip}", limit=settings.SUBSCRIBE_RATE_PER_IP_HOURLY, window_seconds=3600
+    ) or not ratelimit.allow(
+        f"sub:email:{body.email}",
+        limit=settings.SUBSCRIBE_RATE_PER_EMAIL_HOURLY,
+        window_seconds=3600,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="rate_limited"
+        )
     try:
         sub = await subscriptions.subscribe(
             db, plan_key=body.plan_key, email=body.email, source_id=body.source_id

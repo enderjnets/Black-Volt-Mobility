@@ -99,6 +99,12 @@ class Settings(BaseSettings):
     # false so flipping it is an explicit launch decision once billing is live.
     ENTITLEMENTS_ENFORCED: bool = False
 
+    # Abuse guard for the PUBLIC subscribe endpoint (attempts/hour). Per-email
+    # catches a stuck client; per-IP catches enumeration (Cloudflare passes the
+    # real IP in cf-connecting-ip).
+    SUBSCRIBE_RATE_PER_EMAIL_HOURLY: int = 5
+    SUBSCRIBE_RATE_PER_IP_HOURLY: int = 30
+
     @property
     def payments_live(self) -> bool:
         """Real Square calls require an explicit opt-out of simulation AND a token+location."""

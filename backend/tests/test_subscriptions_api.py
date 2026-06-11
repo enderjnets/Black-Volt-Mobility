@@ -14,6 +14,9 @@ os.environ["PAYMENTS_SIMULATED"] = "true"
 os.environ["MAPS_SIMULATED"] = "true"
 # A placeholder plan-variation id stands in for the real Square one while simulated.
 os.environ["SQUARE_PLAN_OPERATOR_MONTHLY"] = "PLACEHOLDER_MONTHLY_VARIATION_ID"
+# Every test in this module shares the TestClient IP — keep the per-IP limit out
+# of the way so only the per-email limit is exercised deliberately.
+os.environ["SUBSCRIBE_RATE_PER_IP_HOURLY"] = "100000"
 
 from app.config import get_settings  # noqa: E402
 
@@ -82,3 +85,16 @@ def test_square_error_detail_is_sanitized(monkeypatch):
     assert r.status_code == 402, r.text
     assert r.json()["detail"] == "square_customer"
     assert "SECRET-SQUARE-BODY" not in r.text
+
+
+def test_per_email_rate_limit_429():
+    from app.services import ratelimit
+
+    ratelimit.reset()
+    email = _email()
+    limit = get_settings().SUBSCRIBE_RATE_PER_EMAIL_HOURLY
+    for _ in range(limit):
+        assert _subscribe(email).status_code == 201
+    r = _subscribe(email)
+    assert r.status_code == 429, r.text
+    assert r.json()["detail"] == "rate_limited"
