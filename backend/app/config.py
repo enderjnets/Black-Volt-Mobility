@@ -93,6 +93,12 @@ class Settings(BaseSettings):
     SQUARE_PLAN_OPERATOR_MONTHLY: str = ""
     SQUARE_PLAN_OPERATOR_ANNUAL: str = ""
 
+    # Entitlement enforcement — when true, paid-plan features (AI extraction,
+    # public profile) require an active subscription; the default Black Volt
+    # tenant is always exempt (the owner doesn't subscribe to himself). Ships
+    # false so flipping it is an explicit launch decision once billing is live.
+    ENTITLEMENTS_ENFORCED: bool = False
+
     @property
     def payments_live(self) -> bool:
         """Real Square calls require an explicit opt-out of simulation AND a token+location."""

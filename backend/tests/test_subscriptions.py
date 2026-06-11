@@ -323,3 +323,35 @@ async def test_insert_race_recovers_and_cancels_duplicate(db, monkeypatch):
     assert a.id == b.id
     assert await _count(db, email) == 1
     assert len(canceled) == 1 and canceled[0] != a.square_subscription_id
+
+
+async def test_entitlements_flag_off_everything_allowed(db):
+    from app.services.tenancy import create_tenant_for
+
+    tenant = await create_tenant_for(db, name=f"Free {uuid.uuid4().hex[:6]}")
+    assert await subscriptions.tenant_has_entitlements(db, tenant_id=tenant.id) is True
+
+
+async def test_entitlements_enforced_gates_unpaid_but_exempts_default(db, monkeypatch):
+    from app.services.tenancy import create_tenant_for, get_default_tenant
+
+    monkeypatch.setattr(get_settings(), "ENTITLEMENTS_ENFORCED", True)
+    unpaid = await create_tenant_for(db, name=f"Unpaid {uuid.uuid4().hex[:6]}")
+    assert await subscriptions.tenant_has_entitlements(db, tenant_id=unpaid.id) is False
+    default = await get_default_tenant(db)
+    assert await subscriptions.tenant_has_entitlements(db, tenant_id=default.id) is True
+    paid = await subscriptions.subscribe(
+        db, plan_key="operator", email=_email(), source_id="cnon:card-nonce-ok"
+    )
+    assert await subscriptions.tenant_has_entitlements(db, tenant_id=paid.tenant_id) is True
+
+
+async def test_simulated_subscription_not_paid_in_production(db, monkeypatch):
+    """Defense in depth: even if simulated rows ever land in the prod DB, they
+    must never grant entitlement there."""
+    sub = await subscriptions.subscribe(
+        db, plan_key="operator", email=_email(), source_id="cnon:card-nonce-ok"
+    )
+    assert await subscriptions.tenant_is_paid(db, tenant_id=sub.tenant_id) is True
+    monkeypatch.setattr(get_settings(), "APP_ENV", "production")
+    assert await subscriptions.tenant_is_paid(db, tenant_id=sub.tenant_id) is False

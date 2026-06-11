@@ -17,7 +17,7 @@ from app.config import get_settings
 from app.models import AllowedUser, Subscription, SubscriptionStatus
 from app.models.allowed_user import ROLE_DRIVER
 from app.services import subscriptions_square as adapter
-from app.services.tenancy import create_tenant_for
+from app.services.tenancy import DEFAULT_TENANT_SLUG, create_tenant_for, get_tenant
 
 
 class InvalidPlanError(adapter.SubscriptionError):
@@ -149,3 +149,14 @@ async def tenant_is_paid(db: AsyncSession, *, tenant_id: int) -> bool:
         conditions.append(Subscription.simulated.is_(False))
     row = (await db.execute(select(Subscription.id).where(*conditions))).first()
     return row is not None
+
+
+async def tenant_has_entitlements(db: AsyncSession, *, tenant_id: int) -> bool:
+    """Gate for paid-plan features. False only when enforcement is on AND the
+    tenant is neither the default (owner) tenant nor actively subscribed."""
+    if not get_settings().ENTITLEMENTS_ENFORCED:
+        return True
+    tenant = await get_tenant(db, tenant_id)
+    if tenant is not None and tenant.slug == DEFAULT_TENANT_SLUG:
+        return True
+    return await tenant_is_paid(db, tenant_id=tenant_id)
