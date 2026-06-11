@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
-from app.config import get_settings
+from app.services.square_common import square_client
 
 logger = logging.getLogger("blackvolt.subscriptions")
 
@@ -52,22 +52,28 @@ class SubscriptionResult:
 
 
 def _client():
-    """Async Square client for the configured environment, or None when simulated."""
-    settings = get_settings()
-    if not settings.payments_live:
+    """Local seam over the shared factory (monkeypatch point for tests)."""
+    return square_client()
+
+
+def _idempotency_key(kind: str, *parts: str) -> str:
+    """Deterministic per business intent (uuid5): the same checkout retried —
+    same nonce — reuses the key so Square collapses duplicates instead of
+    creating a second live subscription; a new checkout gets a fresh key."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "blackvolt:" + kind + ":" + ":".join(parts)))
+
+
+def _parse_square_date(value) -> datetime | None:
+    """Square's charged_through_date is 'YYYY-MM-DD'."""
+    if not value:
         return None
-    from square import AsyncSquare
-    from square.environment import SquareEnvironment
-
-    env = (
-        SquareEnvironment.PRODUCTION
-        if settings.SQUARE_ENV == "production"
-        else SquareEnvironment.SANDBOX
-    )
-    return AsyncSquare(token=settings.SQUARE_ACCESS_TOKEN, environment=env)
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d").replace(tzinfo=UTC)
+    except ValueError:
+        return None
 
 
-async def create_customer(*, email: str) -> CustomerResult:
+async def create_customer(*, email: str, idempotency_seed: str) -> CustomerResult:
     client = _client()
     if client is None:
         return CustomerResult(
@@ -77,7 +83,8 @@ async def create_customer(*, email: str) -> CustomerResult:
 
     try:
         resp = await client.customers.create(
-            idempotency_key=str(uuid.uuid4()), email_address=email
+            idempotency_key=_idempotency_key("customer", email, idempotency_seed),
+            email_address=email,
         )
     except ApiError as e:
         raise SubscriptionError(
@@ -96,7 +103,7 @@ async def create_card(*, customer_id: str, source_id: str) -> CardResult:
 
     try:
         resp = await client.cards.create(
-            idempotency_key=str(uuid.uuid4()),
+            idempotency_key=_idempotency_key("card", customer_id, source_id),
             source_id=source_id,
             card={"customer_id": customer_id},
         )
@@ -108,7 +115,12 @@ async def create_card(*, customer_id: str, source_id: str) -> CardResult:
 
 
 async def create_subscription(
-    *, plan_variation_id: str, customer_id: str, card_id: str, location_id: str
+    *,
+    plan_variation_id: str,
+    customer_id: str,
+    card_id: str,
+    location_id: str,
+    idempotency_seed: str,
 ) -> SubscriptionResult:
     client = _client()
     if client is None:
@@ -122,7 +134,9 @@ async def create_subscription(
 
     try:
         resp = await client.subscriptions.create(
-            idempotency_key=str(uuid.uuid4()),
+            idempotency_key=_idempotency_key(
+                "subscription", customer_id, plan_variation_id, idempotency_seed
+            ),
             location_id=location_id,
             plan_variation_id=plan_variation_id,
             customer_id=customer_id,
@@ -135,7 +149,25 @@ async def create_subscription(
     s = resp.subscription
     return SubscriptionResult(
         square_subscription_id=s.id,
-        status=s.status or "ACTIVE",
-        current_period_end=None,
+        # A missing status must NOT default to ACTIVE — never grant entitlement
+        # on absent data.
+        status=s.status or "PENDING",
+        current_period_end=_parse_square_date(getattr(s, "charged_through_date", None)),
         simulated=False,
     )
+
+
+async def cancel_subscription(*, subscription_id: str) -> None:
+    """Best-effort cancel — used when we lose the local insert race AFTER Square
+    already created the subscription. Never raises: the caller is already on an
+    error path; a failure here is logged for manual reconciliation in Square."""
+    client = _client()
+    if client is None:
+        return
+    try:
+        await client.subscriptions.cancel(subscription_id=subscription_id)
+    except Exception:
+        logger.exception(
+            "cancel_subscription failed — reconcile %s in the Square dashboard",
+            subscription_id,
+        )

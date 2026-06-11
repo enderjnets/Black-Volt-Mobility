@@ -148,3 +148,30 @@ async def test_production_with_simulated_payments_is_unavailable(db, monkeypatch
         await subscriptions.subscribe(
             db, plan_key="operator", email=_email(), source_id="cnon:x"
         )
+
+
+def test_idempotency_keys_are_deterministic_per_intent():
+    """Retrying the SAME checkout (same nonce) must reuse the same Square
+    idempotency keys so Square collapses duplicates; a NEW checkout (new nonce)
+    gets fresh keys. A random-per-attempt key would double-bill on a lost
+    response."""
+    k1 = subscriptions_square._idempotency_key("subscription", "CUST1", "PLANVAR", "nonce-A")
+    k2 = subscriptions_square._idempotency_key("subscription", "CUST1", "PLANVAR", "nonce-A")
+    k3 = subscriptions_square._idempotency_key("subscription", "CUST1", "PLANVAR", "nonce-B")
+    assert k1 == k2
+    assert k1 != k3
+    uuid.UUID(k1)  # valid uuid string
+
+
+def test_parse_square_date():
+    from datetime import UTC, datetime
+
+    assert subscriptions_square._parse_square_date("2026-07-11") == datetime(
+        2026, 7, 11, tzinfo=UTC
+    )
+    assert subscriptions_square._parse_square_date(None) is None
+    assert subscriptions_square._parse_square_date("garbage") is None
+
+
+async def test_cancel_subscription_simulated_is_noop():
+    await subscriptions_square.cancel_subscription(subscription_id="SIMSUB-x")  # no raise

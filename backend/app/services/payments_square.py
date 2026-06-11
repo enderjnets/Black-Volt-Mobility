@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 
 from app.config import get_settings
+from app.services.square_common import square_client
 
 
 class PaymentError(RuntimeError):
@@ -34,19 +35,8 @@ class RefundResult:
 
 
 def _client():
-    """Async Square client for the configured environment, or None when simulated."""
-    settings = get_settings()
-    if not settings.payments_live:
-        return None
-    from square import AsyncSquare
-    from square.environment import SquareEnvironment
-
-    env = (
-        SquareEnvironment.PRODUCTION
-        if settings.SQUARE_ENV == "production"
-        else SquareEnvironment.SANDBOX
-    )
-    return AsyncSquare(token=settings.SQUARE_ACCESS_TOKEN, environment=env)
+    """Local seam over the shared factory (monkeypatch point for tests)."""
+    return square_client()
 
 
 async def authorize(

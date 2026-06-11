@@ -65,13 +65,14 @@ async def subscribe(
     # New driver → provision their own isolated workspace (tenant + default rates).
     tenant = await create_tenant_for(db, name=email)
 
-    customer = await adapter.create_customer(email=email)
+    customer = await adapter.create_customer(email=email, idempotency_seed=source_id)
     card = await adapter.create_card(customer_id=customer.square_customer_id, source_id=source_id)
     result = await adapter.create_subscription(
         plan_variation_id=plan_variation_id,
         customer_id=customer.square_customer_id,
         card_id=card.square_card_id,
         location_id=settings.SQUARE_LOCATION_ID,
+        idempotency_seed=source_id,
     )
 
     sub = Subscription(
