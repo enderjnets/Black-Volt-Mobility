@@ -83,7 +83,11 @@ Coexists with the four Eko stacks. Use exactly these:
 - ✅ Phase 1 — Auth + multi-tenancy + profiles (`v0.4.x`)
 - ✅ Phase 2 — Booking core: rides + RateConfig + pricing engine + Google Maps
   adapter (simulated default) + quote/rides/rate-config API (`v0.5.0`)
-- ⏳ Phase 3 — Square payments
+- ✅ Phase 3 — Square payments + driver subscriptions (`v0.23.0`): booking
+  card payments + Operator subscription landing/checkout + signature-verified
+  webhooks. Code merged + released; live activation is the owner checklist in
+  `docs/subscriptions-activation.md` (Square plan ids, `driver.` DNS, webhook key,
+  prod flip).
 - ⏳ Phase 4 — Driver dashboard
 - ⏳ Phase 5 — Client portal
 - ⏳ Phase 6 — Public profile + QR onboarding
