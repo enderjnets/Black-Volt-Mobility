@@ -42,7 +42,7 @@ _INVOICE_FAILED = {"invoice.scheduled_charge_failed", "invoice.payment_failed", 
 
 def verify_signature(*, body: bytes, signature: str) -> bool:
     """True only when the HMAC-SHA256 of (registered URL + body) matches the
-    `x-square-hmacsha256` header. Refuses everything unless webhooks_live."""
+    `x-square-hmacsha256-signature` header. Refuses everything unless webhooks_live."""
     settings = get_settings()
     if not settings.webhooks_live:
         return False

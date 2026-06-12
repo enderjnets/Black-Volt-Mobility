@@ -23,7 +23,10 @@ router = APIRouter(tags=["webhooks"])
 @router.post("/webhooks/square")
 async def square_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     body = await request.body()
-    signature = request.headers.get("x-square-hmacsha256", "")
+    # Square sends the HMAC-SHA256 signature in `x-square-hmacsha256-signature`
+    # (the bare `x-square-hmacsha256` name is wrong — verified against a live
+    # Square test event, whose header set uses the `-signature` suffix).
+    signature = request.headers.get("x-square-hmacsha256-signature", "")
     if not webhooks_square.verify_signature(body=body, signature=signature):
         # Same 403 whether the signature is wrong or webhooks aren't configured —
         # don't reveal which to an unauthenticated caller.

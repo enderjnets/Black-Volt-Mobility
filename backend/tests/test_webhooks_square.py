@@ -178,7 +178,7 @@ def test_endpoint_rejects_when_not_configured():
     r = c.post(
         "/api/v1/webhooks/square",
         content=body,
-        headers={"x-square-hmacsha256": _sign(body), "Content-Type": "application/json"},
+        headers={"x-square-hmacsha256-signature": _sign(body), "Content-Type": "application/json"},
     )
     assert r.status_code == 403, r.text
 
@@ -192,7 +192,7 @@ def test_endpoint_accepts_valid_signature(monkeypatch):
     r = c.post(
         "/api/v1/webhooks/square",
         content=body,
-        headers={"x-square-hmacsha256": _sign(body), "Content-Type": "application/json"},
+        headers={"x-square-hmacsha256-signature": _sign(body), "Content-Type": "application/json"},
     )
     assert r.status_code == 200, r.text
     assert r.json()["ok"] is True
@@ -207,6 +207,6 @@ def test_endpoint_rejects_bad_signature(monkeypatch):
     r = c.post(
         "/api/v1/webhooks/square",
         content=body,
-        headers={"x-square-hmacsha256": "wrong", "Content-Type": "application/json"},
+        headers={"x-square-hmacsha256-signature": "wrong", "Content-Type": "application/json"},
     )
     assert r.status_code == 403, r.text
