@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.23.0";
+export const CURRENT_VERSION = "0.23.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.23.1",
+    date: "2026-06-11",
+    title: "Driver subscriptions live — webhook sync fixed",
+    changes: [
+      "Driver subscriptions are now live at driver.blackvoltmobility.com with the Operator plan ($29/mo or $290/yr).",
+      "Fixed the Square webhook so subscription status (paid, past-due, cancelled) syncs reliably — it was reading the wrong signature header and rejecting real events.",
+    ],
+  },
   {
     version: "0.23.0",
     date: "2026-06-11",

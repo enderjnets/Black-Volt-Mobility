@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.23.1 — 2026-06-11 — Driver subscriptions live + webhook signature header fix
+
+Activated Phase 3 in **production** (driver.blackvoltmobility.com) and fixed a webhook bug found during go-live.
+
+**Live activation.** Operator plan created in production Square via the Catalog API (`app/scripts/provision_square_plans.py`; monthly `PAWKFYCZAXQYDWEOWSEU25XC` $29 / annual `6MFM2EBBGE5K663ZD6N6JPWB` $290). `driver.` DNS added as a proxied CNAME to the `blackvolt` tunnel (via the Cloudflare API — the tunnel's `cert.pem` is scoped to another zone, so `cloudflared route dns` can't write the `blackvoltmobility.com` zone). Webhook subscription registered via the API (`app/scripts/provision_square_webhook.py`); `ENTITLEMENTS_ENFORCED=false` (soft launch).
+
+**Webhook signature header fix.** Square sends the HMAC-SHA256 signature in `x-square-hmacsha256-signature`, not the bare `x-square-hmacsha256` the endpoint was reading — so the header arrived empty and **every real webhook 403'd**. Caught by replaying a live Square test event end-to-end (Square → Cloudflare → Next proxy → backend), which now returns 200 and syncs the row. Tests updated to the real header name. 182 backend tests pass; `ruff` clean.
+
 ## v0.23.0 — 2026-06-11 — Driver subscriptions: Operator plan landing + checkout
 
 Closes the customer-facing surface of Phase 3 (Square Subscriptions). Other drivers can now subscribe to the **Operator** plan and self-serve by card; the booking/ride payment flow is untouched. Built TDD in simulated/sandbox mode — going live is a manual owner checklist (`docs/subscriptions-activation.md`), no code changes.
