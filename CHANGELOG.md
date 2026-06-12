@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.23.0 — 2026-06-11 — Driver subscriptions: Operator plan landing + checkout
+
+Closes the customer-facing surface of Phase 3 (Square Subscriptions). Other drivers can now subscribe to the **Operator** plan and self-serve by card; the booking/ride payment flow is untouched. Built TDD in simulated/sandbox mode — going live is a manual owner checklist (`docs/subscriptions-activation.md`), no code changes.
+
+**Driver landing (`driver.blackvoltmobility.com`).** Faithful Next.js port of `driver-landing.html`, served via a host rewrite (`DRIVER_HOSTS`, mirroring the `app.`→`/dashboard` pattern) at `/driver` — public, no auth. Styles are scoped under `.bv-driver` (bv-prefixed classes) so nothing leaks globally. Three tiers: Free → dashboard sign-up (`NEXT_PUBLIC_APP_URL`), Operator → checkout modal, Growth → sales mailto (`NEXT_PUBLIC_SALES_EMAIL`). EN + ES (~110 `driver.*` i18n keys).
+
+**Operator checkout (monthly/annual).** A modal reuses `GET /payments/config` + the shared `loadSquareSdk` loader (extracted to `lib/squareSdk.ts`, now shared with `SquareCard.tsx`). A monthly **$29** (`operator`) / annual **$290** (`operator_annual`) toggle switches price and `plan_key` together (the backend already mapped both). Email is validated before tokenizing; the card is tokenized client-side so **only the nonce reaches the backend — the Square secret never touches the frontend**. `lib/subscriptions.ts` posts to `POST /api/v1/subscriptions` over the same-origin `/api` proxy (so the browser never hits CORS) and maps each sanitized `public_code` to a `driver.err.*` message. If Square isn't configured the modal degrades to a "contact us" state.
+
+**Square webhooks.** New `POST /api/v1/webhooks/square` keeps the local row in sync over the subscription lifetime. `verify_signature` reproduces Square's HMAC-SHA256 over (registered URL + raw body), base64, compared in constant time — **fail-closed**: without both the signing key and exact URL (`settings.webhooks_live`) every event is refused with a 403, and the 403 is identical whether the signature is wrong or webhooks aren't configured (no info leak). `apply_event` is idempotent (redelivery-safe), never creates rows, and no-ops on unknown ids or simulated rows. Its own `_WEBHOOK_STATUS_MAP` (ACTIVE/PENDING/PAUSED→past_due/CANCELED+DEACTIVATED→canceled) leaves any unknown status as PENDING so a surprise value can never silently entitle a tenant; `invoice.payment_made`→active, failed/cancelled invoices→past_due.
+
+**Config/env.** `SQUARE_WEBHOOK_SIGNATURE_KEY` + `SQUARE_WEBHOOK_URL` (+ `webhooks_live` property); `https://driver.blackvoltmobility.com` added to the `CORS_ORIGINS` default and the compose passthrough (it was missing). New frontend build args `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SALES_EMAIL` / `DRIVER_HOSTS` (ARG+ENV in the Dockerfile, baked at build).
+
+182 backend tests pass (new `test_webhooks_square.py` + `test_config_webhooks.py`); `ruff` + `tsc` + `next lint` clean; no autogenerate drift. Live smoke: `/driver` host-rewrite 200, webhook 403 fail-closed, subscribe 400 on an invalid plan.
+
 ## v0.22.0 — 2026-06-10 — Team panel upgrade: roles, welcome emails, per-driver activity
 
 Turns the admin-only Team page into a real fleet-management panel. Same multi-tenant model (each driver = their own tenant); no booking/payment paths touched.

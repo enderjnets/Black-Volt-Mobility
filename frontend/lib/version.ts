@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.22.0";
+export const CURRENT_VERSION = "0.23.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.23.0",
+    date: "2026-06-11",
+    title: "Driver subscriptions — Operator plan landing + checkout",
+    changes: [
+      "New driver landing page (driver.blackvoltmobility.com) where other drivers can subscribe to the Operator plan and pay by card with Square.",
+      "Choose monthly ($29) or annual ($290, ~2 months free) with a one-tap toggle — the price and plan update together.",
+      "Card details go straight to Square and never touch our servers; if Square isn't connected yet the page invites you to contact us instead.",
+      "Free plan links to the dashboard sign-up; Growth plan opens a sales email.",
+      "Behind the scenes: Square webhooks now keep each subscription in sync as payments succeed, fail, or get cancelled.",
+    ],
+  },
   {
     version: "0.22.0",
     date: "2026-06-10",
