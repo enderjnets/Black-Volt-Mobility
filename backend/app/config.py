@@ -84,6 +84,36 @@ class Settings(BaseSettings):
     SQUARE_LOCATION_ID: str = ""
     SQUARE_APPLICATION_ID: str = ""
 
+    # Square Subscriptions — recurring SaaS plans for drivers. Each plan_key maps
+    # to a Square plan-VARIATION id (created once in the Square dashboard; copied
+    # here). While simulated these may hold a placeholder; the live ids are
+    # generated later with the provisioning script. The Operator plan unlocks the
+    # paid-plan entitlements. Same simulation gate as one-off payments
+    # (payments_live) — never reuses another product's plans.
+    SQUARE_PLAN_OPERATOR_MONTHLY: str = ""
+    SQUARE_PLAN_OPERATOR_ANNUAL: str = ""
+
+    # Square subscription webhooks — keep the local Subscription row in sync as
+    # Square fires events over time (payment made/failed, subscription updated/
+    # canceled). The signature key is created in the Square dashboard when the
+    # webhook subscription is added; SQUARE_WEBHOOK_URL is the exact public URL
+    # registered there (Square's HMAC is computed over URL + raw body). Empty by
+    # default → the endpoint refuses to process unverified events (403).
+    SQUARE_WEBHOOK_SIGNATURE_KEY: str = ""
+    SQUARE_WEBHOOK_URL: str = ""
+
+    # Entitlement enforcement — when true, paid-plan features (AI extraction,
+    # public profile) require an active subscription; the default Black Volt
+    # tenant is always exempt (the owner doesn't subscribe to himself). Ships
+    # false so flipping it is an explicit launch decision once billing is live.
+    ENTITLEMENTS_ENFORCED: bool = False
+
+    # Abuse guard for the PUBLIC subscribe endpoint (attempts/hour). Per-email
+    # catches a stuck client; per-IP catches enumeration (Cloudflare passes the
+    # real IP in cf-connecting-ip).
+    SUBSCRIBE_RATE_PER_EMAIL_HOURLY: int = 5
+    SUBSCRIBE_RATE_PER_IP_HOURLY: int = 30
+
     @property
     def payments_live(self) -> bool:
         """Real Square calls require an explicit opt-out of simulation AND a token+location."""
@@ -92,6 +122,21 @@ class Settings(BaseSettings):
             and bool(self.SQUARE_ACCESS_TOKEN)
             and bool(self.SQUARE_LOCATION_ID)
         )
+
+    @property
+    def webhooks_live(self) -> bool:
+        """Signature verification is only possible with BOTH the key and the exact
+        registered URL — without them the webhook endpoint refuses every event."""
+        return bool(self.SQUARE_WEBHOOK_SIGNATURE_KEY) and bool(self.SQUARE_WEBHOOK_URL)
+
+    def subscription_plan(self, plan_key: str) -> str | None:
+        """Map a public plan_key → the configured Square plan-variation id, or
+        None when the key is unknown (→ the API rejects it with 400). A known key
+        with an unset id is still valid while simulated (no real Square call)."""
+        return {
+            "operator": self.SQUARE_PLAN_OPERATOR_MONTHLY,
+            "operator_annual": self.SQUARE_PLAN_OPERATOR_ANNUAL,
+        }.get(plan_key)
 
     # ─── Google Calendar (scheduled rides → Black Volt calendar) ────────
     # A service account (shared on the Black Volt calendar) pushes ride events.
@@ -194,7 +239,13 @@ class Settings(BaseSettings):
         return not self.EMAIL_SIMULATED and bool(self.RESEND_API_KEY)
 
     # ─── CORS ───────────────────────────────────────────────────────────
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
+    # The driver subscription landing (driver.blackvoltmobility.com) calls the
+    # API same-origin through the Next /api proxy, so the browser normally never
+    # hits CORS; the origin is allow-listed as defense-in-depth. Override per
+    # environment with the CORS_ORIGINS env var (compose passes it through).
+    CORS_ORIGINS: str = (
+        "http://localhost:3000,http://localhost:3005,https://driver.blackvoltmobility.com"
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:

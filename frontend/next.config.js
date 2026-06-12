@@ -9,15 +9,30 @@ const DASHBOARD_HOSTS = (process.env.DASHBOARD_HOSTS || "app.blackvoltmobility.c
   .map((h) => h.trim())
   .filter(Boolean);
 
+// Driver subscription landing host: driver.blackvoltmobility.com lands on
+// /driver (public, no auth). Same host-rewrite pattern as the dashboard. Baked
+// at build time → changing the host requires a rebuild.
+const DRIVER_HOSTS = (process.env.DRIVER_HOSTS || "driver.blackvoltmobility.com")
+  .split(",")
+  .map((h) => h.trim())
+  .filter(Boolean);
+
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
     return {
-      beforeFiles: DASHBOARD_HOSTS.map((host) => ({
-        source: "/",
-        has: [{ type: "host", value: host }],
-        destination: "/dashboard",
-      })),
+      beforeFiles: [
+        ...DASHBOARD_HOSTS.map((host) => ({
+          source: "/",
+          has: [{ type: "host", value: host }],
+          destination: "/dashboard",
+        })),
+        ...DRIVER_HOSTS.map((host) => ({
+          source: "/",
+          has: [{ type: "host", value: host }],
+          destination: "/driver",
+        })),
+      ],
       afterFiles: [
         {
           source: "/api/:path*",

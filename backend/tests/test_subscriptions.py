@@ -1,0 +1,357 @@
+"""Subscription orchestration (service layer), SIMULATED. DB-backed: each case
+uses a unique email so it stays isolated from rows accumulated by earlier runs.
+
+These tests drive the service directly (not the HTTP layer) so they can assert on
+the persisted row count and the entitlement helper. Each test builds its own async
+engine bound to the current event loop to avoid cross-loop reuse of the app's
+cached engine."""
+import os
+import uuid
+
+os.environ["DASHBOARD_PASSWORD"] = "test-pw"
+os.environ["PAYMENTS_SIMULATED"] = "true"
+os.environ["SQUARE_PLAN_OPERATOR_MONTHLY"] = "PLACEHOLDER_MONTHLY_VARIATION_ID"
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+from sqlalchemy import func, select  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
+
+from app.config import get_settings  # noqa: E402
+
+get_settings.cache_clear()
+
+from app.models import AllowedUser, Subscription, SubscriptionStatus  # noqa: E402
+from app.models.allowed_user import ROLE_DRIVER  # noqa: E402
+from app.services import subscriptions, subscriptions_square  # noqa: E402
+
+
+@pytest_asyncio.fixture
+async def db():
+    engine = create_async_engine(get_settings().DATABASE_URL)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    async with Session() as session:
+        yield session
+    await engine.dispose()
+
+
+def _email() -> str:
+    return f"svc-{uuid.uuid4().hex[:10]}@example.com"
+
+
+async def _count(db, email: str) -> int:
+    return (
+        await db.execute(
+            select(func.count()).select_from(Subscription).where(Subscription.email == email)
+        )
+    ).scalar_one()
+
+
+async def test_subscribe_simulated_creates_active_row(db):
+    email = _email()
+    sub = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    assert sub.status == SubscriptionStatus.ACTIVE
+    assert sub.simulated is True
+    assert sub.square_subscription_id.startswith("SIMSUB-")
+    assert sub.square_customer_id.startswith("SIMCUST-")
+    assert sub.tenant_id is not None
+    assert await _count(db, email) == 1
+
+
+async def test_invalid_plan_raises(db):
+    with pytest.raises(subscriptions_square.SubscriptionError):
+        await subscriptions.subscribe(
+            db, plan_key="bogus", email=_email(), source_id="cnon:card-nonce-ok"
+        )
+
+
+async def test_idempotent_no_duplicate(db):
+    email = _email()
+    a = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    b = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    assert a.id == b.id
+    assert await _count(db, email) == 1
+
+
+async def test_entitlement_tenant_is_paid(db):
+    email = _email()
+    sub = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    assert await subscriptions.tenant_is_paid(db, tenant_id=sub.tenant_id) is True
+
+
+async def test_unsubscribed_tenant_not_paid(db):
+    from app.services.tenancy import create_tenant_for
+
+    tenant = await create_tenant_for(db, name=f"NoSub {uuid.uuid4().hex[:6]}")
+    assert await subscriptions.tenant_is_paid(db, tenant_id=tenant.id) is False
+
+
+async def test_email_is_normalized_and_idempotent_across_case(db):
+    base = _email()
+    mixed = base.replace("svc-", "SVC-").replace("@example.com", "@Example.COM")
+    a = await subscriptions.subscribe(
+        db, plan_key="operator", email=mixed, source_id="cnon:card-nonce-ok"
+    )
+    assert a.email == mixed.strip().lower()
+    b = await subscriptions.subscribe(
+        db, plan_key="operator", email=mixed.lower(), source_id="cnon:card-nonce-ok"
+    )
+    assert a.id == b.id
+    assert await _count(db, mixed.lower()) == 1
+
+
+async def test_db_enforces_one_open_subscription_per_email_plan(db):
+    """The schema (not just app code) owns the no-duplicate invariant: inserting
+    a second non-canceled row for the same email+plan violates the partial
+    unique index."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import SubscriptionStatus
+
+    email = _email()
+    db.add(Subscription(tenant_id=1, email=email, plan_key="operator",
+                        status=SubscriptionStatus.ACTIVE, simulated=True))
+    await db.commit()
+    db.add(Subscription(tenant_id=1, email=email, plan_key="operator",
+                        status=SubscriptionStatus.PENDING, simulated=True))
+    with pytest.raises(IntegrityError):
+        await db.commit()
+    await db.rollback()
+
+
+async def test_live_mode_rejects_unconfigured_plan(db, monkeypatch):
+    """A known plan_key whose variation id env is unset must fail fast in live
+    mode (before any Square call / card vaulting), not send '' to Square."""
+    s = get_settings()
+    monkeypatch.setattr(s, "PAYMENTS_SIMULATED", False)
+    monkeypatch.setattr(s, "SQUARE_ACCESS_TOKEN", "fake-token")
+    monkeypatch.setattr(s, "SQUARE_LOCATION_ID", "fake-loc")
+    assert s.payments_live is True
+    with pytest.raises(subscriptions.InvalidPlanError):
+        await subscriptions.subscribe(
+            db, plan_key="operator_annual", email=_email(), source_id="cnon:x"
+        )
+
+
+async def test_production_with_simulated_payments_is_unavailable(db, monkeypatch):
+    """Anti-pattern guard: in production with payments simulated, the public
+    endpoint must refuse instead of minting free ACTIVE subscriptions."""
+    monkeypatch.setattr(get_settings(), "APP_ENV", "production")
+    with pytest.raises(subscriptions.SubscriptionsUnavailableError):
+        await subscriptions.subscribe(
+            db, plan_key="operator", email=_email(), source_id="cnon:x"
+        )
+
+
+def test_idempotency_keys_are_deterministic_per_intent():
+    """Retrying the SAME checkout (same nonce) must reuse the same Square
+    idempotency keys so Square collapses duplicates; a NEW checkout (new nonce)
+    gets fresh keys. A random-per-attempt key would double-bill on a lost
+    response."""
+    k1 = subscriptions_square._idempotency_key("subscription", "CUST1", "PLANVAR", "nonce-A")
+    k2 = subscriptions_square._idempotency_key("subscription", "CUST1", "PLANVAR", "nonce-A")
+    k3 = subscriptions_square._idempotency_key("subscription", "CUST1", "PLANVAR", "nonce-B")
+    assert k1 == k2
+    assert k1 != k3
+    uuid.UUID(k1)  # valid uuid string
+
+
+def test_parse_square_date():
+    from datetime import UTC, datetime
+
+    assert subscriptions_square._parse_square_date("2026-07-11") == datetime(
+        2026, 7, 11, tzinfo=UTC
+    )
+    assert subscriptions_square._parse_square_date(None) is None
+    assert subscriptions_square._parse_square_date("garbage") is None
+
+
+async def test_cancel_subscription_simulated_is_noop():
+    await subscriptions_square.cancel_subscription(subscription_id="SIMSUB-x")  # no raise
+
+
+async def _allowed_row(db, email: str) -> AllowedUser | None:
+    return (
+        await db.execute(select(AllowedUser).where(AllowedUser.email == email))
+    ).scalars().first()
+
+
+async def test_subscribe_creates_linked_allowed_user(db):
+    """The paying driver must be able to LOG INTO the tenant they paid for:
+    subscribe creates an active allowed_users row pinned to the same tenant."""
+    email = _email()
+    sub = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    row = await _allowed_row(db, email)
+    assert row is not None
+    assert row.active is True
+    assert row.role == ROLE_DRIVER
+    assert row.tenant_id == sub.tenant_id
+    assert row.added_by == "subscription"
+
+
+async def test_subscribe_reuses_existing_driver_tenant(db):
+    """A driver who already signed in (allowed_users.tenant_id set) must get the
+    subscription on THAT tenant — not a duplicate workspace."""
+    from app.services.tenancy import create_tenant_for
+
+    email = _email()
+    tenant = await create_tenant_for(db, name=f"Pre {uuid.uuid4().hex[:6]}")
+    db.add(AllowedUser(email=email, role=ROLE_DRIVER, active=True, tenant_id=tenant.id))
+    await db.commit()
+    sub = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    assert sub.tenant_id == tenant.id
+    assert await subscriptions.tenant_is_paid(db, tenant_id=tenant.id) is True
+
+
+async def test_subscribe_disabled_account_refused_before_charge(db, monkeypatch):
+    """A deactivated allowed_user must be refused BEFORE any Square call."""
+    email = _email()
+    db.add(AllowedUser(email=email, role=ROLE_DRIVER, active=False))
+    await db.commit()
+
+    async def explode(**kw):
+        raise AssertionError("Square must not be called for a disabled account")
+
+    monkeypatch.setattr(subscriptions.adapter, "create_customer", explode)
+    with pytest.raises(subscriptions.AccountDisabledError):
+        await subscriptions.subscribe(
+            db, plan_key="operator", email=email, source_id="cnon:x"
+        )
+
+
+async def test_tenant_slug_does_not_leak_email(db):
+    from app.services.tenancy import get_tenant
+
+    email = f"john.doe.{uuid.uuid4().hex[:8]}@private-domain.com"
+    sub = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    tenant = await get_tenant(db, sub.tenant_id)
+    assert "private-domain" not in tenant.slug
+
+
+async def test_square_failure_leaves_no_rows(db, monkeypatch):
+    """A declined card must leave NO orphan tenant/allowed_user/subscription
+    rows — Square runs BEFORE any local write."""
+    from app.models import Tenant
+
+    email = _email()
+
+    async def declined(**kw):
+        raise subscriptions_square.SubscriptionError(
+            "square_card:400:declined", public_code="square_card"
+        )
+
+    monkeypatch.setattr(subscriptions.adapter, "create_card", declined)
+    tenants_before = (
+        await db.execute(select(func.count()).select_from(Tenant))
+    ).scalar_one()
+    with pytest.raises(subscriptions_square.SubscriptionError):
+        await subscriptions.subscribe(
+            db, plan_key="operator", email=email, source_id="cnon:x"
+        )
+    await db.rollback()
+    tenants_after = (
+        await db.execute(select(func.count()).select_from(Tenant))
+    ).scalar_one()
+    assert tenants_after == tenants_before
+    assert await _count(db, email) == 0
+    assert await _allowed_row(db, email) is None
+
+
+async def test_pending_square_status_is_persisted_not_active(db, monkeypatch):
+    """Square's returned status must be persisted; PENDING must not grant
+    entitlement but still blocks duplicates (idempotent on OPEN, not active)."""
+    async def pending_sub(**kw):
+        return subscriptions_square.SubscriptionResult(
+            square_subscription_id=f"SIMSUB-{uuid.uuid4().hex[:18]}",
+            status="PENDING", current_period_end=None, simulated=True,
+        )
+
+    monkeypatch.setattr(subscriptions.adapter, "create_subscription", pending_sub)
+    email = _email()
+    sub = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    assert sub.status == SubscriptionStatus.PENDING
+    assert await subscriptions.tenant_is_paid(db, tenant_id=sub.tenant_id) is False
+    again = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    assert again.id == sub.id
+
+
+async def test_insert_race_recovers_and_cancels_duplicate(db, monkeypatch):
+    """When two requests race past the existence check, the loser's commit hits
+    the unique index → it must cancel its Square subscription (best-effort) and
+    return the winner's row."""
+    email = _email()
+    real = subscriptions._current_for
+    calls = {"n": 0}
+
+    async def racy(db_, *, email, plan_key):
+        calls["n"] += 1
+        if calls["n"] <= 2:  # both "concurrent" checks miss
+            return None
+        return await real(db_, email=email, plan_key=plan_key)
+
+    canceled = []
+
+    async def fake_cancel(*, subscription_id):
+        canceled.append(subscription_id)
+
+    monkeypatch.setattr(subscriptions, "_current_for", racy)
+    monkeypatch.setattr(subscriptions.adapter, "cancel_subscription", fake_cancel)
+    a = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    b = await subscriptions.subscribe(
+        db, plan_key="operator", email=email, source_id="cnon:card-nonce-ok"
+    )
+    assert a.id == b.id
+    assert await _count(db, email) == 1
+    assert len(canceled) == 1 and canceled[0] != a.square_subscription_id
+
+
+async def test_entitlements_flag_off_everything_allowed(db):
+    from app.services.tenancy import create_tenant_for
+
+    tenant = await create_tenant_for(db, name=f"Free {uuid.uuid4().hex[:6]}")
+    assert await subscriptions.tenant_has_entitlements(db, tenant_id=tenant.id) is True
+
+
+async def test_entitlements_enforced_gates_unpaid_but_exempts_default(db, monkeypatch):
+    from app.services.tenancy import create_tenant_for, get_default_tenant
+
+    monkeypatch.setattr(get_settings(), "ENTITLEMENTS_ENFORCED", True)
+    unpaid = await create_tenant_for(db, name=f"Unpaid {uuid.uuid4().hex[:6]}")
+    assert await subscriptions.tenant_has_entitlements(db, tenant_id=unpaid.id) is False
+    default = await get_default_tenant(db)
+    assert await subscriptions.tenant_has_entitlements(db, tenant_id=default.id) is True
+    paid = await subscriptions.subscribe(
+        db, plan_key="operator", email=_email(), source_id="cnon:card-nonce-ok"
+    )
+    assert await subscriptions.tenant_has_entitlements(db, tenant_id=paid.tenant_id) is True
+
+
+async def test_simulated_subscription_not_paid_in_production(db, monkeypatch):
+    """Defense in depth: even if simulated rows ever land in the prod DB, they
+    must never grant entitlement there."""
+    sub = await subscriptions.subscribe(
+        db, plan_key="operator", email=_email(), source_id="cnon:card-nonce-ok"
+    )
+    assert await subscriptions.tenant_is_paid(db, tenant_id=sub.tenant_id) is True
+    monkeypatch.setattr(get_settings(), "APP_ENV", "production")
+    assert await subscriptions.tenant_is_paid(db, tenant_id=sub.tenant_id) is False

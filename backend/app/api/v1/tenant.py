@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_staff, resolve_tenant_id
 from app.config import get_settings
 from app.db.base import get_db
-from app.services import tenancy
+from app.services import subscriptions, tenancy
 
 router = APIRouter(tags=["tenant"])
 
@@ -172,7 +172,9 @@ async def upload_photo(
 # ─── Public profile ─────────────────────────────────────────────────────────
 @router.get("/tenants/{slug}")
 async def get_public_profile(slug: str, db: AsyncSession = Depends(get_db)):
-    out = await tenancy.public_profile(db, slug=slug)
-    if out is None:
+    t = await tenancy.get_tenant_by_slug(db, slug)
+    # An unpaid tenant's profile is a plain 404 (never 402): billing state must
+    # not be revealed publicly.
+    if t is None or not await subscriptions.tenant_has_entitlements(db, tenant_id=t.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    return out
+    return await tenancy.public_profile(db, slug=slug)

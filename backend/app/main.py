@@ -16,8 +16,10 @@ from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.health import router as health_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.rides import router as booking_router
+from app.api.v1.subscriptions import router as subscriptions_router
 from app.api.v1.team import router as team_router
 from app.api.v1.tenant import router as tenant_router
+from app.api.v1.webhooks import router as webhooks_router
 from app.config import get_settings
 from app.db.base import dispose_engine, get_session_factory
 
@@ -61,6 +63,10 @@ async def lifespan(app: FastAPI):
         logger.warning("APP_ENV=production but AUTH_ENABLED=false — dashboard open. Investigate.")
     if settings.is_production and settings.EMAIL_SIMULATED:
         logger.warning("APP_ENV=production but EMAIL_SIMULATED=true — emails off. Investigate.")
+    if settings.is_production and not settings.payments_live:
+        logger.warning(
+            "APP_ENV=production but payments not live — public subscriptions disabled (503)."
+        )
     try:
         from app.services.tenancy import ensure_seed
 
@@ -92,6 +98,8 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(booking_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
+app.include_router(subscriptions_router, prefix="/api/v1")
+app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(tenant_router, prefix="/api/v1")
 app.include_router(team_router, prefix="/api/v1", dependencies=[Depends(require_admin)])

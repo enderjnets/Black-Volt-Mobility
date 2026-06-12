@@ -71,6 +71,16 @@ services:
       SQUARE_ACCESS_TOKEN: ${SQUARE_ACCESS_TOKEN:-}
       SQUARE_LOCATION_ID: ${SQUARE_LOCATION_ID:-}
       SQUARE_APPLICATION_ID: ${SQUARE_APPLICATION_ID:-}
+      SQUARE_PLAN_OPERATOR_MONTHLY: ${SQUARE_PLAN_OPERATOR_MONTHLY:-}
+      SQUARE_PLAN_OPERATOR_ANNUAL: ${SQUARE_PLAN_OPERATOR_ANNUAL:-}
+      SQUARE_WEBHOOK_SIGNATURE_KEY: ${SQUARE_WEBHOOK_SIGNATURE_KEY:-}
+      SQUARE_WEBHOOK_URL: ${SQUARE_WEBHOOK_URL:-}
+      ENTITLEMENTS_ENFORCED: ${ENTITLEMENTS_ENFORCED:-false}
+      SUBSCRIBE_RATE_PER_EMAIL_HOURLY: ${SUBSCRIBE_RATE_PER_EMAIL_HOURLY:-5}
+      SUBSCRIBE_RATE_PER_IP_HOURLY: ${SUBSCRIBE_RATE_PER_IP_HOURLY:-30}
+      # Defaults already include driver.blackvoltmobility.com (see config.py);
+      # override to restrict or add origins per environment.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3005,https://driver.blackvoltmobility.com}
       # Google Calendar (scheduled rides)
       CALENDAR_SIMULATED: ${CALENDAR_SIMULATED:-true}
       GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-}
@@ -112,6 +122,10 @@ services:
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
         # Baked into the Next rewrite at build time (routes-manifest).
         INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
+        # Driver landing (driver.blackvoltmobility.com) — inlined/baked at build.
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.blackvoltmobility.com/dashboard}
+        NEXT_PUBLIC_SALES_EMAIL: ${NEXT_PUBLIC_SALES_EMAIL:-hola@blackvoltmobility.com}
+        DRIVER_HOSTS: ${DRIVER_HOSTS:-driver.blackvoltmobility.com}
     container_name: blackvolt-frontend
     restart: unless-stopped
     depends_on:

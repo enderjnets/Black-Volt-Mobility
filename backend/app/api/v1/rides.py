@@ -15,7 +15,7 @@ from app.api.deps import current_payload, require_auth, require_staff, resolve_t
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import PaymentMethod, Ride, RideStatus
-from app.services import auth, booking, dashboard, maps, smart
+from app.services import auth, booking, dashboard, maps, smart, subscriptions
 
 # Vision providers accept these; anything else is rejected before the model call.
 # The frontend normalizes images to PNG/JPEG first, so HEIC/HEIF rarely reach here
@@ -207,11 +207,17 @@ async def put_rate_config(
 @router.post("/rides/extract")
 async def extract_reservation(
     files: list[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
     payload: dict = Depends(require_staff),
 ):
     """Read 1..N screenshots of a client's message and return reservation fields
     to pre-fill the form. Staff only. Best-effort: a vision failure returns
     all-null fields (the driver then types them). No ride is persisted here."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    if not await subscriptions.tenant_has_entitlements(db, tenant_id=tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="subscription_required"
+        )
     settings = get_settings()
     if not files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_files")
