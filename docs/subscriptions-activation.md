@@ -1,9 +1,42 @@
 # Activación de Suscripciones de Drivers (`driver.blackvoltmobility.com`)
 
-> El código de la Fase 3 está **completo y verificado en modo simulado/sandbox**
-> en la rama `phase-3-subscriptions`. Esta es la checklist de **pasos manuales del
-> dueño** para activarlo en vivo. Nada aquí toca código: son recursos externos
-> (Square, DNS) + variables de entorno del VPS.
+> **✅ ACTIVADO EN VIVO — 2026-06-12.** La Fase 3 está desplegada y verificada en
+> **producción** en el VPS. Esta sección documenta lo que quedó hecho (casi todo vía
+> la API de Square + Cloudflare) y los gotchas. El **único paso pendiente** es la
+> prueba de cobro real con tarjeta (ver "Verificación pendiente" al final).
+>
+> ## Estado en vivo (hecho 2026-06-12)
+> - **Plan Operator** creado en Square producción vía Catalog API
+>   (`app/scripts/provision_square_plans.py`): variation ids
+>   `SQUARE_PLAN_OPERATOR_MONTHLY=PAWKFYCZAXQYDWEOWSEU25XC` (MONTHLY $29) +
+>   `SQUARE_PLAN_OPERATOR_ANNUAL=6MFM2EBBGE5K663ZD6N6JPWB` (ANNUAL $290).
+> - **DNS** `driver.blackvoltmobility.com` → CNAME proxied al túnel
+>   `73f0ae53….cfargotunnel.com`, creado vía **API de Cloudflare** (la zona vive en
+>   la cuenta `57dfe2…`; el `cert.pem` del túnel está scopeado a `ekoaiautomation.com`
+>   → `cloudflared route dns` NO sirve, hay que usar la API con token Zone-DNS-Edit).
+>   Ingress `driver.→127.0.0.1:3005` añadido en `~/.cloudflared/blackvolt.yml`.
+> - **Webhook** registrado vía API (`app/scripts/provision_square_webhook.py`):
+>   `wbhk_93c69ef79afd4d6491d8de6c45ac1382`, eventos `subscription.created/updated`,
+>   `invoice.payment_made/scheduled_charge_failed/canceled`. `SQUARE_WEBHOOK_URL` +
+>   `SQUARE_WEBHOOK_SIGNATURE_KEY` en el `.env` del VPS. **Verificado: un test event
+>   real de Square → 200** por toda la ruta (Square→Cloudflare→Next→backend).
+> - `ENTITLEMENTS_ENFORCED=false` (lanzamiento suave). Booking ya estaba en prod
+>   (`PAYMENTS_SIMULATED=false`), no se tocó.
+>
+> ### Gotchas (para futuras suscripciones / debugging)
+> - **Header de firma**: Square manda la firma en `x-square-hmacsha256-signature`
+>   (NO `x-square-hmacsha256`). El nombre malo daba header vacío → 403 en todo
+>   webhook real. Cazado con un test event real (commit `fa8c9ca`).
+> - **Square valida `UNREACHABLE_URL`** al crear el webhook → el DNS debe resolver
+>   ANTES de crear el webhook.
+> - `invoice.payment_failed` NO existe en Square; usar `invoice.scheduled_charge_failed`
+>   + `invoice.canceled`.
+> - `cloudflared route dns` con el cert de eko crea un record basura
+>   `x.blackvoltmobility.com.ekoaiautomation.com` — usar la API de Cloudflare.
+>
+> ---
+>
+> _(Lo de abajo es la checklist original, conservada como referencia de los valores.)_
 
 ## Estado del código (ya hecho)
 
@@ -102,3 +135,17 @@ docker compose up -d
 | `DRIVER_HOSTS` | host-rewrite `/`→`/driver` (build-time) |
 | `NEXT_PUBLIC_APP_URL` | destino del CTA "Free" (dashboard) |
 | `NEXT_PUBLIC_SALES_EMAIL` | mailto del tier "Growth" |
+
+---
+
+## Verificación pendiente (único paso con el dueño)
+
+La landing, el plan, el webhook y la firma están **verificados en producción**. Falta
+solo el **E2E con cobro real** (la tarjeta sandbox `4111…` no sirve en prod):
+
+1. Abrir `https://driver.blackvoltmobility.com` → plan **Operator** → (mensual) →
+   ingresar una **tarjeta real** → pagar $29.
+2. Confirmar: fila `Subscription` `simulated=false` + `status=active`, y que el webhook
+   sincronizó (`subscription.created`/`invoice.payment_made`).
+3. **Cancelar + reembolsar** por API (`subscriptions.cancel` + `refunds`) — costo neto
+   ~$1 en fees de Square.
