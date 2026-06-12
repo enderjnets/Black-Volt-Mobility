@@ -122,6 +122,10 @@ services:
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
         # Baked into the Next rewrite at build time (routes-manifest).
         INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
+        # Driver landing (driver.blackvoltmobility.com) — inlined/baked at build.
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.blackvoltmobility.com/dashboard}
+        NEXT_PUBLIC_SALES_EMAIL: ${NEXT_PUBLIC_SALES_EMAIL:-hola@blackvoltmobility.com}
+        DRIVER_HOSTS: ${DRIVER_HOSTS:-driver.blackvoltmobility.com}
     container_name: blackvolt-frontend
     restart: unless-stopped
     depends_on:

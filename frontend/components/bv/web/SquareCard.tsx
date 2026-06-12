@@ -11,31 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { Button } from "../ui";
 import { useI18n } from "@/lib/i18n";
-
-let sdkPromise: Promise<void> | null = null;
-function loadSdk(env: string): Promise<void> {
-  if (typeof window === "undefined") return Promise.reject(new Error("ssr"));
-  if ((window as unknown as { Square?: unknown }).Square) return Promise.resolve();
-  if (sdkPromise) return sdkPromise;
-  const src =
-    env === "production"
-      ? "https://web.squarecdn.com/v1/square.js"
-      : "https://sandbox.web.squarecdn.com/v1/square.js";
-  sdkPromise = new Promise<void>((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = src;
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("square_sdk_load_failed"));
-    document.head.appendChild(s);
-  });
-  return sdkPromise;
-}
-
-type SquareCardObj = {
-  attach: (el: HTMLElement) => Promise<void>;
-  tokenize: () => Promise<{ status: string; token?: string }>;
-};
+import { loadSquareSdk, type SquareCardObj } from "@/lib/squareSdk";
 
 export function SquareCard({
   applicationId,
@@ -63,7 +39,7 @@ export function SquareCard({
     let alive = true;
     (async () => {
       try {
-        await loadSdk(env);
+        await loadSquareSdk(env);
         const Square = (
           window as unknown as {
             Square: { payments: (a: string, l: string) => Promise<{ card: () => Promise<SquareCardObj> }> };
