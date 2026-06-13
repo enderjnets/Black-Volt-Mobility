@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.24.0 — 2026-06-12 — Team member detail drawer (per-driver usage analytics)
+
+The super-admin can now click any driver in **Team** to open a detail drawer with everything about that driver — turning the access list into an oversight console.
+
+**What it shows.** Access/identity (role, active, added-by, member-since, last login), subscription status (Operator plan, renewal, paid flag), business KPIs (rides by status, all-time revenue, clients, first/last ride, weekly earnings chart), 30-day **platform engagement** (sessions, visitors, pageviews, avg session, booking funnel `started→booked`, sign-ins, devices, countries), recent rides and a recent-activity timeline. Consolidated management actions live in the drawer too: activate/deactivate, change role, resend welcome email, copy invite, remove.
+
+**Backend.** New tenant-scoped read-model `team_member_detail()` (`app/services/dashboard.py`) composed by reusing `stats()`, `analytics.summary()` and the subscription lookup — no new tables, no migration. Exposed at `GET /api/v1/team/{email}/detail` under `require_admin`. A member who's never signed in (no tenant yet) returns `provisioned=false` with empty blocks. Recent rides render read-only — a driver's ride lives in their own tenant, so the tenant-scoped `RideDetail` can't open it cross-tenant (verified in e2e). 192 backend tests pass; `ruff`, `tsc`, `next lint` + `build` clean; security review found no issues.
+
 ## v0.23.1 — 2026-06-11 — Driver subscriptions live + webhook signature header fix
 
 Activated Phase 3 in **production** (driver.blackvoltmobility.com) and fixed a webhook bug found during go-live.

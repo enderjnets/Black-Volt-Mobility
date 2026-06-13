@@ -19,6 +19,7 @@ import {
   setRole,
   type TeamMember,
 } from "@/lib/team";
+import { TeamMemberDetail } from "./TeamMemberDetail";
 
 const KNOWN_ERRS = new Set([
   "already_on_list",
@@ -46,6 +47,7 @@ export function Team() {
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [openMember, setOpenMember] = useState<string | null>(null);
 
   const errText = (e: unknown): string => {
     const c = e instanceof Error ? e.message : "";
@@ -197,6 +199,7 @@ export function Team() {
               m={m}
               busy={busy}
               copied={copied === m.email}
+              onOpen={() => setOpenMember(m.email)}
               onToggle={() => toggle(m)}
               onRole={() => changeRole(m)}
               onRemove={() => remove(m)}
@@ -206,16 +209,25 @@ export function Team() {
           ))
         )}
       </div>
+
+      {openMember && (
+        <TeamMemberDetail
+          email={openMember}
+          onClose={() => setOpenMember(null)}
+          onChanged={load}
+        />
+      )}
     </div>
   );
 }
 
 function MemberRow({
-  m, busy, copied, onToggle, onRole, onRemove, onResend, onCopy,
+  m, busy, copied, onOpen, onToggle, onRole, onRemove, onResend, onCopy,
 }: {
   m: TeamMember;
   busy: string | null;
   copied: boolean;
+  onOpen: () => void;
   onToggle: () => void;
   onRole: () => void;
   onRemove: () => void;
@@ -230,17 +242,27 @@ function MemberRow({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: "var(--radius-md)" }}>
-      {/* Identity + role/active row */}
+      {/* Identity + role/active row. The identity area opens the detail drawer;
+          the role/active/remove controls are separate siblings (no bubbling). */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Icon name={isAdmin ? "shield-check" : "user"} size={16} color="var(--silver)" />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {m.name || m.email.split("@")[0]}
+        <div
+          onClick={onOpen}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen()}
+          title={t("dash.team.detail.open")}
+          style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, cursor: "pointer" }}
+        >
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon name={isAdmin ? "shield-check" : "user"} size={16} color="var(--silver)" />
           </div>
-          <div style={{ fontSize: 11.5, color: "var(--fg3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {m.email}{m.tenant_slug ? ` · ${m.tenant_slug}` : ""}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {m.name || m.email.split("@")[0]}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--fg3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {m.email}{m.tenant_slug ? ` · ${m.tenant_slug}` : ""}
+            </div>
           </div>
         </div>
         {/* Role pill — clickable to toggle for non-immutable members */}
