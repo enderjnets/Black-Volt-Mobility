@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.23.1";
+export const CURRENT_VERSION = "0.24.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.24.0",
+    date: "2026-06-12",
+    title: "Team member detail — know everything about each driver",
+    changes: [
+      "Click any driver in Team to open a detail drawer: their access, subscription, rides, revenue, clients, weekly earnings, 30-day platform usage (sessions, pageviews, booking funnel, devices), recent rides and recent activity.",
+      "Manage the driver right from the drawer — activate/deactivate, change role, resend the welcome email, copy the invite, or remove access.",
+    ],
+  },
   {
     version: "0.23.1",
     date: "2026-06-11",
