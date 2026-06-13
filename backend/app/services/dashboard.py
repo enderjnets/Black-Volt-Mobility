@@ -8,7 +8,19 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Client, Payment, PaymentStatus, Ride, RideStatus
+from app.config import get_settings
+from app.models import (
+    AllowedUser,
+    Client,
+    Payment,
+    PaymentStatus,
+    Ride,
+    RideStatus,
+    Subscription,
+    SubscriptionStatus,
+    Tenant,
+)
+from app.services import analytics
 
 _CANCELLED = (RideStatus.CANCELLED, RideStatus.NO_SHOW)
 _OPEN = (RideStatus.REQUESTED, RideStatus.QUOTED, RideStatus.CONFIRMED, RideStatus.ASSIGNED)
@@ -463,4 +475,162 @@ async def team_stats_by_tenant(db: AsyncSession) -> dict[int, dict]:
         }
     for tid, amt in rev_by.items():  # paid-but-all-cancelled tenants still show revenue
         out.setdefault(tid, {"rides": 0, "revenue": amt, "last_activity": None})
+    return out
+
+
+async def _subscription_brief(db: AsyncSession, *, tenant_id: int) -> dict | None:
+    """Latest non-canceled subscription for the tenant, with the entitlement
+    `paid` flag (in production, simulated rows never count as paid)."""
+    row = (
+        await db.execute(
+            select(Subscription)
+            .where(
+                Subscription.tenant_id == tenant_id,
+                Subscription.status != SubscriptionStatus.CANCELED,
+            )
+            .order_by(Subscription.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    paid = row.status == SubscriptionStatus.ACTIVE and (
+        not get_settings().is_production or not row.simulated
+    )
+    return {
+        "plan_key": row.plan_key,
+        "status": row.status.value if isinstance(row.status, SubscriptionStatus) else row.status,
+        "current_period_end": (
+            row.current_period_end.isoformat() if row.current_period_end else None
+        ),
+        "simulated": row.simulated,
+        "paid": paid,
+    }
+
+
+async def team_member_detail(
+    db: AsyncSession, *, email: str, pinned: set[str]
+) -> dict | None:
+    """Everything the super-admin should see about one team member (driver):
+    identity/access, subscription, business KPIs, 30-day platform engagement,
+    recent rides and recent activity. Tenant-scoped. Returns None if the email
+    isn't on the access list. A member who's never signed in has no tenant yet
+    (`provisioned=False`) and gets empty stats blocks."""
+    email = (email or "").lower().strip()
+    u = (
+        await db.execute(select(AllowedUser).where(AllowedUser.email == email))
+    ).scalar_one_or_none()
+    if u is None:
+        return None
+
+    out: dict = {
+        "email": u.email,
+        "name": u.name,
+        "role": u.role,
+        "active": u.active,
+        "immutable": u.email in pinned,
+        "provisioned": u.tenant_id is not None,
+        "added_by": u.added_by,
+        "created_at": u.created_at.isoformat() if u.created_at else None,
+        "last_login": u.last_login.isoformat() if u.last_login else None,
+        "tenant_slug": None,
+        "tenant_name": None,
+        "tenant_created_at": None,
+        "subscription": None,
+        "rides": {"total": 0, "completed": 0, "upcoming": 0, "cancelled": 0},
+        "revenue_total": 0.0,
+        "clients": 0,
+        "first_ride_at": None,
+        "last_ride_at": None,
+        "week": [],
+        "week_total": 0.0,
+        "engagement": None,
+        "recent_rides": [],
+        "recent_activity": [],
+    }
+    if u.tenant_id is None:
+        return out
+    tid = u.tenant_id
+
+    tenant = (
+        await db.execute(select(Tenant).where(Tenant.id == tid))
+    ).scalar_one_or_none()
+    if tenant is not None:
+        out["tenant_slug"] = tenant.slug
+        out["tenant_name"] = tenant.name
+        out["tenant_created_at"] = (
+            tenant.created_at.isoformat() if tenant.created_at else None
+        )
+
+    # Business — reuse stats() for the week chart + totals (clients/rides/completed),
+    # then a few aggregates it doesn't expose (all-time revenue, upcoming/cancelled
+    # counts, first/last ride).
+    s = await stats(db, tenant_id=tid)
+    out["week"] = s["week"]
+    out["week_total"] = s["week_total"]
+    out["clients"] = s["totals"]["clients"]
+
+    t = Ride.tenant_id == tid
+    upcoming = (
+        await db.execute(select(func.count()).where(t, Ride.status.in_(_OPEN)))
+    ).scalar_one()
+    cancelled = (
+        await db.execute(select(func.count()).where(t, Ride.status.in_(_CANCELLED)))
+    ).scalar_one()
+    out["rides"] = {
+        "total": int(s["totals"]["rides"]),
+        "completed": int(s["totals"]["completed"]),
+        "upcoming": int(upcoming),
+        "cancelled": int(cancelled),
+    }
+
+    revenue_total = (
+        await db.execute(
+            select(func.coalesce(func.sum(Ride.fare_total), 0.0)).where(t, Ride.paid.is_(True))
+        )
+    ).scalar_one()
+    out["revenue_total"] = round(float(revenue_total), 2)
+
+    ride_day = func.coalesce(Ride.scheduled_at, Ride.created_at)
+    first_last = (
+        await db.execute(
+            select(func.min(ride_day), func.max(ride_day)).where(
+                t, Ride.status.notin_(_CANCELLED)
+            )
+        )
+    ).first()
+    if first_last is not None:
+        out["first_ride_at"] = first_last[0].isoformat() if first_last[0] else None
+        out["last_ride_at"] = first_last[1].isoformat() if first_last[1] else None
+
+    recent = (
+        (
+            await db.execute(
+                select(Ride)
+                .where(t)
+                .order_by(
+                    Ride.scheduled_at.is_(None), Ride.scheduled_at.desc(), Ride.id.desc()
+                )
+                .limit(8)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out["recent_rides"] = [_ride_brief(r) for r in recent]
+
+    out["subscription"] = await _subscription_brief(db, tenant_id=tid)
+
+    # Platform engagement (last 30 days) — reuse the Insights aggregator.
+    summ = await analytics.summary(db, tenant_id=tid, days=30)
+    out["engagement"] = {
+        "visitors": summ["totals"]["visitors"],
+        "sessions": summ["totals"]["sessions"],
+        "pageviews": summ["totals"]["pageviews"],
+        "avg_session_ms": summ["totals"]["avg_session_ms"],
+        "funnel": summ["funnel"],
+        "devices": summ["devices"],
+        "countries": summ["countries"],
+    }
+    out["recent_activity"] = summ["recent"]
     return out

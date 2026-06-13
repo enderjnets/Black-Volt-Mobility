@@ -17,7 +17,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.models import AllowedUser, Tenant
 from app.models.allowed_user import ROLE_ADMIN, ROLE_DRIVER
-from app.services.dashboard import team_stats_by_tenant
+from app.services.dashboard import team_member_detail, team_stats_by_tenant
 from app.services.email import send_team_welcome
 
 router = APIRouter(prefix="/team", tags=["team"])
@@ -229,6 +229,17 @@ async def remove_member(email: str, db: AsyncSession = Depends(get_db)):
 
 class ResendOut(BaseModel):
     email_status: str
+
+
+@router.get("/{email}/detail")
+async def member_detail(email: str, db: AsyncSession = Depends(get_db)) -> dict:
+    """Full per-driver read-model for the Team detail drawer: identity/access,
+    subscription, business KPIs, 30-day engagement, recent rides + activity.
+    404 if the email isn't on the access list."""
+    data = await team_member_detail(db, email=_norm(email), pinned=await _pinned())
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_on_list")
+    return data
 
 
 @router.post("/{email}/resend-invite")
