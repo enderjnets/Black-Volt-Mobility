@@ -9,6 +9,7 @@ export interface Me {
   email?: string | null;
   client_id?: number | null;
   tenant_id?: number | null;
+  tenant_slug?: string | null;
   is_admin?: boolean;
 }
 
@@ -36,8 +37,11 @@ export async function loginPassword(password: string): Promise<{ ok: boolean; er
   return { ok: false, error: d.detail || "login_failed" };
 }
 
-export async function loginGoogle(idToken: string): Promise<{ ok: boolean; error?: string }> {
-  const r = await jpost("/v1/auth/login/google", { id_token: idToken });
+export async function loginGoogle(
+  idToken: string,
+  ref?: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const r = await jpost("/v1/auth/login/google", { id_token: idToken, ref: ref || null });
   if (r.ok) return { ok: true };
   const d = await r.json().catch(() => ({}));
   return { ok: false, error: d.detail || "google_login_failed" };

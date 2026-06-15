@@ -10,7 +10,6 @@ import { VersionButton } from "../../ui/VersionButton";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { fetchMe, logout } from "@/lib/auth";
-import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
 import { track } from "@/lib/analytics";
 import { ChatAssistant } from "./Chat";
 import { ClientTabBar } from "./ClientTabBar";
@@ -19,7 +18,9 @@ import { BV_USER, type BvUser, SignInModal } from "./SignInModal";
 interface WebCtx {
   user: BvUser | null;
   openChat: () => void;
-  openSignIn: () => void;
+  // Optional `onDone` resumes the caller's flow after sign-in (e.g. the booking
+  // wall) instead of the default redirect to /account.
+  openSignIn: (onDone?: () => void) => void;
   signOut: () => void;
 }
 const Ctx = createContext<WebCtx | null>(null);
@@ -33,7 +34,8 @@ const NAV = [
   { href: "/", key: "nav.home" },
   { href: "/book", key: "nav.book" },
   { href: "/trips", key: "nav.trips" },
-  { href: `/d/${PUBLIC_PROFILE_SLUG}`, key: "nav.driver" },
+  // Smart route: resolves to the visitor's designated driver (see /your-driver).
+  { href: "/your-driver", key: "nav.driver" },
 ];
 
 function MenuItem({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
@@ -71,8 +73,14 @@ export function WebShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<BvUser | null>(null);
   const [signin, setSignin] = useState(false);
+  const [afterSignIn, setAfterSignIn] = useState<(() => void) | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [menu, setMenu] = useState(false);
+
+  const openSignIn = (onDone?: () => void) => {
+    setAfterSignIn(() => onDone ?? null);
+    setSignin(true);
+  };
 
   // Reflect an existing passenger session (real Google sign-in) on load.
   useEffect(() => {
@@ -87,7 +95,7 @@ export function WebShell({ children }: { children: ReactNode }) {
   const ctx: WebCtx = {
     user,
     openChat: () => setChatOpen(true),
-    openSignIn: () => setSignin(true),
+    openSignIn,
     signOut: async () => {
       await logout();
       setUser(null);
@@ -233,7 +241,7 @@ export function WebShell({ children }: { children: ReactNode }) {
                 )}
               </div>
             ) : (
-              <Button variant="ghost" size="sm" onClick={() => setSignin(true)}>
+              <Button variant="ghost" size="sm" onClick={() => openSignIn()}>
                 {t("auth.signin")}
               </Button>
             )}
@@ -269,7 +277,12 @@ export function WebShell({ children }: { children: ReactNode }) {
               } else {
                 setUser(BV_USER);
               }
-              router.push("/account");
+              // Resume the caller's flow (e.g. booking) if one is waiting;
+              // otherwise land on the account page.
+              const resume = afterSignIn;
+              setAfterSignIn(null);
+              if (resume) resume();
+              else router.push("/account");
             }}
           />
         )}

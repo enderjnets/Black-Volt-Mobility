@@ -109,6 +109,15 @@ export async function uploadTenantAsset(
   return r.json();
 }
 
+// Canonical shareable URL for a driver's public profile (`/d/{slug}`). Uses the
+// current origin in the browser (so it's correct per environment) and falls back
+// to the production host during SSR.
+export function publicProfileUrl(slug: string): string {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "https://app.blackvoltmobility.com";
+  return `${origin}/d/${encodeURIComponent(slug)}`;
+}
+
 // Public — no credentials needed; returns null on 404 (unknown slug).
 export async function getPublicProfile(slug: string): Promise<PublicProfile | null> {
   const r = await fetch(`/api/v1/tenants/${encodeURIComponent(slug)}`, { cache: "no-store" });

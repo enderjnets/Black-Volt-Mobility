@@ -294,6 +294,43 @@ async def find_or_create_client_by_contact(
     return row
 
 
+async def find_client_by_google_sub(db: AsyncSession, google_sub: str) -> Client | None:
+    """Find a passenger by their Google identity ACROSS ALL tenants — the one
+    deliberate cross-tenant lookup (identity resolution, like the global allow-list
+    in resolve_user_access). It backs the *permanent, first-touch* designated-driver
+    rule: a Google account belongs to whichever driver first registered it, so we
+    return the OLDEST matching row and never spawn a duplicate under another tenant.
+    Returns None when this account has never signed in anywhere."""
+    if not google_sub:
+        return None
+    return (
+        await db.execute(
+            select(Client)
+            .where(Client.google_sub == google_sub)
+            .order_by(Client.created_at.asc(), Client.id.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def resolve_referral_tenant(db: AsyncSession, slug: str | None) -> Tenant:
+    """Resolve the tenant a referral link (`?ref=`/`/d/{slug}`) points at, for
+    attributing a brand-new passenger. The slug must name a real tenant that
+    passes the entitlement gate (`tenant_has_entitlements`); anything else
+    (missing, unknown, or — once `ENTITLEMENTS_ENFORCED` is on — an unpaid slug)
+    falls back to the default Black Volt tenant so attribution can never be
+    steered at a bogus workspace. With enforcement off (MVP default) any real
+    tenant slug attributes — the gate tightens automatically when paid plans go
+    live, with no code change here."""
+    if slug:
+        from app.services import subscriptions  # local: avoid tenancy↔subscriptions cycle
+
+        t = await get_tenant_by_slug(db, slug)
+        if t is not None and await subscriptions.tenant_has_entitlements(db, tenant_id=t.id):
+            return t
+    return await get_default_tenant(db)
+
+
 async def find_or_create_client(
     db: AsyncSession,
     *,

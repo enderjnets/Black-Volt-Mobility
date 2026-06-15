@@ -5,13 +5,12 @@ import { usePathname } from "next/navigation";
 
 import { Icon } from "../Icon";
 import { useI18n } from "@/lib/i18n";
-import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
 
 const TABS = [
   { href: "/", icon: "home", key: "nav.home" },
   { href: "/book", icon: "zap", key: "nav.book" },
   { href: "/trips", icon: "navigation", key: "nav.trips" },
-  { href: `/d/${PUBLIC_PROFILE_SLUG}`, icon: "user", key: "nav.driver" },
+  { href: "/your-driver", icon: "user", key: "nav.driver" },
 ];
 
 /** Mobile bottom tab bar (native-app feel). Hidden on desktop via the

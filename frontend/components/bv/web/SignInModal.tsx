@@ -6,6 +6,7 @@ import { Icon } from "../Icon";
 import { GoogleG } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import { loginGoogle } from "@/lib/auth";
+import { getRef } from "@/lib/referral";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 
 export interface BvUser {
@@ -43,7 +44,7 @@ export function SignInModal({
   const onCredential = async (idToken: string) => {
     setBusy(true);
     setErr(null);
-    const r = await loginGoogle(idToken);
+    const r = await loginGoogle(idToken, getRef());
     if (r.ok) onSignedIn("google");
     else {
       setErr(t("auth.googleFailed"));

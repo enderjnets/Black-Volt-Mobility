@@ -8,6 +8,7 @@ import { type ChangeEvent, useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Button, Field, Pill } from "../ui";
+import { ShareLink } from "./ShareLink";
 import { useI18n } from "@/lib/i18n";
 import {
   getTenantSettings,
@@ -254,11 +255,13 @@ export function Settings() {
             {busy ? t("dash.settings.saving") : saved ? t("dash.settings.saved") : t("dash.settings.save")}
           </Button>
           <div style={{ marginTop: 10 }}>
-            <Button variant="ghost" full icon="arrow-right" onClick={() => window.open(`/d/${data.slug}`, "_blank")}>
+            <Button variant="ghost" full icon="external-link" onClick={() => window.open(`/d/${data.slug}`, "_blank")}>
               {t("dash.settings.viewPublic")}
             </Button>
           </div>
         </div>
+
+        <ShareLink slug={data.slug} />
 
         <StatusCard title={t("dash.settings.paymentsSection")} icon="credit-card">
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
