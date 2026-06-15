@@ -47,7 +47,7 @@ export function Account() {
           {t("acct.title")}
         </h2>
         <p style={{ color: "var(--silver)", marginBottom: 20 }}>{t("auth.subtitle")}</p>
-        <Button variant="solid" icon="zap" onClick={openSignIn}>
+        <Button variant="solid" icon="zap" onClick={() => openSignIn()}>
           {t("auth.signin")}
         </Button>
       </div>

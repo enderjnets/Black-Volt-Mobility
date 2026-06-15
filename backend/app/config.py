@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_ADMIN_EMAILS: str = ""  # comma-separated; pinned owner/driver admins
 
+    # Registration wall: when on (and AUTH_ENABLED), an anonymous visitor must
+    # sign in before they can price a trip (/quote). This captures every lead and
+    # binds them to their referring driver. Flip off to reopen anonymous quotes
+    # without a code change. No effect in open mode (AUTH_ENABLED=false).
+    REQUIRE_AUTH_TO_QUOTE: bool = True
+
+    # Canonical public origin used to build shareable driver links / QR codes.
+    PUBLIC_BASE_URL: str = "https://app.blackvoltmobility.com"
+
     @property
     def google_admin_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.GOOGLE_ADMIN_EMAILS.split(",") if e.strip()]

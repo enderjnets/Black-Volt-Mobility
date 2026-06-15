@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.24.0";
+export const CURRENT_VERSION = "0.25.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.25.0",
+    date: "2026-06-15",
+    title: "Your own driver link — share, get clients, keep them",
+    changes: [
+      "Every driver now has a public link and scannable QR (Settings → Share your link) for Instagram, business cards or flyers.",
+      "Anyone who signs up through your link becomes your client for good — their rides and CRM live under you (first come, first keep).",
+      "The 'Your Driver' tab now shows each rider their own designated driver, with a real QR, save-to-contacts and copy-link.",
+      "To get a price, riders now create a free account first (one-tap Google) — so every lead is captured and credited to the right driver.",
+    ],
+  },
   {
     version: "0.24.0",
     date: "2026-06-12",

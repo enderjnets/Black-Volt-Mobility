@@ -51,9 +51,20 @@ export interface RideInput {
   confirm?: boolean;
 }
 
+// Error carrying the HTTP status so callers can branch on it (e.g. a 401 from
+// the quote endpoint triggers the sign-in wall) without parsing the message.
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`/api${path}`, { credentials: "include", cache: "no-store" });
-  if (!r.ok) throw new Error(`${path}:${r.status}`);
+  if (!r.ok) throw new ApiError(`${path}:${r.status}`, r.status);
   return r.json();
 }
 
@@ -89,7 +100,10 @@ async function jsend<T>(path: string, method: string, body?: unknown): Promise<T
   });
   if (!r.ok) {
     const d = await r.json().catch(() => ({}));
-    throw new Error(fmtApiDetail((d as { detail?: unknown }).detail, `${path}:${r.status}`));
+    throw new ApiError(
+      fmtApiDetail((d as { detail?: unknown }).detail, `${path}:${r.status}`),
+      r.status,
+    );
   }
   return r.json();
 }

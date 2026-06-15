@@ -7,9 +7,10 @@ import { Button, Card, Field } from "../ui";
 import { AddressField } from "./AddressField";
 import { SquareCard } from "./SquareCard";
 import { useI18n } from "@/lib/i18n";
-import { createRide, getQuote, type Quote } from "@/lib/booking";
+import { ApiError, createRide, getQuote, type Quote } from "@/lib/booking";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
 import { track } from "@/lib/analytics";
+import { useWeb } from "./WebShell";
 
 const FUNNEL_EVENT = ["book_start", "book_review", "book_pay", "book_confirmed"] as const;
 
@@ -102,6 +103,7 @@ function Stat({ icon, label, value, accent }: { icon: string; label: string; val
 
 export function Booking() {
   const { t } = useI18n();
+  const { openSignIn } = useWeb();
   const [step, setStep] = useState(0);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("Denver Intl (DEN)");
@@ -109,6 +111,11 @@ export function Booking() {
   const [pax, setPax] = useState(2);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
+  // Registration wall: a 401 on /quote means the visitor must sign in first
+  // (which also attributes them to their referring driver). `reload` re-runs the
+  // quote after they authenticate.
+  const [authWall, setAuthWall] = useState(false);
+  const [reload, setReload] = useState(0);
   const [rideId, setRideId] = useState<number | null>(null);
   const [payCfg, setPayCfg] = useState<PaymentsConfig | null>(null);
   const [paying, setPaying] = useState(false);
@@ -130,12 +137,22 @@ export function Booking() {
     if (!pickup || !dropoff) return;
     let alive = true;
     setQuoting(true);
+    setAuthWall(false);
     getQuote({ pickup, dropoff, pax })
       .then((q) => {
         if (alive) setQuote(q);
       })
-      .catch(() => {
-        if (alive) setQuote(null);
+      .catch((e: unknown) => {
+        if (!alive) return;
+        setQuote(null);
+        // Registration wall → prompt sign-in, then re-fetch the quote.
+        if (e instanceof ApiError && e.status === 401) {
+          setAuthWall(true);
+          openSignIn(() => {
+            setAuthWall(false);
+            setReload((n) => n + 1);
+          });
+        }
       })
       .finally(() => {
         if (alive) setQuoting(false);
@@ -143,7 +160,8 @@ export function Booking() {
     return () => {
       alive = false;
     };
-  }, [step, from, to, pax]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, from, to, pax, reload]);
 
   // Display helpers — real quote when available, else the original mock values.
   const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : "$74";
@@ -288,19 +306,61 @@ export function Booking() {
                 <Icon name="plane" size={16} color="var(--volt)" /> {to}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 16, borderTop: "1px solid var(--line)", paddingTop: 16 }}>
-              <Stat icon="navigation" label={t("book.distance")} value={distanceText} />
-              <Stat icon="clock" label={t("book.eta")} value={etaText} />
-              <Stat icon="dollar-sign" label={t("book.fare")} value={fareText} accent />
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <Button variant="plain" icon="arrow-left" onClick={() => setStep(0)}>
-                {t("common.back")}
-              </Button>
-              <Button variant="solid" full iconRight="arrow-right" disabled={paying} onClick={proceedToPay}>
-                {paying ? t("pay.processing") : t("book.pay")}
-              </Button>
-            </div>
+            {authWall ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 12,
+                  borderTop: "1px solid var(--line)",
+                  paddingTop: 18,
+                  textAlign: "center",
+                }}
+              >
+                <Icon name="lock" size={22} color="var(--volt)" />
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--arctic)" }}>
+                  {t("book.wall.title")}
+                </div>
+                <p style={{ fontSize: 13.5, color: "var(--silver)", margin: 0, lineHeight: 1.5, maxWidth: 320 }}>
+                  {t("book.wall.sub")}
+                </p>
+                <div style={{ display: "flex", gap: 10, width: "100%" }}>
+                  <Button variant="plain" icon="arrow-left" onClick={() => setStep(0)}>
+                    {t("common.back")}
+                  </Button>
+                  <Button
+                    variant="solid"
+                    full
+                    icon="zap"
+                    onClick={() =>
+                      openSignIn(() => {
+                        setAuthWall(false);
+                        setReload((n) => n + 1);
+                      })
+                    }
+                  >
+                    {t("book.wall.cta")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", gap: 16, borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+                  <Stat icon="navigation" label={t("book.distance")} value={distanceText} />
+                  <Stat icon="clock" label={t("book.eta")} value={etaText} />
+                  <Stat icon="dollar-sign" label={t("book.fare")} value={fareText} accent />
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <Button variant="plain" icon="arrow-left" onClick={() => setStep(0)}>
+                    {t("common.back")}
+                  </Button>
+                  <Button variant="solid" full iconRight="arrow-right" disabled={paying} onClick={proceedToPay}>
+                    {paying ? t("pay.processing") : t("book.pay")}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

@@ -156,11 +156,19 @@ def _rate_out(rc) -> dict:
     }
 
 
-# ─── Quote (open) ─────────────────────────────────────────────────────────────
+# ─── Quote (gated by the registration wall) ──────────────────────────────────
 @router.post("/quote")
 async def post_quote(body: QuoteRequest, request: Request, db: AsyncSession = Depends(get_db)):
-    """Price a candidate trip without persisting. Backs the booking calculator."""
-    tenant_id = await resolve_tenant_id(db, current_payload(request))
+    """Price a candidate trip without persisting. Backs the booking calculator.
+
+    Registration wall: when REQUIRE_AUTH_TO_QUOTE is on (and auth is enforced), an
+    anonymous visitor must sign in first — this binds every lead to their referring
+    driver before they see a price. Open mode (AUTH_ENABLED=false) is unaffected."""
+    payload = current_payload(request)
+    settings = get_settings()
+    if settings.REQUIRE_AUTH_TO_QUOTE and settings.AUTH_ENABLED and payload is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+    tenant_id = await resolve_tenant_id(db, payload)
     return await booking.build_quote(
         db,
         tenant_id=tenant_id,

@@ -26,8 +26,15 @@ def _owner():
     return c
 
 
-def test_quote_open_no_auth():
+def test_quote_requires_auth():
+    # Registration wall (default on): an anonymous visitor can't price a trip.
     r = client.post("/api/v1/quote", json={"pickup": "Cherry Creek", "dropoff": "Union Station"})
+    assert r.status_code == 401, r.text
+
+
+def test_quote_prices_trip():
+    c = _owner()
+    r = c.post("/api/v1/quote", json={"pickup": "Cherry Creek", "dropoff": "Union Station"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["total"] > 0
@@ -37,7 +44,8 @@ def test_quote_open_no_auth():
 
 
 def test_quote_airport_uses_flat_floor():
-    r = client.post(
+    c = _owner()
+    r = c.post(
         "/api/v1/quote", json={"pickup": "Downtown Denver", "dropoff": "Denver Intl (DEN)"}
     )
     assert r.status_code == 200, r.text

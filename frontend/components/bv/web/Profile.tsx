@@ -2,30 +2,49 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 
 import { Icon } from "../Icon";
 import { Button, Card, Pill } from "../ui";
 import { useI18n } from "@/lib/i18n";
-import { getPublicProfile, PUBLIC_PROFILE_SLUG, type PublicProfile } from "@/lib/tenant";
+import {
+  getPublicProfile,
+  publicProfileUrl,
+  PUBLIC_PROFILE_SLUG,
+  type PublicProfile,
+} from "@/lib/tenant";
+import { fetchMe } from "@/lib/auth";
+import { setRef } from "@/lib/referral";
 
-function FauxQR({ size = 132 }: { size?: number }) {
-  const n = 11;
-  const cells: boolean[] = [];
-  for (let r = 0; r < n; r++)
-    for (let c = 0; c < n; c++) {
-      const corner = (r < 3 && c < 3) || (r < 3 && c > n - 4) || (r > n - 4 && c < 3);
-      const on = corner || (r * 7 + c * 13 + r * c * 3) % 5 < 2;
-      cells.push(on);
-    }
-  return (
-    <div style={{ background: "var(--arctic)", padding: 10, borderRadius: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${n}, 1fr)`, gap: 2, width: size, height: size }}>
-        {cells.map((on, i) => (
-          <div key={i} style={{ background: on ? "#0A0A0F" : "transparent", borderRadius: 1 }} />
-        ))}
-      </div>
-    </div>
-  );
+/** Escape a value for a vCard property (RFC 6350 §3.4). */
+function vcardEscape(v: string): string {
+  return v.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
+/** Trigger a .vcf download so a visitor can save the driver to their contacts. */
+function saveContact(p: PublicProfile): void {
+  const url = publicProfileUrl(p.slug);
+  const website = p.website ? (p.website.startsWith("http") ? p.website : `https://${p.website}`) : null;
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN:${vcardEscape(p.name)}`,
+    `ORG:${vcardEscape(p.name)}`,
+    `TITLE:${vcardEscape(p.tagline || "Black Volt Mobility")}`,
+    website ? `URL:${vcardEscape(website)}` : null,
+    `URL:${vcardEscape(url)}`,
+    p.bio ? `NOTE:${vcardEscape(p.bio)}` : null,
+    "END:VCARD",
+  ].filter(Boolean) as string[];
+  const blob = new Blob([lines.join("\r\n")], { type: "text/vcard;charset=utf-8" });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = `${p.slug}.vcf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(href);
 }
 
 function Stat({ value, label, icon, accent }: { value: string; label: string; icon: string; accent: string }) {
@@ -47,8 +66,13 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
   const router = useRouter();
   const [p, setP] = useState<PublicProfile | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "missing">("loading");
+  const [isMine, setIsMine] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    // Capture the referral: a visitor on a driver's link is attributed to that
+    // driver on their next sign-in (the backend enforces first-touch permanence).
+    setRef(slug);
     getPublicProfile(slug)
       .then((data) => {
         if (data) {
@@ -59,6 +83,10 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
         }
       })
       .catch(() => setState("missing"));
+    // Is this the signed-in passenger's own designated driver?
+    fetchMe()
+      .then((me) => setIsMine(me.authenticated && me.tenant_slug === slug))
+      .catch(() => setIsMine(false));
   }, [slug]);
 
   if (state === "loading") {
@@ -98,6 +126,17 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
 
   const accent = p.brand_color || "var(--volt)";
   const subtitle = [p.name, p.city].filter(Boolean).join(" · ");
+  const shareUrl = publicProfileUrl(p.slug);
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard blocked — no-op */
+    }
+  };
 
   return (
     <div
@@ -113,10 +152,15 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 58%" }}
           />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(10,10,15,0.25) 0%, rgba(10,10,15,0.92) 100%)" }} />
-          <div style={{ position: "absolute", top: 16, left: 16 }}>
+          <div style={{ position: "absolute", top: 16, left: 16, display: "flex", gap: 8 }}>
             <Pill icon="shield-check" tone="success">
               {t("profile.verified")}
             </Pill>
+            {isMine && (
+              <Pill icon="star" tone="volt">
+                {t("profile.yourDriver")}
+              </Pill>
+            )}
           </div>
         </div>
         <div style={{ padding: "0 22px 22px", marginTop: -34 }}>
@@ -150,10 +194,15 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
           {(p.instagram || p.website) && (
             <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
               {p.instagram && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--silver)" }}>
+                <a
+                  href={`https://instagram.com/${p.instagram.replace(/^@/, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--silver)", textDecoration: "none" }}
+                >
                   <Icon name="image" size={14} color={accent} />
                   {p.instagram}
-                </span>
+                </a>
               )}
               {p.website && (
                 <a
@@ -193,19 +242,24 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
 
       <Card glow pad={22} style={{ textAlign: "center" }}>
         <div style={{ display: "inline-flex", marginBottom: 16 }}>
-          <Pill icon="qr-code">QR Card</Pill>
+          <Pill icon="qr-code">{t("profile.qrCard")}</Pill>
         </div>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-          <FauxQR />
+          <div style={{ background: "var(--arctic)", padding: 12, borderRadius: 12 }}>
+            <QRCodeSVG value={shareUrl} size={140} level="M" bgColor="#FFFFFF" fgColor="#0A0A0F" />
+          </div>
         </div>
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 18, color: "var(--arctic)" }}>
           {t("profile.scan")}
         </div>
-        <p style={{ fontSize: 13, color: "var(--silver)", margin: "8px 0 0", lineHeight: 1.5 }}>{t("profile.scan.sub")}</p>
-        <div
-          style={{ marginTop: 16, fontSize: 11, color: "var(--fg3)", fontFamily: "var(--font-display)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.18em" }}
-        >
-          blackvolt.app / d / {p.slug}
+        <p style={{ fontSize: 13, color: "var(--silver)", margin: "8px 0 16px", lineHeight: 1.5 }}>{t("profile.scan.sub")}</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Button variant="ghost" full icon="user" onClick={() => saveContact(p)}>
+            {t("profile.saveContact")}
+          </Button>
+          <Button variant="plain" full icon={copied ? "check" : "link"} onClick={copyLink}>
+            {copied ? t("profile.copied") : t("profile.copyLink")}
+          </Button>
         </div>
       </Card>
     </div>

@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.25.0 — 2026-06-15 — Per-driver public links + designated-driver attribution + registration wall
+
+Every team driver's public profile (`/d/{slug}`) becomes a **shareable referral link** (Instagram bio, business cards, QR) that **activates the customer-side multi-tenancy** that was previously dormant — until now every public passenger was hard-pinned to the default `black-volt` tenant.
+
+**Designated driver (permanent, first-touch).** A visitor who signs in through a driver's link is attributed to that driver for good: their `Client` is created under that driver's tenant, so their rides accrue to that driver and show in *that* driver's CRM. Mechanism: on Google login `find_client_by_google_sub()` does a deliberate **cross-tenant identity lookup** (the only one, like the global allow-list) and returns the oldest match — so a returning rider keeps their first driver on any device, and a later link from another driver never reassigns or duplicates them (`resolve_referral_tenant()` only attributes brand-new accounts, validated against a real entitled tenant, else falls back to default). The owner can still reassign manually as super-admin.
+
+**Registration wall.** `/quote` now requires a session when `REQUIRE_AUTH_TO_QUOTE` (default on) + `AUTH_ENABLED` — so every lead signs in (one-tap Google) and is credited to the right driver before seeing a price. Open mode (`AUTH_ENABLED=false`) is unaffected; the booking flow prompts sign-in on the 401 and resumes automatically.
+
+**"Your Driver" + sharing.** The *Your Driver* tab (`/your-driver`) now resolves to each rider's own designated driver. The public profile gets a **real scannable QR** (`qrcode.react`), save-to-contacts (vCard) and copy-link. Drivers grab their own link/QR from a new **Share your link** panel in dashboard Settings (`/me` now returns `tenant_slug`).
+
+**Verification.** 5 new backend tests (attribution, first-touch permanence, wall 401/200) + full suite green; `ruff`, `tsc`, `next lint` + `build` clean; Playwright e2e (referral cookie capture, wall prompt, QR, share panel) with no JS errors; **security review found no exploitable issues**; code review surfaced only minor/intended notes. No DB migration (attribution rides on the existing per-tenant `Client`).
+
 ## v0.24.0 — 2026-06-12 — Team member detail drawer (per-driver usage analytics)
 
 The super-admin can now click any driver in **Team** to open a detail drawer with everything about that driver — turning the access list into an oversight console.

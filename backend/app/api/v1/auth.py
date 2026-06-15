@@ -14,9 +14,11 @@ from app.models.allowed_user import ROLE_ADMIN
 from app.services import auth
 from app.services.tenancy import (
     create_tenant_for,
+    find_client_by_google_sub,
     find_or_create_client,
     get_default_tenant,
     get_tenant,
+    resolve_referral_tenant,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -55,6 +57,10 @@ async def login_password(
 
 class GoogleLogin(BaseModel):
     id_token: str
+    # Driver slug from the referral link (`/d/{slug}`). Only used to attribute a
+    # brand-new passenger to the driver who brought them; ignored once the account
+    # already has a designated driver (first-touch is permanent).
+    ref: str | None = None
 
 
 @router.post("/login/google")
@@ -90,13 +96,20 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
             "is_admin": is_admin,
         }
 
-    # Not on the access list (or deactivated) → passenger of the default tenant.
-    tenant = await get_default_tenant(db)
+    # Not on the access list (or deactivated) → passenger. Designated-driver rule:
+    # if this Google account already exists under any driver, keep that driver
+    # (first-touch, permanent); otherwise attribute to the referral link's driver,
+    # falling back to the default Black Volt tenant.
+    existing = await find_client_by_google_sub(db, info["sub"])
+    if existing is not None:
+        tenant_id = existing.tenant_id
+    else:
+        tenant_id = (await resolve_referral_tenant(db, body.ref)).id
     client = await find_or_create_client(
-        db, tenant_id=tenant.id, google_sub=info["sub"], email=email, name=info["name"]
+        db, tenant_id=tenant_id, google_sub=info["sub"], email=email, name=info["name"]
     )
     token = auth.make_token(
-        role=auth.ROLE_PASSENGER, tenant_id=tenant.id, email=email, client_id=client.id
+        role=auth.ROLE_PASSENGER, tenant_id=tenant_id, email=email, client_id=client.id
     )
     _set_cookie(response, token)
     return {
@@ -119,12 +132,17 @@ async def me(request: Request, db: AsyncSession = Depends(get_db)):
     }
     if payload is None:
         return base
+    tid = payload.get("tid")
+    tenant = await get_tenant(db, tid) if tid else None
     base.update(
         {
             "role": payload.get("role"),
             "email": payload.get("email"),
             "client_id": payload.get("cid"),
-            "tenant_id": payload.get("tid"),
+            "tenant_id": tid,
+            # Slug of the session's tenant — for a passenger this is their
+            # designated driver, so the "Your Driver" tab can resolve the profile.
+            "tenant_slug": tenant.slug if tenant else None,
             "is_admin": await session_is_admin(db, payload),
         }
     )
