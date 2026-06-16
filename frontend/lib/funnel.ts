@@ -86,6 +86,29 @@ export interface ProjectResult {
   rates?: { overall_point: number; low_data: boolean };
 }
 
+export interface CoachInsight {
+  focus_stage: "pitch" | "contact" | "convert";
+  focus_rate: number;
+  current_per_day: number;
+  suggested_per_day: number;
+  horizon_days: number;
+  expected_clients: number;
+  expected_clients_low: number;
+  expected_clients_high: number;
+  expected_revenue: number;
+  expected_revenue_low: number;
+  expected_revenue_high: number;
+  prob_at_least_one: number;
+  has_earnings: boolean;
+}
+
+export interface CoachResult {
+  message: string;
+  source: "ai" | "template";
+  generated_at: string;
+  insight: CoachInsight;
+}
+
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`/api${path}`, { credentials: "include", cache: "no-store" });
   if (!r.ok) throw new Error(`${path}:${r.status}`);
@@ -108,6 +131,10 @@ async function jsend<T>(path: string, method: string, body: unknown): Promise<T>
 
 export async function getFunnelSummary(days = 30): Promise<FunnelSummary> {
   return jget<FunnelSummary>(`/v1/stats/funnel?days=${days}`);
+}
+
+export async function getCoach(lang: string, refresh = false): Promise<CoachResult> {
+  return jget<CoachResult>(`/v1/stats/coach?lang=${encodeURIComponent(lang)}&refresh=${refresh ? 1 : 0}`);
 }
 
 export async function saveFunnelLog(body: {
