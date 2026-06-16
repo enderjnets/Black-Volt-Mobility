@@ -255,9 +255,14 @@ export function Settings() {
               <span>{err === "save" ? t("dash.settings.saveErr") : err}</span>
             </div>
           )}
-          <Button variant="solid" full size="lg" icon={saved ? "check" : "zap"} disabled={!dirty || busy} onClick={save}>
+          <Button variant="solid" full size="lg" icon={saved ? "check" : "zap"} disabled={busy || !form} onClick={save}>
             {busy ? t("dash.settings.saving") : saved ? t("dash.settings.saved") : t("dash.settings.save")}
           </Button>
+          {dirty && !busy && !saved && (
+            <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+              <Pill tone="volt" icon="circle-dot">{t("dash.settings.unsaved")}</Pill>
+            </div>
+          )}
           <div style={{ marginTop: 10 }}>
             <Button variant="ghost" full icon="external-link" onClick={() => window.open(`/d/${data.slug}`, "_blank")}>
               {t("dash.settings.viewPublic")}
