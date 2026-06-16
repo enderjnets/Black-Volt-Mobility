@@ -6,7 +6,11 @@ os.environ["AUTH_SECRET"] = "coach-test-secret"
 os.environ["AUTH_ENABLED"] = "true"
 os.environ["PAYMENTS_SIMULATED"] = "true"
 os.environ["MAPS_SIMULATED"] = "true"
-# No KIMI/MINIMAX keys → coach falls back to the deterministic template.
+# Force the deterministic template path: explicitly clear any LLM keys the
+# environment (e.g. a docker-compose .env) might inject, so the coach never makes
+# a real Kimi/MiniMax call and `source` is reliably "template" in these tests.
+os.environ["KIMI_API_KEY"] = ""
+os.environ["MINIMAX_API_KEY"] = ""
 
 from app.config import get_settings  # noqa: E402
 

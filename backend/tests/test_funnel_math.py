@@ -143,3 +143,31 @@ def test_coach_no_earnings_path():
     )
     assert ins.has_earnings is False
     assert ins.expected_revenue == 0.0
+
+
+def test_coach_insight_caps_absurd_cadence():
+    # A driver with a huge goal would otherwise be told to talk to hundreds of
+    # people a day. The suggestion must stay human-reachable and finite, and the
+    # projected clients/revenue with it.
+    rates = fm.funnel_rates(conversations=200, pitches=20, contacts=10, clients=2)
+    ins = fm.coach_insight(
+        rates=rates,
+        conversations_per_day=4.0,
+        working_days=5.0,
+        revenue_per_client=75.0,
+        target_clients=1000.0,  # absurd goal
+    )
+    assert ins.suggested_per_day <= fm.COACH_MAX_PER_DAY
+    assert ins.suggested_per_day >= ins.current_per_day
+    # No inf/nan leaks into the projection.
+    for v in (ins.expected_clients, ins.expected_revenue, ins.prob_at_least_one):
+        assert v == v and v not in (float("inf"), float("-inf"))
+
+
+def test_coach_insight_respects_higher_existing_pace():
+    # If the driver already works above the cap, don't suggest *less* than they do.
+    rates = fm.funnel_rates(conversations=300, pitches=60, contacts=30, clients=10)
+    ins = fm.coach_insight(
+        rates=rates, conversations_per_day=50.0, working_days=5.0, revenue_per_client=75.0
+    )
+    assert ins.suggested_per_day >= 50.0

@@ -31,6 +31,11 @@ _PRIOR_B = 1.0
 LOW_DATA_TRIALS = 5
 # z-score for a two-sided 90% interval.
 _Z90 = 1.6448536269514722
+# A coaching nudge must stay human-reachable: never suggest an absurd daily
+# cadence (a huge goal or a near-zero conversion rate could otherwise demand
+# hundreds of conversations/day). Capping here keeps the suggestion — and the
+# clients/revenue projected from it — credible and finite.
+COACH_MAX_PER_DAY = 40.0
 
 
 @dataclass
@@ -249,6 +254,9 @@ def coach_insight(
         # A reachable stretch: at least +2/day (or +50%), and never below 3.
         suggested = max(math.ceil(current * 1.5), current + 2, 3.0)
     suggested = max(suggested, current)
+    # Keep it human-reachable (and finite, even if required_activity → inf): never
+    # push past the cap unless the driver's own pace is already higher.
+    suggested = min(suggested, max(current, COACH_MAX_PER_DAY))
 
     proj = project(
         rates=rates,
