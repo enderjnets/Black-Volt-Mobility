@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.28.1 — 2026-06-16 — Fix: My Stats reachable on mobile
+
+The mobile bottom navigation (`DriverTabBar.tsx`) is a separate component from the desktop sidebar, with hardcoded `PRIMARY` (Dashboard/Rides/Clients/Inbox) and `MORE` (overflow sheet) lists. The new "My Stats" tab (v0.27.0) was added to the desktop sidebar but **not** to either mobile list, so it was invisible on phones. Added `stats` as the first item in the `MORE` sheet — it now appears under the bottom **More / Más** menu (still inline in the desktop sidebar). Frontend-only; no API/DB change.
+
 ## v0.28.0 — 2026-06-16 — My Stats: AI import of Uber/Lyft/Co-op platform income
 
 A "Platform income" panel inside the My Stats tab. The driver uploads a screenshot of their **Uber / Lyft / co-op** earnings summary; the existing AI vision model (smart-vision, MiniMax-M3) reads **platform, period, trips, earnings, and online hours**; the driver reviews/edits the parsed draft and saves it. The panel then shows platform income over the window and a **platform-vs-private comparison** (the whole pitch: convert those gig riders into higher-margin private clients). Per the product decision, this is **context only — it never touches the sales funnel** (conversations are still logged by hand).

@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.28.0";
+export const CURRENT_VERSION = "0.28.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.28.1",
+    date: "2026-06-16",
+    title: "My Stats now reachable on mobile",
+    changes: [
+      "Fixed: the 'My Stats' tab was missing from the phone navigation — it's now in the bottom 'More' menu (it was already in the sidebar on desktop).",
+    ],
+  },
   {
     version: "0.28.0",
     date: "2026-06-16",
