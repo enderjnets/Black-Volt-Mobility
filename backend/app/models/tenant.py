@@ -23,6 +23,8 @@ class Tenant(Base):
     website: Mapped[str | None] = mapped_column(String(200), nullable=True)
     vehicle: Mapped[str | None] = mapped_column(String(120), nullable=True)
     city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Direct line shown only to registered clients (gated server-side).
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # Brand accent (hex) + uploaded asset paths (served from /media).
     brand_color: Mapped[str | None] = mapped_column(String(9), nullable=True)
     logo_path: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -174,6 +174,7 @@ export function Field({
   onChange,
   type = "text",
   readOnly,
+  hint,
 }: {
   icon?: string;
   label?: string;
@@ -182,6 +183,7 @@ export function Field({
   onChange?: (v: string) => void;
   type?: string;
   readOnly?: boolean;
+  hint?: string;
 }) {
   const [focus, setFocus] = useState(false);
   return (
@@ -226,6 +228,9 @@ export function Field({
           }}
         />
       </div>
+      {hint && (
+        <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 6 }}>{hint}</div>
+      )}
     </label>
   );
 }

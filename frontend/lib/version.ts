@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.25.0";
+export const CURRENT_VERSION = "0.26.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.26.0",
+    date: "2026-06-15",
+    title: "Your direct phone — for your registered clients",
+    changes: [
+      "Add your direct phone in Settings → it appears as Call and Text buttons (and in save-to-contacts) on your profile.",
+      "Your number is shown only to clients who are signed in — anonymous visitors never see it, keeping it private while still giving real clients a direct line.",
+    ],
+  },
   {
     version: "0.25.0",
     date: "2026-06-15",

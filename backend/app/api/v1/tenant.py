@@ -10,11 +10,11 @@ from __future__ import annotations
 import os
 import time
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_staff, resolve_tenant_id
+from app.api.deps import current_payload, require_staff, resolve_tenant_id
 from app.config import get_settings
 from app.db.base import get_db
 from app.services import subscriptions, tenancy
@@ -39,12 +39,13 @@ class TenantSettingsBody(BaseModel):
     website: str | None = Field(default=None, max_length=200)
     vehicle: str | None = Field(default=None, max_length=120)
     city: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
     brand_color: str | None = Field(default=None, max_length=9)
     rating: float | None = Field(default=None, ge=0, le=5)
     since_year: int | None = Field(default=None, ge=1950, le=2100)
 
     @field_validator(
-        "tagline", "bio", "instagram", "website", "vehicle", "city", mode="before"
+        "tagline", "bio", "instagram", "website", "vehicle", "city", "phone", mode="before"
     )
     @classmethod
     def _trim(cls, v):
@@ -171,10 +172,13 @@ async def upload_photo(
 
 # ─── Public profile ─────────────────────────────────────────────────────────
 @router.get("/tenants/{slug}")
-async def get_public_profile(slug: str, db: AsyncSession = Depends(get_db)):
+async def get_public_profile(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
     t = await tenancy.get_tenant_by_slug(db, slug)
     # An unpaid tenant's profile is a plain 404 (never 402): billing state must
     # not be revealed publicly.
     if t is None or not await subscriptions.tenant_has_entitlements(db, tenant_id=t.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    return await tenancy.public_profile(db, slug=slug)
+    # The driver's direct phone is only included for registered/signed-in
+    # viewers (any valid session) — never for anonymous visitors.
+    include_contact = current_payload(request) is not None
+    return await tenancy.public_profile(db, slug=slug, include_contact=include_contact)

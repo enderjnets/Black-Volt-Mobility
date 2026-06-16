@@ -149,6 +149,32 @@ def test_public_profile_unknown_slug_404():
     assert c.get("/api/v1/tenants/no-such-driver").status_code == 404
 
 
+def test_settings_roundtrips_phone():
+    c = _owner()
+    r = c.put("/api/v1/tenant/settings", json={"phone": "  +1 303 555 1234  "})
+    assert r.status_code == 200, r.text
+    assert r.json()["phone"] == "+1 303 555 1234"          # trimmed
+    assert c.get("/api/v1/tenant/settings").json()["phone"] == "+1 303 555 1234"
+    # Blank clears it back to null (it's an optional field).
+    assert c.put("/api/v1/tenant/settings", json={"phone": "   "}).json()["phone"] is None
+
+
+def test_public_profile_phone_gated_by_session():
+    slug = _seed_completed_ride()
+    # Owner sets a direct line.
+    owner = _owner()
+    assert owner.put("/api/v1/tenant/settings", json={"phone": "+1 303 555 9000"}).status_code == 200
+
+    # Anonymous viewer: profile loads but the phone is NOT exposed.
+    anon = TestClient(app)
+    d_anon = anon.get(f"/api/v1/tenants/{slug}").json()
+    assert "phone" not in d_anon
+
+    # Registered/signed-in viewer: the phone is included.
+    d_auth = owner.get(f"/api/v1/tenants/{slug}").json()
+    assert d_auth.get("phone") == "+1 303 555 9000"
+
+
 def test_settings_requires_staff():
     c = TestClient(app)  # no session
     assert c.get("/api/v1/tenant/settings").status_code == 401
