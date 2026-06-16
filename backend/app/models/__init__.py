@@ -4,6 +4,7 @@ from app.models.analytics import AnalyticsEvent
 from app.models.client import Client
 from app.models.driver_funnel import DriverFunnelLog, DriverGoal
 from app.models.payment import Payment, PaymentStatus
+from app.models.platform_stat import PlatformStat
 from app.models.rate_config import RateConfig
 from app.models.ride import PaymentMethod, Ride, RideStatus
 from app.models.subscription import Subscription, SubscriptionStatus
@@ -24,4 +25,5 @@ __all__ = [
     "SubscriptionStatus",
     "DriverFunnelLog",
     "DriverGoal",
+    "PlatformStat",
 ]

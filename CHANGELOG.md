@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.28.0 — 2026-06-16 — My Stats: AI import of Uber/Lyft/Co-op platform income
+
+A "Platform income" panel inside the My Stats tab. The driver uploads a screenshot of their **Uber / Lyft / co-op** earnings summary; the existing AI vision model (smart-vision, MiniMax-M3) reads **platform, period, trips, earnings, and online hours**; the driver reviews/edits the parsed draft and saves it. The panel then shows platform income over the window and a **platform-vs-private comparison** (the whole pitch: convert those gig riders into higher-margin private clients). Per the product decision, this is **context only — it never touches the sales funnel** (conversations are still logged by hand).
+
+**Backend.** New tenant-scoped table `platform_stats` (migration **0017_platform_stats**). `services/platform_stats.py` mirrors the Smart-reservation vision flow with its own prompt/keys/sample (simulated fallback when there's no vision key) and adds `save_stat`/`delete_stat`/`summary`. The summary attributes each import to `coalesce(period_end, created_at)`, totals per platform, and computes the private earned revenue for the same window via the shared `booking.earned_ride_filter()`. Endpoints on the staff-only `/stats/*` router: `POST /stats/platform/extract` (multipart screenshots → parsed draft; gated behind an active subscription like the Smart upload), `GET /stats/platform` (summary + comparison), `POST /stats/platform` (save), `DELETE /stats/platform/{id}` (tenant-scoped → 404 cross-tenant). All inputs are bounded and clamped server-side; unknown platforms coerce to `other`.
+
+**Frontend.** `PlatformIncome.tsx` in My Stats: upload → AI draft → review form (platform, period, trips, earnings, hours) → save; a private-vs-platform split bar with per-trip economics; and a list of recent imports with delete. `lib/platform.ts` reuses the Smart image-normalize helper. New EN+ES strings under `dash.stats.plat.*`.
+
+**Verification.** 227 backend tests green (6 new: extract simulated, non-image reject, save/list/summary/delete roundtrip, clamping, gating); `ruff`, `alembic check` (no drift), `tsc`, `next lint`, `next build` clean. Live Playwright E2E: upload a screenshot → AI returns the Uber sample → the review form pre-fills (Uber, 42 trips, $884.50, 31.5h) → save → it appears in the summary, per-platform breakdown, and comparison. **Security review** and **code review** run on the diff.
+
 ## v0.27.0 — 2026-06-16 — My Stats growth dashboard + revenue/count fixes + delete cancelled rides
 
 Three things in one release.

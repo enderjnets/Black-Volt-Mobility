@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Button } from "../ui";
+import { PlatformIncome } from "./PlatformIncome";
 import { useI18n } from "@/lib/i18n";
 import {
   type FunnelRate,
@@ -584,6 +585,9 @@ export function MyStats() {
               )}
             </Panel>
           </div>
+
+          {/* Platform income (Uber/Lyft/Co-op screenshot import) */}
+          <PlatformIncome days={days} />
 
           {/* Projection */}
           <Panel title={t("dash.stats.proj.title")} icon="trending-up">

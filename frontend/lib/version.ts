@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.27.0";
+export const CURRENT_VERSION = "0.28.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.28.0",
+    date: "2026-06-16",
+    title: "My Stats — import your Uber/Lyft income with AI",
+    changes: [
+      "New 'Platform income' panel in My Stats: upload a screenshot of your Uber, Lyft or co-op earnings and the AI reads the trips, earnings and hours for you.",
+      "See your platform income vs your private (Black Volt) income side by side — a clear picture of how much more you keep on private rides, and a nudge to grow it.",
+      "Review what the AI read before saving, edit anything, and delete old imports anytime. It's context only — it never changes your sales-funnel numbers.",
+    ],
+  },
   {
     version: "0.27.0",
     date: "2026-06-16",

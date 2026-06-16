@@ -5,21 +5,37 @@ POST /stats/funnel/log        → upsert one day's logged counts
 GET  /stats/funnel/goal       → current goal
 PUT  /stats/funnel/goal       → set goal
 POST /stats/funnel/project    → goal calculator (target → required activity)
+POST /stats/platform/extract  → read an Uber/Lyft/Co-op screenshot (AI vision)
+GET  /stats/platform          → platform-income summary + vs-private comparison
+POST /stats/platform          → save a confirmed platform-stats record
+DELETE /stats/platform/{id}   → delete a platform-stats record
 """
 from __future__ import annotations
 
 import datetime as dt
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_staff, resolve_tenant_id
+from app.config import get_settings
 from app.db.base import get_db
-from app.services import funnel
+from app.services import funnel, platform_stats, subscriptions
 
 router = APIRouter(tags=["funnel"])
+
+# Accepted screenshot types / size (mirrors the Smart reservation upload).
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+}
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 class FunnelLogBody(BaseModel):
@@ -118,3 +134,104 @@ async def post_funnel_project(
         target_revenue=body.target_revenue,
         target_clients=body.target_clients,
     )
+
+
+# ── Platform stats (Uber/Lyft/Co-op screenshot import) ───────────────────────
+class PlatformStatBody(BaseModel):
+    platform: str = Field(default="other", max_length=20)
+    period_label: str | None = Field(default=None, max_length=80)
+    period_start: str | None = Field(default=None, max_length=20)
+    period_end: str | None = Field(default=None, max_length=20)
+    trips: int | None = Field(default=None, ge=0, le=100000)
+    earnings: float | None = Field(default=None, ge=0, le=10_000_000)
+    online_hours: float | None = Field(default=None, ge=0, le=10000)
+    currency: str | None = Field(default=None, max_length=3)
+
+
+@router.post("/stats/platform/extract")
+async def post_platform_extract(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Read 1..N screenshots of an Uber/Lyft/Co-op earnings summary and return the
+    parsed fields for the driver to review before saving. Best-effort (a vision
+    failure returns all-null). Gated behind an active subscription (AI feature)."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    if not await subscriptions.tenant_has_entitlements(db, tenant_id=tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="subscription_required"
+        )
+    settings = get_settings()
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_files")
+    if len(files) > settings.SMART_MAX_IMAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"too_many_images_max_{settings.SMART_MAX_IMAGES}",
+        )
+    images: list[tuple[str, bytes]] = []
+    for f in files:
+        media_type = (f.content_type or "").split(";")[0].strip().lower()
+        if media_type not in _ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported_image_type"
+            )
+        raw = await f.read()
+        if not raw:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty_image")
+        if len(raw) > _MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="image_too_large"
+            )
+        images.append((media_type, raw))
+    fields = await platform_stats.extract_platform_stats(images)
+    return {"fields": fields, "simulated": not settings.smart_live, "image_count": len(images)}
+
+
+@router.get("/stats/platform")
+async def get_platform(
+    request: Request,
+    days: int = Query(default=30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await platform_stats.summary(db, tenant_id=tenant_id, days=days)
+
+
+@router.post("/stats/platform", status_code=status.HTTP_201_CREATED)
+async def post_platform(
+    body: PlatformStatBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await platform_stats.save_stat(
+        db,
+        tenant_id=tenant_id,
+        platform=body.platform,
+        period_label=body.period_label,
+        period_start=body.period_start,
+        period_end=body.period_end,
+        trips=body.trips,
+        earnings=body.earnings,
+        online_hours=body.online_hours,
+        currency=body.currency,
+    )
+
+
+@router.delete("/stats/platform/{stat_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_platform(
+    stat_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    ok = await platform_stats.delete_stat(db, tenant_id=tenant_id, stat_id=stat_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="stat_not_found")
+    return None
