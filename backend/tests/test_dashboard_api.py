@@ -146,6 +146,35 @@ def test_week_rejects_future_and_out_of_range():
     assert c.get("/api/v1/dashboard/week?offset=-300").status_code == 422  # > 5yr back
 
 
+def test_weeks_requires_staff():
+    assert client.get("/api/v1/dashboard/weeks").status_code == 401
+
+
+def test_weeks_summary_shape_and_totals_match_week():
+    c = _owner()
+    rid = _make_ride(c, name="WeeksPayer")
+    assert c.patch(f"/api/v1/rides/{rid}", json={"status": "completed"}).status_code == 200
+    rows = c.get("/api/v1/dashboard/weeks?count=8").json()
+    assert isinstance(rows, list) and len(rows) == 8
+    # Offsets run 0, -1, ... -7; each has start/end/total.
+    assert [r["offset"] for r in rows] == list(range(0, -8, -1))
+    for r in rows:
+        assert "start" in r and "end" in r and "total" in r
+    # Each batch total matches the single-week endpoint for that offset.
+    for o in (0, -1, -3):
+        single = c.get(f"/api/v1/dashboard/week?offset={o}").json()["total"]
+        batch = next(r["total"] for r in rows if r["offset"] == o)
+        assert batch == single
+    # Current week's total is positive (the completed ride counts).
+    assert next(r["total"] for r in rows if r["offset"] == 0) > 0
+
+
+def test_weeks_rejects_out_of_range_count():
+    c = _owner()
+    assert c.get("/api/v1/dashboard/weeks?count=0").status_code == 422
+    assert c.get("/api/v1/dashboard/weeks?count=53").status_code == 422
+
+
 def test_clients_requires_staff():
     assert client.get("/api/v1/clients").status_code == 401
 

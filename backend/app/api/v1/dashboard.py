@@ -62,6 +62,19 @@ async def dashboard_week(
     return week
 
 
+@router.get("/dashboard/weeks")
+async def dashboard_weeks(
+    request: Request,
+    count: int = Query(default=12, ge=1, le=52),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Earned-revenue totals for the last `count` weeks (for the week-picker
+    dropdown). Returns [{offset, start, end, total}], offset 0 = current week."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await dashboard.weeks_summary(db, tenant_id=tenant_id, count=count)
+
+
 @router.get("/clients")
 async def list_clients(
     request: Request,

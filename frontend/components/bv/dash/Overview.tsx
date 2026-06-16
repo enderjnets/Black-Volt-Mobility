@@ -7,7 +7,13 @@ import { useI18n } from "@/lib/i18n";
 import { useViewport } from "@/lib/useViewport";
 import { openMapsTo } from "@/lib/maps";
 import { listRides } from "@/lib/booking";
-import { getDashboardStats, getWeek, type DashStats, type WeekEarnings } from "@/lib/dashboard";
+import {
+  getDashboardStats,
+  getWeek,
+  getWeeksSummary,
+  type DashStats,
+  type WeekEarnings,
+} from "@/lib/dashboard";
 import { StatusPill } from "./DashShell";
 import { type Ride } from "./data";
 import { apiToUiRide, fmtWhen, isToday } from "./status";
@@ -258,6 +264,7 @@ function MiniBars({ data }: { data: { day: string; date: string; revenue: number
     <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 90 }}>
       {data.map((d, i) => {
         const isCurrent = new Date(`${d.date}T00:00`).toDateString() === today;
+        const hasRev = d.revenue > 0;
         return (
           <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
             <div
@@ -266,8 +273,11 @@ function MiniBars({ data }: { data: { day: string; date: string; revenue: number
                 width: "100%",
                 height: `${Math.max(2, (d.revenue / max) * 70)}px`,
                 borderRadius: 4,
-                background: isCurrent ? "var(--volt)" : "var(--obsidian-3)",
-                boxShadow: isCurrent ? "var(--shadow-volt-sm)" : "none",
+                // Any earning day is clearly visible (volt); today is brightest +
+                // glow; days with no revenue stay a faint baseline.
+                background: hasRev ? "var(--volt)" : "var(--obsidian-3)",
+                opacity: hasRev ? (isCurrent ? 1 : 0.7) : 1,
+                boxShadow: isCurrent && hasRev ? "var(--shadow-volt-sm)" : "none",
               }}
             />
             <span style={{ fontSize: 11, color: isCurrent ? "var(--volt)" : "var(--fg3)" }}>{d.day[0]}</span>
@@ -312,6 +322,7 @@ function WeekChart() {
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<WeekEarnings | null>(null);
   const [open, setOpen] = useState(false);
+  const [totals, setTotals] = useState<Record<number, number>>({});
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -323,6 +334,18 @@ function WeekChart() {
       alive = false;
     };
   }, [offset]);
+
+  // Per-week totals for the dropdown (refreshed each time it opens, so they stay
+  // current if rides were added). One batched query.
+  useEffect(() => {
+    let alive = true;
+    getWeeksSummary(WEEK_OPTIONS)
+      .then((rows) => alive && setTotals(Object.fromEntries(rows.map((r) => [r.offset, r.total]))))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   // Close the popover on outside click / Escape (desktop). The phone sheet has
   // its own backdrop.
@@ -402,10 +425,24 @@ function WeekChart() {
           WebkitTapHighlightColor: "transparent",
         }}
       >
-        <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {weekRange(o, locale)}
         </span>
-        {sk && <span style={{ fontSize: 11.5, color: active ? "var(--volt)" : "var(--fg3)" }}>{sk}</span>}
+        {sk && <span style={{ fontSize: 11.5, color: active ? "var(--volt)" : "var(--fg3)", flexShrink: 0 }}>{sk}</span>}
+        <span
+          style={{
+            fontFamily: "var(--font-display)",
+            fontWeight: 700,
+            fontSize: 13.5,
+            color: active ? "var(--volt)" : "var(--silver)",
+            flexShrink: 0,
+            minWidth: 52,
+            textAlign: "right",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {o in totals ? fmtMoney(totals[o]) : ""}
+        </span>
       </button>
     );
   });
