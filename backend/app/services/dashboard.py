@@ -3,7 +3,7 @@ helpers to enrich rides with client + payment info. Tenant-scoped, computed on
 the fly (no extra tables)."""
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,46 @@ def _tier(rides_count: int, spend: float) -> str:
     if rides_count >= 3:
         return "Regular"
     return "New"
+
+
+def monday_of(d: date) -> date:
+    """The Monday of the week containing `d`."""
+    return d - timedelta(days=d.weekday())
+
+
+async def week_earnings(db: AsyncSession, *, tenant_id: int, monday: date) -> dict:
+    """Daily earned revenue Mon→Sun for the week starting at `monday`
+    (zero-filled), plus the week total and ISO date range. Tenant-scoped; uses
+    the same earned/service-day definition as the dashboard KPIs so a navigable
+    past week matches the "This week" card exactly."""
+    ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
+    start = monday
+    end = start + timedelta(days=6)
+    rows = (
+        await db.execute(
+            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total), 0.0))
+            .where(
+                Ride.tenant_id == tenant_id,
+                booking.earned_ride_filter(),
+                ride_day >= start,
+                ride_day <= end,
+            )
+            .group_by(ride_day)
+        )
+    ).all()
+    by_day = {str(r[0]): float(r[1]) for r in rows}
+    days = []
+    for i in range(7):
+        d = start + timedelta(days=i)
+        days.append(
+            {
+                "day": d.strftime("%a"),
+                "date": str(d),
+                "revenue": round(by_day.get(str(d), 0.0), 2),
+            }
+        )
+    total = round(sum(x["revenue"] for x in days), 2)
+    return {"start": str(start), "end": str(end), "total": total, "days": days}
 
 
 async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
@@ -104,28 +144,11 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
         }
 
     # Earnings per day for the current Mon→Sun week (earned rides, by service
-    # day), zero-filled. Plus the week's total.
-    start = today - timedelta(days=today.weekday())  # Monday of this week
-    end = start + timedelta(days=6)  # Sunday
-    rows = (
-        await db.execute(
-            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total), 0.0))
-            .where(t, earned, ride_day >= start, ride_day <= end)
-            .group_by(ride_day)
-        )
-    ).all()
-    earned_by_day = {str(r[0]): float(r[1]) for r in rows}
-    week = []
-    for i in range(7):
-        d = start + timedelta(days=i)
-        week.append(
-            {
-                "day": d.strftime("%a"),
-                "date": str(d),
-                "revenue": round(earned_by_day.get(str(d), 0.0), 2),
-            }
-        )
-    week_total = round(sum(x["revenue"] for x in week), 2)
+    # day), zero-filled. Plus the week's total. Shared with /dashboard/week so a
+    # navigable past week renders identically to "This week".
+    wk = await week_earnings(db, tenant_id=tenant_id, monday=monday_of(today))
+    week = wk["days"]
+    week_total = wk["total"]
 
     return {
         "today": {

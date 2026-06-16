@@ -91,6 +91,19 @@ export async function getDashboardStats(): Promise<DashStats> {
   return jget<DashStats>("/v1/dashboard/stats");
 }
 
+export interface WeekEarnings {
+  offset: number;
+  start: string; // ISO Monday
+  end: string; // ISO Sunday
+  total: number;
+  days: { day: string; date: string; revenue: number }[];
+}
+
+// One Mon→Sun week of daily earnings; offset 0 = current week, negative = past.
+export async function getWeek(offset: number): Promise<WeekEarnings> {
+  return jget<WeekEarnings>(`/v1/dashboard/week?offset=${offset}`);
+}
+
 export async function listClients(): Promise<ClientRow[]> {
   const r = await jget<{ clients: ClientRow[] }>("/v1/clients");
   return r.clients;
