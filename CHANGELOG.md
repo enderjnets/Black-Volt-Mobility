@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.26.0 — 2026-06-15 — Driver direct phone (gated to registered clients)
+
+Drivers can now add a **direct phone** in dashboard Settings. It surfaces as **Call** and **Text** buttons (and a `TEL` line in save-to-contacts) on their profile (`/d/{slug}` and the *Your Driver* tab) — but **only to signed-in clients**. Anonymous visitors never receive it.
+
+**Server-side gating (not just hidden in the UI).** The public endpoint `GET /api/v1/tenants/{slug}` omits the `phone` key entirely unless the request carries a valid session (`include_contact = current_payload(request) is not None`); `public_profile()` only adds `phone` when `include_contact` is true. The frontend `getPublicProfile()` now sends `credentials: "include"` so a registered rider's cookie travels and the backend includes the number. This honors the v0.25.0 registration wall — to get the driver's direct line you register first.
+
+**Editing.** New `phone` (`String(40)`, nullable) on `Tenant` via migration **0015_tenant_phone** (additive); added to `TENANT_EDITABLE_FIELDS` so the owner-only `PUT /tenant/settings` persists it (session-scoped, write-whitelisted). New `phone` Field in Settings (`type="tel"`, with hint), and a reusable optional `hint` prop on the shared `Field`.
+
+**Verification.** 2 new backend tests (settings roundtrip/trim + gating: anon → no `phone`, session → `phone`); full suite 195 green; `ruff`, `alembic check` (no drift), `tsc`, `next lint`, `next build` clean; live gating verified via curl (anon vs cookie) and Playwright (anon profile has no Call/Text; authed does; Settings shows the `tel` field). **Security review found no exploitable issues**; code review found only one intended dev-mode note. EN+ES strings added.
+
 ## v0.25.0 — 2026-06-15 — Per-driver public links + designated-driver attribution + registration wall
 
 Every team driver's public profile (`/d/{slug}`) becomes a **shareable referral link** (Instagram bio, business cards, QR) that **activates the customer-side multi-tenancy** that was previously dormant — until now every public passenger was hard-pinned to the default `black-volt` tenant.

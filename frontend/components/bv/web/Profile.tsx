@@ -33,6 +33,8 @@ function saveContact(p: PublicProfile): void {
     `TITLE:${vcardEscape(p.tagline || "Black Volt Mobility")}`,
     website ? `URL:${vcardEscape(website)}` : null,
     `URL:${vcardEscape(url)}`,
+    // Only present for registered viewers (the backend gates the phone field).
+    p.phone ? `TEL;TYPE=CELL:${vcardEscape(p.phone)}` : null,
     p.bio ? `NOTE:${vcardEscape(p.bio)}` : null,
     "END:VCARD",
   ].filter(Boolean) as string[];
@@ -215,6 +217,18 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
                   {p.website.replace(/^https?:\/\//, "")}
                 </a>
               )}
+            </div>
+          )}
+          {/* Direct line — only delivered by the backend to registered/signed-in
+              clients, so its mere presence means the viewer is entitled to it. */}
+          {p.phone && (
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <Button variant="ghost" icon="phone" onClick={() => { window.location.href = `tel:${p.phone}`; }}>
+                {t("profile.call")}
+              </Button>
+              <Button variant="plain" icon="message-circle" onClick={() => { window.location.href = `sms:${p.phone}`; }}>
+                {t("profile.text")}
+              </Button>
             </div>
           )}
           <div style={{ display: "flex", gap: 10, marginTop: 14 }}>

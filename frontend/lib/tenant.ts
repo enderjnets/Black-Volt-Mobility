@@ -28,6 +28,7 @@ export interface TenantSettings {
   website: string | null;
   vehicle: string | null;
   city: string | null;
+  phone: string | null;
   brand_color: string | null;
   rating: number | null;
   since_year: number | null;
@@ -52,6 +53,9 @@ export interface PublicProfile {
   rating: number | null;
   rides_total: number;
   years_active: number | null;
+  // Present only when the viewer is a registered/signed-in client (the backend
+  // gates this — anonymous visitors never receive it).
+  phone?: string | null;
 }
 
 export type TenantSettingsInput = {
@@ -62,6 +66,7 @@ export type TenantSettingsInput = {
   website?: string | null;
   vehicle?: string | null;
   city?: string | null;
+  phone?: string | null;
   brand_color?: string | null;
   rating?: number | null;
   since_year?: number | null;
@@ -118,9 +123,14 @@ export function publicProfileUrl(slug: string): string {
   return `${origin}/d/${encodeURIComponent(slug)}`;
 }
 
-// Public — no credentials needed; returns null on 404 (unknown slug).
+// Public — returns null on 404 (unknown slug). Sends the session cookie so a
+// registered/signed-in viewer also receives the driver's direct phone (the
+// backend gates that field; anonymous visitors never get it).
 export async function getPublicProfile(slug: string): Promise<PublicProfile | null> {
-  const r = await fetch(`/api/v1/tenants/${encodeURIComponent(slug)}`, { cache: "no-store" });
+  const r = await fetch(`/api/v1/tenants/${encodeURIComponent(slug)}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`profile:${r.status}`);
   return r.json();

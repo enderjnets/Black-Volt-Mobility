@@ -108,6 +108,7 @@ TENANT_EDITABLE_FIELDS = (
     "website",
     "vehicle",
     "city",
+    "phone",
     "brand_color",
     "rating",
     "since_year",
@@ -154,6 +155,7 @@ async def tenant_settings(db: AsyncSession, *, tenant_id: int) -> dict | None:
         "website": t.website,
         "vehicle": t.vehicle,
         "city": t.city,
+        "phone": t.phone,
         "brand_color": t.brand_color,
         "rating": t.rating,
         "since_year": t.since_year,
@@ -202,12 +204,19 @@ async def set_tenant_asset(
     return t
 
 
-async def public_profile(db: AsyncSession, *, slug: str) -> dict | None:
-    """Public-safe profile for /d/{slug}: brand + computed stats. No secrets."""
+async def public_profile(
+    db: AsyncSession, *, slug: str, include_contact: bool = False
+) -> dict | None:
+    """Public-safe profile for /d/{slug}: brand + computed stats. No secrets.
+
+    The driver's direct phone is included only when ``include_contact`` is True
+    (i.e. the viewer is a registered/signed-in client) — never for anonymous
+    visitors, honoring the registration wall.
+    """
     t = await get_tenant_by_slug(db, slug)
     if t is None:
         return None
-    return {
+    profile = {
         "slug": t.slug,
         "name": t.name,
         "tagline": t.tagline,
@@ -223,6 +232,9 @@ async def public_profile(db: AsyncSession, *, slug: str) -> dict | None:
         "rides_total": await _completed_rides(db, t.id),
         "years_active": _years_active(t.since_year),
     }
+    if include_contact:
+        profile["phone"] = t.phone
+    return profile
 
 
 def _digits(phone: str | None) -> str:

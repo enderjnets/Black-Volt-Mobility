@@ -27,6 +27,7 @@ type Form = {
   website: string;
   vehicle: string;
   city: string;
+  phone: string;
   brand_color: string;
   rating: string;
   since_year: string;
@@ -41,6 +42,7 @@ function toForm(d: TenantSettings): Form {
     website: d.website || "",
     vehicle: d.vehicle || "",
     city: d.city || "",
+    phone: d.phone || "",
     brand_color: d.brand_color || "#00E5FF",
     rating: d.rating != null ? String(d.rating) : "",
     since_year: d.since_year != null ? String(d.since_year) : "",
@@ -90,6 +92,7 @@ export function Settings() {
         website: form.website.trim() || null,
         vehicle: form.vehicle.trim() || null,
         city: form.city.trim() || null,
+        phone: form.phone.trim() || null,
         brand_color: form.brand_color || null,
         rating: ratingNum != null && !Number.isNaN(ratingNum) ? ratingNum : null,
         since_year: yearNum != null && !Number.isNaN(yearNum) ? yearNum : null,
@@ -155,6 +158,7 @@ export function Settings() {
             <Field icon="car" label={t("dash.settings.vehicle")} value={form.vehicle} onChange={(v) => set("vehicle", v)} />
             <Field icon="map-pin" label={t("dash.settings.city")} value={form.city} onChange={(v) => set("city", v)} />
           </div>
+          <Field icon="phone" type="tel" label={t("dash.settings.phone")} hint={t("dash.settings.phoneHint")} value={form.phone} onChange={(v) => set("phone", v)} placeholder="+1 303 555 1234" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field icon="star" type="number" label={t("dash.settings.rating")} value={form.rating} onChange={(v) => set("rating", v)} placeholder="4.98" />
             <Field icon="clock" type="number" label={t("dash.settings.sinceYear")} value={form.since_year} onChange={(v) => set("since_year", v)} placeholder="2021" />

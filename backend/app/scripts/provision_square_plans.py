@@ -52,7 +52,8 @@ async def main() -> None:
     client = square_client()
     if client is None:
         raise SystemExit(
-            "square_client() is None — needs PAYMENTS_SIMULATED=false + SQUARE_ACCESS_TOKEN + SQUARE_LOCATION_ID"
+            "square_client() is None — needs PAYMENTS_SIMULATED=false "
+            "+ SQUARE_ACCESS_TOKEN + SQUARE_LOCATION_ID"
         )
 
     plan = {
