@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.29.0";
+export const CURRENT_VERSION = "0.29.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.29.1",
+    date: "2026-06-16",
+    title: "Week chart: visible bars on past weeks + totals in the picker",
+    changes: [
+      "Fixed the 'This week' chart so the daily bars are clearly visible on past weeks too (they were nearly invisible before).",
+      "The week picker now shows each week's total next to its dates, so you can compare weeks at a glance.",
+    ],
+  },
   {
     version: "0.29.0",
     date: "2026-06-16",

@@ -74,6 +74,47 @@ async def week_earnings(db: AsyncSession, *, tenant_id: int, monday: date) -> di
     return {"start": str(start), "end": str(end), "total": total, "days": days}
 
 
+async def weeks_summary(db: AsyncSession, *, tenant_id: int, count: int = 12) -> list[dict]:
+    """Earned-revenue totals for the last `count` Mon→Sun weeks (offset 0 = current,
+    negative = past), zero-filled — one query, bucketed by week. Powers the totals
+    shown in the dashboard week-picker dropdown. Same earned/service-day definition
+    as `week_earnings`, so each total matches that week's chart."""
+    count = max(1, min(int(count), 52))
+    today = datetime.now(UTC).date()
+    cur_monday = monday_of(today)
+    oldest_monday = cur_monday - timedelta(weeks=count - 1)
+    ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
+    rows = (
+        await db.execute(
+            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total), 0.0))
+            .where(
+                Ride.tenant_id == tenant_id,
+                booking.earned_ride_filter(),
+                ride_day >= oldest_monday,
+                ride_day <= cur_monday + timedelta(days=6),
+            )
+            .group_by(ride_day)
+        )
+    ).all()
+    # Bucket each earning day into its week (by Monday).
+    by_week: dict[date, float] = {}
+    for d_str, amount in rows:
+        d = d_str if isinstance(d_str, date) else date.fromisoformat(str(d_str))
+        by_week[monday_of(d)] = by_week.get(monday_of(d), 0.0) + float(amount)
+    out = []
+    for i in range(count):
+        m = cur_monday - timedelta(weeks=i)  # offset = -i
+        out.append(
+            {
+                "offset": -i,
+                "start": str(m),
+                "end": str(m + timedelta(days=6)),
+                "total": round(by_week.get(m, 0.0), 2),
+            }
+        )
+    return out
+
+
 async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
     now = datetime.now(UTC)
     today = now.date()

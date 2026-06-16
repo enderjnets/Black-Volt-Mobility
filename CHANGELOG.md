@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.29.1 — 2026-06-16 — Week chart: visible past-week bars + per-week totals in the picker
+
+Two follow-ups to the v0.29.0 week navigator:
+
+**Fix — invisible bars on past weeks.** `MiniBars` (`Overview.tsx`) colored every non-"today" bar `var(--obsidian-3)` (near-black), so a past week — where no day is "today" — rendered with no visible bars even though the total was correct. Now **any day with revenue is a clearly visible volt bar** (today brightest + glow; other earning days at 0.7 opacity), and only `$0` days stay a faint baseline. This also improves the weekly chart in the Team member drawer (`TeamMemberDetail.tsx`), which shares `MiniBars`.
+
+**Per-week totals in the picker.** The week-picker dropdown now shows **each week's total** next to its date range. New staff-only, tenant-scoped `GET /dashboard/weeks?count=N` (`count` bounded 1–52, no migration) returns `[{offset, start, end, total}]` from a single grouped query (`dashboard.weeks_summary`, reusing `booking.earned_ride_filter()` + the service-day bucketing); the front (`getWeeksSummary` + `WeekChart`) fetches it when the dropdown opens and renders the total right-aligned per option (range truncates on the left so it fits at 360px).
+
+**Verification.** 17 dashboard tests (3 new: `/dashboard/weeks` shape + offsets, batch totals equal the single-week endpoint per offset, `count` out-of-range → 422, staff-gate 401); 234 backend total; `ruff`/`tsc`/`next lint`/`next build` clean. Live Playwright across 3 viewports (past-week bars visible; dropdown shows totals; no overflow at 360px). Security + code review on the diff.
+
 ## v0.29.0 — 2026-06-16 — Week navigator on the dashboard "This week" chart
 
 The Dashboard's **"This week"** card becomes a week browser (like the Uber Earnings screen): **‹ ›** arrows step to the previous/next week and a **date-range dropdown** jumps to any recent week. Each week renders its own daily Mon→Sun bars + total, keeping the Black Volt bar style. Mobile-first: the picker is an easy-to-tap **bottom sheet on phones** (z-indexed above the fixed tab bar, never clipped) and a popover on tablet/desktop; arrows are 44×44 touch targets; no horizontal overflow at 360px.

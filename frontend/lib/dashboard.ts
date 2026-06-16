@@ -104,6 +104,19 @@ export async function getWeek(offset: number): Promise<WeekEarnings> {
   return jget<WeekEarnings>(`/v1/dashboard/week?offset=${offset}`);
 }
 
+export interface WeekSummaryRow {
+  offset: number;
+  start: string;
+  end: string;
+  total: number;
+}
+
+// Totals for the last `count` weeks (offset 0 = current) — for the week-picker
+// dropdown.
+export async function getWeeksSummary(count = 12): Promise<WeekSummaryRow[]> {
+  return jget<WeekSummaryRow[]>(`/v1/dashboard/weeks?count=${count}`);
+}
+
 export async function listClients(): Promise<ClientRow[]> {
   const r = await jget<{ clients: ClientRow[] }>("/v1/clients");
   return r.clients;
