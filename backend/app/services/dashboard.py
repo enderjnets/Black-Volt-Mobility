@@ -20,7 +20,7 @@ from app.models import (
     SubscriptionStatus,
     Tenant,
 )
-from app.services import analytics
+from app.services import analytics, booking
 
 _CANCELLED = (RideStatus.CANCELLED, RideStatus.NO_SHOW)
 _OPEN = (RideStatus.REQUESTED, RideStatus.QUOTED, RideStatus.CONFIRMED, RideStatus.ASSIGNED)
@@ -44,16 +44,25 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
     # actually happen, not when they were marked paid.
     ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
 
+    # A ride "counts" as revenue once it actually happened and earned money:
+    # completed OR settled, never cancelled/no-show (shared definition so the
+    # dashboard and the My Stats funnel agree on what "revenue" means).
+    earned = booking.earned_ride_filter()
+
+    # Rides today = every non-cancelled ride on today's service day (incl. ad-hoc
+    # rides that have no scheduled_at, via the coalesce day).
     rides_today = (
         await db.execute(
-            select(func.count()).where(t, func.date(Ride.scheduled_at) == today)
+            select(func.count()).where(
+                t, Ride.status.not_in(_CANCELLED), ride_day == today
+            )
         )
     ).scalar_one()
-    # Revenue = paid rides whose service day is today (any method: cash, Square…).
+    # Revenue = earned rides (completed or paid) whose service day is today.
     revenue_today = (
         await db.execute(
             select(func.coalesce(func.sum(Ride.fare_total), 0.0)).where(
-                t, Ride.paid.is_(True), ride_day == today
+                t, earned, ride_day == today
             )
         )
     ).scalar_one()
@@ -94,23 +103,27 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
             "pickup": nxt_ride.pickup_text,
         }
 
-    # Earnings per day for the current Mon→Sun week (paid rides, by service day),
-    # zero-filled. Plus the week's total.
+    # Earnings per day for the current Mon→Sun week (earned rides, by service
+    # day), zero-filled. Plus the week's total.
     start = today - timedelta(days=today.weekday())  # Monday of this week
     end = start + timedelta(days=6)  # Sunday
     rows = (
         await db.execute(
             select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total), 0.0))
-            .where(t, Ride.paid.is_(True), ride_day >= start, ride_day <= end)
+            .where(t, earned, ride_day >= start, ride_day <= end)
             .group_by(ride_day)
         )
     ).all()
-    earned = {str(r[0]): float(r[1]) for r in rows}
+    earned_by_day = {str(r[0]): float(r[1]) for r in rows}
     week = []
     for i in range(7):
         d = start + timedelta(days=i)
         week.append(
-            {"day": d.strftime("%a"), "date": str(d), "revenue": round(earned.get(str(d), 0.0), 2)}
+            {
+                "day": d.strftime("%a"),
+                "date": str(d),
+                "revenue": round(earned_by_day.get(str(d), 0.0), 2),
+            }
         )
     week_total = round(sum(x["revenue"] for x in week), 2)
 

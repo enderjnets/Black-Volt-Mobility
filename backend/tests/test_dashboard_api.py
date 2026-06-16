@@ -73,6 +73,41 @@ def test_revenue_counts_only_paid_rides_today():
     assert body["week_total"] >= body["today"]["revenue"]
 
 
+def test_revenue_counts_completed_unpaid_rides():
+    c = _owner()
+    before = c.get("/api/v1/dashboard/stats").json()["today"]["revenue"]
+    rid = _make_ride(c, name="Completer")
+    fare = c.get(f"/api/v1/rides/{rid}").json()["fare_total"] or 0
+    assert fare > 0
+    # Driver completed the ride (cash) but never toggled the "paid" flag — it must
+    # still count as revenue.
+    assert c.patch(f"/api/v1/rides/{rid}", json={"status": "completed"}).status_code == 200
+    body = c.get("/api/v1/dashboard/stats").json()
+    assert round(body["today"]["revenue"] - before, 2) == round(fare, 2)
+    assert body["week_total"] >= body["today"]["revenue"]
+
+
+def test_cancelled_ride_never_counts_as_revenue():
+    c = _owner()
+    base = c.get("/api/v1/dashboard/stats").json()["today"]["revenue"]
+    rid = _make_ride(c, name="Canceller")
+    # Even a cancelled-but-paid ride must not inflate revenue.
+    assert c.patch(f"/api/v1/rides/{rid}", json={"paid": True}).status_code == 200
+    assert c.patch(f"/api/v1/rides/{rid}", json={"status": "cancelled"}).status_code == 200
+    assert c.get("/api/v1/dashboard/stats").json()["today"]["revenue"] == base
+
+
+def test_rides_today_counts_adhoc_and_excludes_cancelled():
+    c = _owner()
+    before = c.get("/api/v1/dashboard/stats").json()["today"]["rides"]
+    # An ad-hoc ride (no scheduled_at, created today) counts toward today.
+    rid = _make_ride(c, name="Adhoc")
+    assert c.get("/api/v1/dashboard/stats").json()["today"]["rides"] == before + 1
+    # Cancelling it drops it back out of the count.
+    assert c.patch(f"/api/v1/rides/{rid}", json={"status": "cancelled"}).status_code == 200
+    assert c.get("/api/v1/dashboard/stats").json()["today"]["rides"] == before
+
+
 def test_clients_requires_staff():
     assert client.get("/api/v1/clients").status_code == 401
 

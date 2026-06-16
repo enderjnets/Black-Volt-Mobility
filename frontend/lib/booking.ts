@@ -209,6 +209,22 @@ export async function updateRide(id: number, body: RideEdit): Promise<RideRow> {
   return jsend<RideRow>(`/v1/rides/${id}`, "PATCH", body);
 }
 
+// Permanently remove a cancelled/no-show ride (204, no body). The backend
+// rejects non-cancelled rides with 409.
+export async function deleteRide(id: number): Promise<void> {
+  const r = await fetch(`/api/v1/rides/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!r.ok && r.status !== 204) {
+    const d = await r.json().catch(() => ({}));
+    throw new ApiError(
+      fmtApiDetail((d as { detail?: unknown }).detail, `ride:${r.status}`),
+      r.status,
+    );
+  }
+}
+
 export interface RideUpdatePreview {
   current: Record<string, unknown>;
   proposed: {

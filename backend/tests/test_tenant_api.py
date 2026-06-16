@@ -163,7 +163,8 @@ def test_public_profile_phone_gated_by_session():
     slug = _seed_completed_ride()
     # Owner sets a direct line.
     owner = _owner()
-    assert owner.put("/api/v1/tenant/settings", json={"phone": "+1 303 555 9000"}).status_code == 200
+    resp = owner.put("/api/v1/tenant/settings", json={"phone": "+1 303 555 9000"})
+    assert resp.status_code == 200
 
     # Anonymous viewer: profile loads but the phone is NOT exposed.
     anon = TestClient(app)

@@ -2,6 +2,7 @@
 from app.models.allowed_user import AllowedUser
 from app.models.analytics import AnalyticsEvent
 from app.models.client import Client
+from app.models.driver_funnel import DriverFunnelLog, DriverGoal
 from app.models.payment import Payment, PaymentStatus
 from app.models.rate_config import RateConfig
 from app.models.ride import PaymentMethod, Ride, RideStatus
@@ -21,4 +22,6 @@ __all__ = [
     "AllowedUser",
     "Subscription",
     "SubscriptionStatus",
+    "DriverFunnelLog",
+    "DriverGoal",
 ]

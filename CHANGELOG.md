@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.27.0 — 2026-06-16 — My Stats growth dashboard + revenue/count fixes + delete cancelled rides
+
+Three things in one release.
+
+**1. Dashboard revenue/count fix.** "Revenue today" and "Week total" undercounted: they only summed rides with `paid=True`, so a *completed* cash ride the driver never toggled "paid" showed $0; and a cancelled-but-paid ride would have inflated revenue. "Rides today" counted only `scheduled_at == today` (missing ad-hoc rides with no schedule) and didn't exclude cancelled. Introduced a single shared predicate `booking.earned_ride_filter()` — a ride counts as revenue when it's **completed OR paid, and never cancelled/no-show** — used by revenue today, the weekly chart, and the funnel. `rides_today` now uses `coalesce(scheduled_at, created_at)` and excludes cancelled. Backend-only, no migration. New tests cover completed-unpaid revenue, cancelled exclusion, and ad-hoc counting.
+
+**2. Delete cancelled rides.** New `DELETE /api/v1/rides/{id}` (staff-only, tenant-scoped → foreign-tenant ride 404s). Guarded to **cancelled/no-show only** (409 otherwise); removes the calendar event and detaches payment rows (`ride_id → NULL`, audit trail preserved) before deleting. Frontend: a **Delete** button in the ride detail drawer (cancelled rides only) with a confirm dialog.
+
+**3. "My Stats" tab — the driver's growth dashboard.** The business runs on converting Uber/Lyft riders into private clients, so this tab tracks that sales funnel: **conversations → pitches → contacts → clients → revenue**. The top (effort) is logged by hand in a 10-second daily quick-log; the bottom (clients, revenue) is derived from real Client/Ride data. It shows the funnel, smoothed **conversion rates with a 90% confidence band** (Beta-Binomial smoothing + Wilson interval — honest with tiny samples, flagged `low data` until there's enough history), a logging **streak**, trend charts, a forward **projection** at the current pace, and a **goal calculator**: pick a weekly/monthly/yearly target ($ or clients) and it works backward to "talk to N people a day" with an effort range. New tables `driver_funnel_logs` + `driver_goals` (migration **0016_driver_funnel**), pure math module `funnel_math.py`, service `funnel.py`, API `/stats/funnel*`, and `MyStats.tsx` + `lib/funnel.ts`.
+
+**Verification.** 221 backend tests green (28 new: funnel math, funnel API, ride delete, revenue semantics); `ruff`, `alembic check` (no drift), `tsc`, `next lint`, `next build` all clean. Live Playwright E2E: My Stats renders + computes, the daily quick-log saves and updates the funnel/streak, the goal calculator returns a daily number, and a cancelled ride deletes (404 after). Revenue fix verified end-to-end via API deltas. **Security review: no high-confidence issues** (authz, multi-tenant isolation, the new DELETE, input validation, SQL injection all pass). Code review clean (one i18n regression caught and fixed). All new strings in EN + ES.
+
 ## v0.26.1 — 2026-06-15 — Settings: Save button always works
 
 Fix: the dashboard **Settings** "Save changes" button was gated solely on a dirty-diff (`disabled={!dirty || busy}`), so it rendered greyed-out (opacity 0.5, `onClick` ignored) and read as "there's no save button" — the owner couldn't save edits to Instagram, phone, etc.

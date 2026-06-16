@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.26.1";
+export const CURRENT_VERSION = "0.27.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.27.0",
+    date: "2026-06-16",
+    title: "My Stats — your growth dashboard + revenue fixes",
+    changes: [
+      "New 'My Stats' tab: log your daily sales funnel (people you talked to, pitches, contacts) and watch it turn into clients and revenue, with conversion rates, a streak, and trend charts.",
+      "Goal calculator: set a weekly/monthly/yearly target ($ or clients) and it tells you how many people to talk to per day — backed by a smoothed statistical model that's honest when you have little data.",
+      "Fixed 'Revenue today' and 'Week total': a completed ride now counts as revenue even if you didn't toggle 'paid', and cancelled rides never count.",
+      "Fixed 'Rides today' to count every ride you did today (including ad-hoc ones) and exclude cancelled rides.",
+      "You can now delete a cancelled ride from its detail view.",
+    ],
+  },
   {
     version: "0.26.1",
     date: "2026-06-15",

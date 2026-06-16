@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -14,6 +14,21 @@ from app.models.rate_config import DEFAULT_RATES
 from app.services import maps, pricing
 
 logger = logging.getLogger("blackvolt.booking")
+
+# Cancelled/no-show rides never count toward money or activity.
+CANCELLED_STATUSES = (RideStatus.CANCELLED, RideStatus.NO_SHOW)
+
+
+def earned_ride_filter():
+    """SQL predicate for a ride that actually earned money: it's completed OR
+    settled, and never cancelled/no-show. Shared by the dashboard KPIs and the
+    My Stats funnel so "revenue" means the same thing everywhere — a completed
+    cash ride counts even if the paid flag was never toggled, and a cancelled
+    ride never inflates the numbers."""
+    return and_(
+        Ride.status.not_in(CANCELLED_STATUSES),
+        or_(Ride.paid.is_(True), Ride.status == RideStatus.COMPLETED),
+    )
 
 
 async def get_or_create_rate_config(db: AsyncSession, *, tenant_id: int) -> RateConfig:
@@ -451,3 +466,22 @@ async def set_ride_status(
     await db.commit()
     await db.refresh(ride)
     return ride
+
+
+async def delete_ride(db: AsyncSession, *, ride: Ride) -> None:
+    """Permanently remove a ride. The caller must enforce that it's in a deletable
+    (cancelled/no-show) state. Any calendar event is removed, and payment rows are
+    detached (ride_id → NULL) rather than deleted, preserving the financial audit
+    trail even though the ride record goes away."""
+    if ride.google_event_id:
+        from app.services import calendar
+
+        calendar.delete_event(ride.google_event_id)
+        ride.google_event_id = None
+    from app.models import Payment
+
+    await db.execute(
+        update(Payment).where(Payment.ride_id == ride.id).values(ride_id=None)
+    )
+    await db.delete(ride)
+    await db.commit()
