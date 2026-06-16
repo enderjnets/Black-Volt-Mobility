@@ -13,6 +13,7 @@ from app.api.deps import require_admin
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.dashboard import router as dashboard_router
+from app.api.v1.funnel import router as funnel_router
 from app.api.v1.health import router as health_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.rides import router as booking_router
@@ -101,6 +102,7 @@ app.include_router(payments_router, prefix="/api/v1")
 app.include_router(subscriptions_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(funnel_router, prefix="/api/v1")
 app.include_router(tenant_router, prefix="/api/v1")
 app.include_router(team_router, prefix="/api/v1", dependencies=[Depends(require_admin)])
 

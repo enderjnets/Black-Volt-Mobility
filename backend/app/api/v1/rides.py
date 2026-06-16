@@ -394,6 +394,28 @@ async def patch_ride(
     return _ride_out(ride)
 
 
+@router.delete("/rides/{ride_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ride(
+    ride_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Permanently delete a ride. Only cancelled/no-show rides can be removed —
+    active or completed rides are part of the record and must be cancelled first.
+    Tenant-scoped: a ride from another tenant returns 404, not 403."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
+    if ride is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+    if ride.status not in (RideStatus.CANCELLED, RideStatus.NO_SHOW):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="ride_not_deletable"
+        )
+    await booking.delete_ride(db, ride=ride)
+    return None
+
+
 @router.post("/rides/{ride_id}/preview-update")
 async def preview_ride_update(
     ride_id: int,

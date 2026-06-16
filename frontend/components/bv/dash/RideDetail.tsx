@@ -12,6 +12,7 @@ import { Icon } from "../Icon";
 import { Button } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import {
+  deleteRide,
   getRideDetail,
   previewRideUpdate,
   type PaymentMethod,
@@ -175,6 +176,21 @@ export function RideDetail({
   };
   const changeStatus = (status: string) => patch({ status });
 
+  const del = async () => {
+    if (typeof window !== "undefined" && !window.confirm(t("dash.ride.deleteConfirm"))) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await deleteRide(rideId);
+      onChanged?.();
+      onClose();
+    } catch {
+      setErr("delete");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const capture = async () => {
     if (!ride?.payment) return;
     setBusy(true);
@@ -331,6 +347,7 @@ export function RideDetail({
   const canEnRoute = ["requested", "quoted", "confirmed", "assigned"].includes(ride?.status || "");
   const canComplete = ride?.status === "en_route";
   const canCancel = bucket === "upcoming" || bucket === "active";
+  const canDelete = bucket === "cancelled";
   const canSmartUpdate = bucket === "upcoming" || bucket === "active";
   const pay = ride?.payment;
 
@@ -596,6 +613,11 @@ export function RideDetail({
         )}
         {canCancel && (
           <Button variant="ghost" icon="x" disabled={busy} onClick={() => changeStatus("cancelled")}>{t("dash.ride.cancel")}</Button>
+        )}
+        {canDelete && (
+          <Button variant="ghost" icon="trash-2" disabled={busy} onClick={del}>
+            {busy ? t("dash.ride.deleting") : t("dash.ride.delete")}
+          </Button>
         )}
       </div>
     </>,
