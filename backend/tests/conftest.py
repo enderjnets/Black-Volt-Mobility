@@ -35,7 +35,13 @@ def _reset_ride_data():
         dsn = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
         conn = await asyncpg.connect(dsn)
         try:
-            await conn.execute("TRUNCATE rides, payments RESTART IDENTITY CASCADE")
+            # Funnel/platform/goal rows also accumulate across runs and shift the
+            # My Stats + coach aggregates (e.g. which stage is the bottleneck), so
+            # reset them too for deterministic funnel/coach tests.
+            await conn.execute(
+                "TRUNCATE rides, payments, driver_funnel_logs, platform_stats, "
+                "driver_goals RESTART IDENTITY CASCADE"
+            )
         finally:
             await conn.close()
 
