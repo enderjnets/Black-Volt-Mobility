@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.26.1 — 2026-06-15 — Settings: Save button always works
+
+Fix: the dashboard **Settings** "Save changes" button was gated solely on a dirty-diff (`disabled={!dirty || busy}`), so it rendered greyed-out (opacity 0.5, `onClick` ignored) and read as "there's no save button" — the owner couldn't save edits to Instagram, phone, etc.
+
+Now the button is **always clickable while the profile is loaded** (`disabled={busy || !form}`) — `PUT /tenant/settings` is idempotent, so saving unchanged data is harmless. The `dirty` check is kept only to drive an **"Unsaved changes"** Pill that appears while editing (clear affordance), plus the existing "Saved" flash. Frontend-only; no migration, no API change. New EN+ES string `dash.settings.unsaved`.
+
 ## v0.26.0 — 2026-06-15 — Driver direct phone (gated to registered clients)
 
 Drivers can now add a **direct phone** in dashboard Settings. It surfaces as **Call** and **Text** buttons (and a `TEL` line in save-to-contacts) on their profile (`/d/{slug}` and the *Your Driver* tab) — but **only to signed-in clients**. Anonymous visitors never receive it.

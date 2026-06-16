@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.26.0";
+export const CURRENT_VERSION = "0.26.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.26.1",
+    date: "2026-06-15",
+    title: "Settings — Save button always works",
+    changes: [
+      "The 'Save changes' button on Settings is now always clickable while your profile is loaded — it no longer greys out, so you can always save your edits.",
+      "An 'Unsaved changes' tag appears while you're editing, so it's clear when you have changes to save.",
+    ],
+  },
   {
     version: "0.26.0",
     date: "2026-06-15",
