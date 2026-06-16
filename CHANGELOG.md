@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.30.0 — 2026-06-16 — My Stats: AI coach + visible "Revenue over time" bars
+
+**Feature — AI coach.** A new full-width card on the **My Stats** tab, right above "Your funnel" / "Conversion rates", gives the driver one actionable nudge: *"talk to N a day for a ~Z% shot at K new private clients ≈ $X this week."* The figures are **always deterministic** — computed by a new pure `funnel_math.coach_insight()` (bottleneck stage = weakest smoothed rate; a modest cadence bump or the goal-required activity; clients/revenue projected via the existing `project()`; `P(≥1 client)` over the horizon). The AI's only job is to phrase those exact numbers, so it can never hallucinate a figure and the card still works (localized EN/ES template) when no LLM is configured. New `coach.recommend()` assembles the driver's real data (`funnel.summary()` + `platform_stats.summary()`, including a "convert K of your N platform trips to private" angle), writes the message with **Kimi → MiniMax** (`llm.text_complete`, never OAuth), and caches the AI text per tenant·locale·day in Redis (best-effort; any Redis failure degrades to recompute). **Prompt-injection safe:** only numeric/enumerated fields ever reach the LLM — never OCR/user free text (platform labels, currencies, notes). New staff-only, tenant-scoped `GET /stats/coach?lang=&refresh=`. No migration.
+
+**Fix — invisible "Revenue/Conversations over time" bars + missing total.** The `Trend` component (`MyStats.tsx`) colored every non-"today" bar `var(--obsidian-3)` (near-black), so revenue — which lands on *past* days — rendered with no visible bars (same class of bug fixed for `MiniBars` in v0.29.1). Now **any day with a value is a clearly visible volt bar** (today brightest + glow; other days at 0.7 opacity), and each Trend panel shows its **total** beside the title (a new optional `right` prop on `Panel`). Frontend-only.
+
+**Verification.** New pure `coach_insight` tests (bottleneck = weakest stage; suggested ≥ current cadence; `prob ∈ (0,1)` and rises with cadence; `low ≤ point ≤ high`; no-earnings path) + `/stats/coach` endpoint tests (401 staff-gate; no-key → `source:"template"` with the real figures and correct bottleneck; platform angle when platform stats exist; `refresh=1` → 200). `ruff`/`tsc`/`next lint`/`next build` clean; no alembic drift. Live Playwright across 3 viewports (Revenue/Conversations bars visible + totals; coach message + chips; Regenerate; no overflow at 360px). Security + code review on the diff.
+
 ## v0.29.1 — 2026-06-16 — Week chart: visible past-week bars + per-week totals in the picker
 
 Two follow-ups to the v0.29.0 week navigator:

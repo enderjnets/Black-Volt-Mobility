@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.29.1";
+export const CURRENT_VERSION = "0.30.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.30.0",
+    date: "2026-06-16",
+    title: "My Stats: an AI coach + visible 'Revenue over time' bars",
+    changes: [
+      "Your Stats tab now has a coach: one motivating, specific nudge — talk to N people a day for a ~Z% shot at landing new private clients and the revenue that brings. The numbers come straight from your real funnel, so they're always honest; the AI just puts them into friendly words (and it still works if the AI is offline). Tap Regenerate for a fresh take.",
+      "Fixed the 'Revenue over time' and 'Conversations over time' charts so the daily bars are clearly visible on past days too (they were nearly invisible before), and each chart now shows its total next to the title.",
+    ],
+  },
   {
     version: "0.29.1",
     date: "2026-06-16",
