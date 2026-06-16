@@ -15,9 +15,11 @@ import { Button } from "../ui";
 import { PlatformIncome } from "./PlatformIncome";
 import { useI18n } from "@/lib/i18n";
 import {
+  type CoachResult,
   type FunnelRate,
   type FunnelSummary,
   type ProjectResult,
+  getCoach,
   getFunnelSummary,
   projectGoal,
   saveFunnelLog,
@@ -95,12 +97,19 @@ function Kpi({
   );
 }
 
-function Panel({ title, icon, children }: { title: string; icon?: string; children: React.ReactNode }) {
+function Panel({ title, icon, right, children }: { title: string; icon?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: 18 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        {icon && <Icon name={icon} size={16} color="var(--volt)" />}
-        <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)" }}>{title}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          {icon && <Icon name={icon} size={16} color="var(--volt)" />}
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)" }}>{title}</span>
+        </div>
+        {right != null && (
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, color: "var(--volt)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+            {right}
+          </span>
+        )}
       </div>
       {children}
     </div>
@@ -203,6 +212,7 @@ function Trend({ data, accessor, fmt }: { data: { day: string; date: string }[] 
     <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 96 }}>
       {show.map((d, i) => {
         const v = accessor(d);
+        const hasVal = v > 0;
         const last = base + i === data.length - 1;
         return (
           <div key={String(d.date)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", minWidth: 0 }} title={`${String(d.date)}: ${fmt(v)}`}>
@@ -211,8 +221,11 @@ function Trend({ data, accessor, fmt }: { data: { day: string; date: string }[] 
                 width: "100%",
                 height: `${Math.max(2, (v / max) * 88)}px`,
                 borderRadius: 3,
-                background: last ? "var(--volt)" : "var(--obsidian-3)",
-                boxShadow: last ? "var(--shadow-volt-sm)" : "none",
+                // Any day with a value is clearly visible (volt); today is
+                // brightest + glow; empty days stay a faint baseline.
+                background: hasVal ? "var(--volt)" : "var(--obsidian-3)",
+                opacity: hasVal ? (last ? 1 : 0.7) : 1,
+                boxShadow: last && hasVal ? "var(--shadow-volt-sm)" : "none",
               }}
             />
           </div>
@@ -462,6 +475,118 @@ function GoalCalculator({ summary, onGoalSaved }: { summary: FunnelSummary; onGo
   );
 }
 
+// ── AI coach ─────────────────────────────────────────────────────────────────
+// One deterministic, AI-phrased nudge. Numbers come from the funnel model; the AI
+// only words them (template fallback when offline). Fetches independently of the
+// summary so it can refresh on its own.
+function Coach() {
+  const { t, lang } = useI18n();
+  const [data, setData] = useState<CoachResult | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [err, setErr] = useState(false);
+
+  const load = useCallback(
+    (refresh = false) => {
+      setBusy(true);
+      setErr(false);
+      return getCoach(lang, refresh)
+        .then(setData)
+        .catch(() => setErr(true))
+        .finally(() => setBusy(false));
+    },
+    [lang],
+  );
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const ins = data?.insight;
+  const chip = (text: string) => (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "5px 11px",
+        borderRadius: "var(--radius-full)",
+        background: "var(--volt-bg)",
+        border: "1px solid var(--volt-border)",
+        color: "var(--volt)",
+        fontSize: 12.5,
+        fontWeight: 600,
+        fontVariantNumeric: "tabular-nums",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {text}
+    </span>
+  );
+
+  return (
+    <div style={{ background: "var(--obsidian)", border: "1px solid var(--volt-border)", borderRadius: "var(--radius-lg)", padding: 18, boxShadow: "var(--shadow-volt-sm)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Icon name="sparkles" size={16} color="var(--volt)" />
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)" }}>{t("dash.stats.coach.title")}</span>
+        </div>
+        <button
+          onClick={() => load(true)}
+          disabled={busy}
+          aria-label={t("dash.stats.coach.regenerate")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            minHeight: 44,
+            minWidth: 44,
+            padding: "0 14px",
+            borderRadius: "var(--radius-full)",
+            cursor: busy ? "default" : "pointer",
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: "var(--font-sans)",
+            background: "var(--obsidian-3)",
+            color: "var(--silver)",
+            border: "1px solid var(--line-strong)",
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <Icon name="sparkles" size={15} color="var(--silver)" />
+          {t("dash.stats.coach.regenerate")}
+        </button>
+      </div>
+
+      {err ? (
+        <Empty text={t("dash.stats.coach.error")} />
+      ) : busy && !data ? (
+        <Empty text={t("dash.stats.coach.loading")} />
+      ) : data ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div
+            style={{
+              borderLeft: "3px solid var(--volt)",
+              paddingLeft: 14,
+              fontSize: 15,
+              lineHeight: 1.55,
+              color: "var(--arctic)",
+            }}
+          >
+            {data.message}
+          </div>
+          {ins && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {chip(t("dash.stats.coach.chipProb", { n: Math.round(ins.prob_at_least_one * 100) }))}
+              {chip(t("dash.stats.coach.chipClients", { n: num(ins.expected_clients, 1) }))}
+              {ins.has_earnings && chip(t("dash.stats.coach.chipRevenue", { n: money(ins.expected_revenue) }))}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export function MyStats() {
   const { t } = useI18n();
@@ -538,6 +663,9 @@ export function MyStats() {
             />
           </div>
 
+          {/* AI coach — prominent, right above the funnel/rates breakdown */}
+          <Coach />
+
           <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
             {/* Funnel */}
             <Panel title={t("dash.stats.funnel.title")} icon="bar-chart-3">
@@ -569,7 +697,7 @@ export function MyStats() {
             </Panel>
 
             {/* Trend */}
-            <Panel title={t("dash.stats.trend.conversations")} icon="message-circle">
+            <Panel title={t("dash.stats.trend.conversations")} icon="message-circle" right={num(data.totals.conversations)}>
               {data.totals.conversations === 0 ? (
                 <Empty text={t("dash.stats.trend.empty")} />
               ) : (
@@ -577,7 +705,7 @@ export function MyStats() {
               )}
             </Panel>
 
-            <Panel title={t("dash.stats.trend.revenue")} icon="dollar-sign">
+            <Panel title={t("dash.stats.trend.revenue")} icon="dollar-sign" right={money(data.totals.revenue)}>
               {data.totals.revenue === 0 ? (
                 <Empty text={t("dash.stats.trend.emptyRev")} />
               ) : (
