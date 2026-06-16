@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_staff, resolve_tenant_id
 from app.config import get_settings
 from app.db.base import get_db
-from app.services import funnel, platform_stats, subscriptions
+from app.services import coach, funnel, platform_stats, subscriptions
 
 router = APIRouter(tags=["funnel"])
 
@@ -69,6 +69,19 @@ async def get_funnel(
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return await funnel.summary(db, tenant_id=tenant_id, days=days)
+
+
+@router.get("/stats/coach")
+async def get_coach(
+    request: Request,
+    lang: str = Query(default="en"),
+    refresh: bool = Query(default=False),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """One deterministic, AI-phrased coaching nudge for the My Stats tab."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await coach.recommend(db, tenant_id=tenant_id, locale=lang, refresh=refresh)
 
 
 @router.post("/stats/funnel/log")

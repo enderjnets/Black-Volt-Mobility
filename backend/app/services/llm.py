@@ -68,6 +68,39 @@ async def vision_complete(
     return text
 
 
+async def text_complete(
+    *,
+    prompt: str,
+    system: str | None = None,
+    model: str,
+    base_url: str,
+    api_key: str,
+    max_tokens: int = 400,
+) -> str:
+    """Send one text-only user message (with an optional system prompt) and return
+    the text. Mirrors `vision_complete` for plain chat/completion work (e.g. the
+    My Stats coach). Raises LLMError on transport/SDK failure or an empty response.
+    NEVER pass an Anthropic OAuth token (CLAUDE.md anti-pattern #1)."""
+    if not api_key:
+        raise LLMError("text:no_api_key")
+    kwargs: dict = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+    }
+    if system:
+        kwargs["system"] = system
+    try:
+        resp = await _client(base_url, api_key).messages.create(**kwargs)
+    except Exception as e:  # SDK / network / API error
+        raise LLMError(f"text:{type(e).__name__}") from e
+    parts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
+    text = "".join(parts).strip()
+    if not text:
+        raise LLMError("text:empty_response")
+    return text
+
+
 async def minimax_vlm_understand(
     *,
     host: str,

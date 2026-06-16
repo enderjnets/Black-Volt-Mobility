@@ -188,3 +188,94 @@ def clients_for_revenue(target_revenue: float, revenue_per_client: float) -> flo
     if revenue_per_client <= 0:
         return None
     return max(0.0, target_revenue) / revenue_per_client
+
+
+@dataclass
+class CoachInsight:
+    """One actionable nudge derived purely from the funnel model — the numbers the
+    AI coach is allowed to talk about (it may rephrase, never invent). Identifies
+    the weakest stage (the lever with the most upside), a modestly higher daily
+    cadence, and the clients/revenue that cadence is expected to yield over one
+    working week, with an honest confidence band and a "land at least one new
+    client" probability."""
+
+    focus_stage: str  # "pitch" | "contact" | "convert" — the conversion bottleneck
+    focus_rate: float
+    current_per_day: float
+    suggested_per_day: float
+    horizon_days: int
+    expected_clients: float
+    expected_clients_low: float
+    expected_clients_high: float
+    expected_revenue: float
+    expected_revenue_low: float
+    expected_revenue_high: float
+    prob_at_least_one: float  # P(≥1 new client) at the suggested cadence over the horizon
+    has_earnings: bool
+
+    def dict(self) -> dict:
+        return asdict(self)
+
+
+def coach_insight(
+    *,
+    rates: FunnelRates,
+    conversations_per_day: float,
+    working_days: float,
+    revenue_per_client: float,
+    target_clients: float | None = None,
+) -> CoachInsight:
+    """Turn the smoothed funnel into a single coaching nudge. The suggested daily
+    cadence is the activity needed to hit `target_clients` (when a goal is set),
+    else a modest bump over the driver's current pace. Everything is projected
+    forward at that cadence over `working_days` so the AI only ever restates real,
+    defensible figures."""
+    current = max(0.0, conversations_per_day)
+    days = max(1.0, working_days)
+
+    # Weakest stage = the bottleneck (smallest smoothed point) → the lever to pull.
+    stages = {
+        "pitch": rates.pitch.point,
+        "contact": rates.contact.point,
+        "convert": rates.convert.point,
+    }
+    focus_stage = min(stages, key=lambda k: stages[k])
+
+    if target_clients is not None and target_clients > 0:
+        suggested = required_activity(
+            target_clients=target_clients, rates=rates, working_days=days
+        ).conversations_per_day
+    else:
+        # A reachable stretch: at least +2/day (or +50%), and never below 3.
+        suggested = max(math.ceil(current * 1.5), current + 2, 3.0)
+    suggested = max(suggested, current)
+
+    proj = project(
+        rates=rates,
+        conversations_per_day=suggested,
+        working_days=days,
+        revenue_per_client=max(0.0, revenue_per_client),
+    )
+
+    # P(≥1 client) over the horizon at the suggested cadence. overall_point is in
+    # (0,1) thanks to the Beta prior, so this is always a clean probability.
+    trials = suggested * days
+    p = min(1.0, max(0.0, rates.overall_point))
+    prob = 1.0 - (1.0 - p) ** trials
+    prob = min(1.0, max(0.0, prob))
+
+    return CoachInsight(
+        focus_stage=focus_stage,
+        focus_rate=stages[focus_stage],
+        current_per_day=current,
+        suggested_per_day=suggested,
+        horizon_days=int(round(days)),
+        expected_clients=proj.expected_clients,
+        expected_clients_low=proj.expected_clients_low,
+        expected_clients_high=proj.expected_clients_high,
+        expected_revenue=proj.expected_revenue,
+        expected_revenue_low=proj.expected_revenue_low,
+        expected_revenue_high=proj.expected_revenue_high,
+        prob_at_least_one=prob,
+        has_earnings=revenue_per_client > 0,
+    )
