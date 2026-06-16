@@ -108,6 +108,44 @@ def test_rides_today_counts_adhoc_and_excludes_cancelled():
     assert c.get("/api/v1/dashboard/stats").json()["today"]["rides"] == before
 
 
+def test_week_requires_staff():
+    assert client.get("/api/v1/dashboard/week").status_code == 401
+
+
+def test_week_offset_zero_matches_stats():
+    c = _owner()
+    rid = _make_ride(c, name="WeekPayer")
+    assert c.patch(f"/api/v1/rides/{rid}", json={"status": "completed"}).status_code == 200
+    wk = c.get("/api/v1/dashboard/week?offset=0").json()
+    assert len(wk["days"]) == 7
+    assert "start" in wk and "end" in wk and wk["offset"] == 0
+    # The navigable current week equals the "This week" card on the dashboard.
+    stats = c.get("/api/v1/dashboard/stats").json()
+    assert wk["total"] == stats["week_total"]
+    assert wk["total"] > 0  # the completed ride counts
+
+
+def test_week_past_week_excludes_today():
+    from datetime import UTC, datetime
+
+    c = _owner()
+    rid = _make_ride(c, name="TodayRide")
+    assert c.patch(f"/api/v1/rides/{rid}", json={"status": "completed"}).status_code == 200
+    this_week = c.get("/api/v1/dashboard/week?offset=0").json()
+    last_week = c.get("/api/v1/dashboard/week?offset=-1").json()
+    # Last week ends strictly before this week starts; ranges don't overlap.
+    assert last_week["end"] < this_week["start"]
+    today_iso = datetime.now(UTC).date().isoformat()
+    assert today_iso not in {d["date"] for d in last_week["days"]}
+    assert today_iso in {d["date"] for d in this_week["days"]}
+
+
+def test_week_rejects_future_and_out_of_range():
+    c = _owner()
+    assert c.get("/api/v1/dashboard/week?offset=1").status_code == 422  # no future weeks
+    assert c.get("/api/v1/dashboard/week?offset=-300").status_code == 422  # > 5yr back
+
+
 def test_clients_requires_staff():
     assert client.get("/api/v1/clients").status_code == 401
 

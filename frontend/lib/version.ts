@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.28.1";
+export const CURRENT_VERSION = "0.29.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.29.0",
+    date: "2026-06-16",
+    title: "Browse past weeks on the dashboard chart",
+    changes: [
+      "The 'This week' chart on the Dashboard can now look back at any week: use the ‹ › arrows or tap the date range to pick a week from the dropdown.",
+      "Each week shows its own daily bars and total, so you can compare how you're doing week to week.",
+      "Works great on phone and tablet — the week picker opens as an easy-to-tap sheet on mobile.",
+    ],
+  },
   {
     version: "0.28.1",
     date: "2026-06-16",

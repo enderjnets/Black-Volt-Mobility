@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
 import { useI18n } from "@/lib/i18n";
 import { useViewport } from "@/lib/useViewport";
 import { openMapsTo } from "@/lib/maps";
 import { listRides } from "@/lib/booking";
-import { getDashboardStats, type DashStats } from "@/lib/dashboard";
+import { getDashboardStats, getWeek, type DashStats, type WeekEarnings } from "@/lib/dashboard";
 import { StatusPill } from "./DashShell";
 import { type Ride } from "./data";
 import { apiToUiRide, fmtWhen, isToday } from "./status";
@@ -278,6 +278,253 @@ function MiniBars({ data }: { data: { day: string; date: string; revenue: number
   );
 }
 
+// Monday (local) of the week containing `d`.
+function mondayOf(d: Date): Date {
+  const x = new Date(d);
+  const wd = (x.getDay() + 6) % 7; // 0 = Monday
+  x.setDate(x.getDate() - wd);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+// "Jun 15 – 21" (same month) or "Jun 29 – Jul 5" (cross-month) for a week offset
+// (0 = this week, negative = past), formatted in the active locale.
+function weekRange(offset: number, locale: string): string {
+  const mon = mondayOf(new Date());
+  mon.setDate(mon.getDate() + offset * 7);
+  const sun = new Date(mon);
+  sun.setDate(sun.getDate() + 6);
+  const md = (d: Date) => d.toLocaleDateString(locale, { month: "short", day: "numeric" });
+  return mon.getMonth() === sun.getMonth() ? `${md(mon)} – ${sun.getDate()}` : `${md(mon)} – ${md(sun)}`;
+}
+
+const WEEK_MIN_OFFSET = -260; // ~5 years back (matches the backend bound)
+const WEEK_OPTIONS = 12; // weeks listed in the dropdown
+
+// "This week" card with a week navigator: ‹ › arrows + a date-range dropdown to
+// jump to any recent week (Uber-style). Mobile-first: the dropdown is a bottom
+// sheet on phones (never clipped by the fixed tab bar) and a popover on larger
+// screens. The bars keep the Black Volt style; the selected week's total + range
+// update on navigation.
+function WeekChart() {
+  const { t, locale } = useI18n();
+  const { phone } = useViewport();
+  const [offset, setOffset] = useState(0);
+  const [data, setData] = useState<WeekEarnings | null>(null);
+  const [open, setOpen] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getWeek(offset)
+      .then((d) => alive && setData(d))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [offset]);
+
+  // Close the popover on outside click / Escape (desktop). The phone sheet has
+  // its own backdrop.
+  useEffect(() => {
+    if (!open || phone) return;
+    const onDoc = (e: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, phone]);
+
+  const total = data?.total ?? 0;
+  const subKey = offset === 0 ? "dash.week.thisWeek" : offset === -1 ? "dash.week.lastWeek" : null;
+
+  const arrow = (dir: "prev" | "next", disabled: boolean, onClick: () => void) => (
+    <button
+      type="button"
+      aria-label={t(dir === "prev" ? "dash.week.prev" : "dash.week.next")}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      style={{
+        width: 44,
+        height: 44,
+        minWidth: 44,
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "var(--radius-md)",
+        border: "1px solid var(--line-strong)",
+        background: "var(--obsidian-2)",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.35 : 1,
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <Icon name={dir === "prev" ? "chevron-left" : "chevron-right"} size={18} color="var(--silver)" />
+    </button>
+  );
+
+  const optionRows = Array.from({ length: WEEK_OPTIONS }, (_, i) => -i).map((o) => {
+    const active = o === offset;
+    const sk = o === 0 ? t("dash.week.thisWeek") : o === -1 ? t("dash.week.lastWeek") : "";
+    return (
+      <button
+        key={o}
+        type="button"
+        role="option"
+        aria-selected={active}
+        onClick={() => {
+          setOffset(o);
+          setOpen(false);
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          width: "100%",
+          minHeight: 44,
+          padding: "10px 12px",
+          border: "none",
+          borderRadius: "var(--radius-md)",
+          background: active ? "var(--volt-bg)" : "transparent",
+          color: active ? "var(--volt)" : "var(--arctic)",
+          boxShadow: active ? "inset 0 0 0 1px var(--volt-border)" : "none",
+          cursor: "pointer",
+          fontFamily: "var(--font-sans)",
+          fontSize: 14,
+          fontWeight: active ? 700 : 500,
+          textAlign: "left",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {weekRange(o, locale)}
+        </span>
+        {sk && <span style={{ fontSize: 11.5, color: active ? "var(--volt)" : "var(--fg3)" }}>{sk}</span>}
+      </button>
+    );
+  });
+
+  return (
+    <div
+      ref={cardRef}
+      style={{
+        background: "var(--obsidian)",
+        border: "1px solid var(--line-strong)",
+        borderRadius: "var(--radius-lg)",
+        padding: 18,
+        position: "relative",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12, gap: 8 }}>
+        <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)" }}>{t("dash.week")}</span>
+        <span style={{ fontSize: 12, color: "var(--fg3)" }}>
+          {t("dash.week.total")}{" "}
+          <strong style={{ fontFamily: "var(--font-display)", color: "var(--volt)" }}>{fmtMoney(total)}</strong>
+        </span>
+      </div>
+
+      {/* Navigator: ‹ [date-range dropdown] › */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        {arrow("prev", offset <= WEEK_MIN_OFFSET, () => setOffset((o) => Math.max(WEEK_MIN_OFFSET, o - 1)))}
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={t("dash.week.pick")}
+          onClick={() => setOpen((v) => !v)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: 44,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            padding: "0 10px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--line-strong)",
+            background: "var(--obsidian-2)",
+            cursor: "pointer",
+            color: "var(--arctic)",
+            fontFamily: "var(--font-sans)",
+            fontSize: 13.5,
+            fontWeight: 600,
+            WebkitTapHighlightColor: "transparent",
+          }}
+        >
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{weekRange(offset, locale)}</span>
+          {subKey && <span style={{ fontSize: 11, color: "var(--fg3)", flexShrink: 0 }}>· {t(subKey)}</span>}
+          <Icon name="chevron-down" size={15} color="var(--silver)" />
+        </button>
+        {arrow("next", offset >= 0, () => setOffset((o) => Math.min(0, o + 1)))}
+      </div>
+
+      {/* Desktop/tablet popover */}
+      {open && !phone && (
+        <div
+          role="listbox"
+          style={{
+            position: "absolute",
+            left: 18,
+            right: 18,
+            top: 96,
+            zIndex: 50,
+            background: "var(--obsidian-2)",
+            border: "1px solid var(--volt-border)",
+            borderRadius: "var(--radius-md)",
+            boxShadow: "var(--shadow-pop)",
+            maxHeight: 280,
+            overflowY: "auto",
+            padding: 6,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+        >
+          {optionRows}
+        </div>
+      )}
+
+      {/* Phone bottom sheet — above the fixed tab bar, never clipped */}
+      {open && phone && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(5,5,9,0.6)", backdropFilter: "blur(3px)", display: "flex", alignItems: "flex-end" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              background: "var(--obsidian)",
+              borderTop: "1px solid var(--volt-border)",
+              borderTopLeftRadius: 18,
+              borderTopRightRadius: 18,
+              padding: "10px 14px calc(18px + env(safe-area-inset-bottom))",
+              boxShadow: "var(--shadow-pop)",
+              maxHeight: "70vh",
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ width: 38, height: 4, borderRadius: 99, background: "var(--line-strong)", margin: "0 auto 12px" }} />
+            <div style={{ fontSize: 12, color: "var(--fg3)", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 4px 8px" }}>
+              {t("dash.week.pick")}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>{optionRows}</div>
+          </div>
+        </div>
+      )}
+
+      {data && total > 0 ? <MiniBars data={data.days} /> : <EmptyState icon="trending-up" text={t("dash.empty.week")} />}
+    </div>
+  );
+}
+
 // Compact "time until" the next pickup: "5d 2h", "2h 30m", "12m", or `now`.
 function fmtCountdown(iso: string | null | undefined, now: string): string {
   if (!iso) return "—";
@@ -330,8 +577,6 @@ export function Overview() {
     };
   }, [reload]);
 
-  const week = stats?.week ?? [];
-
   return (
     <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 22 }}>
       <div className="bv-kpi-row" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -374,19 +619,7 @@ export function Overview() {
                 : t("common.loading")}
             </p>
           </div>
-          <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: 18 }}>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, gap: 8 }}>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)" }}>{t("dash.week")}</span>
-              <span style={{ fontSize: 12, color: "var(--fg3)" }}>
-                {t("dash.week.total")} <strong style={{ fontFamily: "var(--font-display)", color: "var(--volt)" }}>{fmtMoney(stats?.week_total ?? 0)}</strong>
-              </span>
-            </div>
-            {week.length && (stats?.week_total ?? 0) > 0 ? (
-              <MiniBars data={week} />
-            ) : (
-              <EmptyState icon="trending-up" text={t("dash.empty.week")} />
-            )}
-          </div>
+          <WeekChart />
         </div>
       </div>
 

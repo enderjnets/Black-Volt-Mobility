@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.29.0 — 2026-06-16 — Week navigator on the dashboard "This week" chart
+
+The Dashboard's **"This week"** card becomes a week browser (like the Uber Earnings screen): **‹ ›** arrows step to the previous/next week and a **date-range dropdown** jumps to any recent week. Each week renders its own daily Mon→Sun bars + total, keeping the Black Volt bar style. Mobile-first: the picker is an easy-to-tap **bottom sheet on phones** (z-indexed above the fixed tab bar, never clipped) and a popover on tablet/desktop; arrows are 44×44 touch targets; no horizontal overflow at 360px.
+
+**Backend (no migration).** Extracted a reusable `dashboard.week_earnings(db, *, tenant_id, monday)` (+ `_monday_of`) from the inline current-week query — same `booking.earned_ride_filter()` + service-day (`coalesce(scheduled_at, created_at)`) logic — so a navigated week matches "This week" exactly. `stats()` now calls it (the `/dashboard/stats` contract is unchanged). New staff-only, tenant-scoped `GET /dashboard/week?offset=N` (0 = current, negative = past; `offset` bounded `[-260, 0]` so no future weeks and ~5-year cap) returns `{offset, start, end, total, days[7]}`.
+
+**Frontend.** `getWeek()`/`WeekEarnings` in `lib/dashboard.ts`; a `WeekChart` component in `Overview.tsx` replaces the inline card — local `offset` state fetches the selected week, `weekRange()` formats the date label per locale (cross-month aware), and the dropdown lists the last 12 weeks. New EN+ES `dash.week.*` strings.
+
+**Verification.** 231 backend tests (4 new: offset-0 equals the dashboard week total, a past week excludes today, future/out-of-range offsets → 422, staff-gated 401); `ruff`, `tsc`, `next lint`, `next build` clean. Live Playwright E2E across **3 viewports** — desktop (1280), tablet (820), phone (390): arrows change the week ($1973.99 → $74 → $148), the dropdown jumps weeks, the phone bottom sheet renders above the tab bar with 44px touch targets and no horizontal overflow. Security review + code review run on the diff.
+
 ## v0.28.1 — 2026-06-16 — Fix: My Stats reachable on mobile
 
 The mobile bottom navigation (`DriverTabBar.tsx`) is a separate component from the desktop sidebar, with hardcoded `PRIMARY` (Dashboard/Rides/Clients/Inbox) and `MORE` (overflow sheet) lists. The new "My Stats" tab (v0.27.0) was added to the desktop sidebar but **not** to either mobile list, so it was invisible on phones. Added `stats` as the first item in the `MORE` sheet — it now appears under the bottom **More / Más** menu (still inline in the desktop sidebar). Frontend-only; no API/DB change.
