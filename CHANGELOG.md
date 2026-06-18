@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.33.0 — 2026-06-18 — Social: real Black Volt video ads (own renderer, Kling visuals, language voice)
+
+**The render is now a real Black Volt ad, not a BitTrader clip.** The live render was using BitTrader's `produce_single` (its crypto-channel orchestrator) → BitTrader logo watermark, Spanish-locked voice (mixed EN/ES), and a generic gradient fallback (Kling never fired for an "automotive" topic with no visual prompts). Replaced with a **dedicated Black Volt renderer**, `bv_producer.produce_blackvolt` (in the BitTrader repo, runs on the ROG worker), that reuses the low-level primitives but with Black Volt branding:
+
+- **Language-aware voiceover** (edge-tts): `en-US` / `es-US` premium voice chosen by the post's `lang` — no more mixed-language audio.
+- **Visuals = MIX**: a hero Kling text-to-**video** clip + Kling text-to-**image** shots animated with a Ken Burns zoom, from **AI visual prompts** generated for the brand (Kia EV9, Denver, premium night arrival). Backend now sends `video_prompts` + `lang` in the render job (`social._video_prompts`, LLM-grounded with a deterministic template fallback; topic treated as untrusted data). If Kling video credits are exhausted it gracefully uses AI **images** (still real, on-brand footage); if Kling is down it uses a branded motion background — never BitTrader's gradient.
+- **Minimalist-premium assembly**: a small **BLACK VOLT** corner wordmark + an elegant **end card** (wordmark + "Silent Power. Premium Arrival."). No karaoke.
+- **Web-safe encode** (H.264 high · yuv420p · `+faststart`) → plays in any `<video>` and downloads cleanly (fixes the earlier audio-only/black-screen file).
+- **Worker robustness**: the mp4 callback now retries (4×, backoff, 90s) so a transient TLS/edge blip never strands a finished render.
+
+**Verification.** 272 backend tests + ruff clean (no migration). Isolated render on the ROG and a **production E2E** (EN): real EV9/Denver AI visuals + BLACK VOLT mark + end card, `video/mp4` H.264 yuv420p +faststart served `200`, played and downloaded fine. Note: Kling **text-to-video** currently returns "balance not enough" — the mix uses Kling **images** until the AI-video account is topped up.
+
 ## v0.32.1 — 2026-06-18 — Social render go-live (render worker deployed; `SOCIAL_SIMULATED=false`)
 
 **Ops — the render pipeline is now LIVE in production.** Added a containerized **render worker** to the stack (`render-worker/` — `python:3.12-slim` + ffmpeg + DejaVu fonts running `render_worker.py`, no published ports, reachable only inside the compose network). The VPS `.env` now carries a generated `SOCIAL_RENDER_SIGNING_KEY` shared by both sides, `SOCIAL_RENDER_URL=http://render-worker:8090/render`, `SOCIAL_RENDER_CALLBACK_URL=http://backend:8000/api/v1/social/webhooks/render`, and **`SOCIAL_SIMULATED=false`**. Tapping *Render video* now does a real signed round-trip: backend → worker → branded ffmpeg clip → HMAC-signed callback → validated + written under `/media` → played in the queue. Verified by a local round-trip on the exact compose topology (24 KB `video/mp4` served `200`) and a production E2E. **Content note:** the worker emits a **branded Black Volt clip** (it has no BitTrader AI pipeline) — wiring the full AI video (Hailuo/TTS/Whisper, which lives on the ROG) is the next step: run `render_worker.py` from the BitTrader repo on a host reachable from the VPS and repoint `SOCIAL_RENDER_URL` (see `docs/setup-social-media.md`). The Social module remains admin-only; the callback stays HMAC-only.

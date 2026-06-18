@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.32.1";
+export const CURRENT_VERSION = "0.33.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.33.0",
+    date: "2026-06-18",
+    title: "Social: real Black Volt video ads",
+    changes: [
+      "Render now makes a real Black Volt ad: cinematic AI visuals of a luxury electric SUV (Denver / airport / night), your own 'BLACK VOLT' mark, an elegant end card with the tagline, and a voiceover in the post's language (English or Spanish) — no more generic clip or mixed-language audio.",
+      "The video is built from AI prompts written for your brand, so each post gets on-brand, premium footage. (Real motion video clips need the AI-video credits topped up; meanwhile it uses crisp AI images with cinematic motion.)",
+      "Every video is web-safe, so it plays everywhere and downloads cleanly.",
+    ],
+  },
   {
     version: "0.32.1",
     date: "2026-06-18",
