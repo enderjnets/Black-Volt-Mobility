@@ -1,5 +1,40 @@
 # Social Media module — setup (going live)
 
+> ## ✅ LIVE: real AI video render (2026-06-18)
+> Real rendering is **on in production**. Topology now:
+> `VPS backend → Cloudflare quick tunnel → ROG BitTrader worker (real
+> produce_single) → 28 MB AI video → HMAC-signed callback (browser UA past
+> Cloudflare) → /media`. Tapping **Render video** yields a real ~28 MB AI clip
+> (Hailuo/Kling + TTS + karaoke subs + thumbnail) in ~1–2 min.
+>
+> **Components (already deployed):**
+> - **ROG**: systemd `bv-render-worker.service` (real pipeline, `sample_only=false`,
+>   reads `~/.bv_render_env`) + `bv-render-tunnel.service` (isolated cloudflared
+>   quick tunnel `--config /dev/null --url http://localhost:8090`). Both
+>   `enable`d, auto-restart, survive reboot. Worker file: `render_worker.py` in
+>   `~/.openclaw/workspace/bittrader` (pull from BitTrader `master`).
+> - **VPS `.env`**: `SOCIAL_SIMULATED=false`,
+>   `SOCIAL_RENDER_URL=https://<quick-tunnel>.trycloudflare.com/render`,
+>   `SOCIAL_RENDER_CALLBACK_URL=https://app.blackvoltmobility.com/api/v1/social/webhooks/render`,
+>   shared `SOCIAL_RENDER_SIGNING_KEY`.
+>
+> **⚠️ Caveat — the quick-tunnel URL is ephemeral.** If cloudflared restarts on
+> the ROG, the `*.trycloudflare.com` URL changes and renders will fail until you
+> re-point. Re-point with:
+> ```bash
+> # on the ROG: get the current URL
+> sudo journalctl -u bv-render-tunnel | grep -oE 'https://[a-z-]+\.trycloudflare\.com' | tail -1
+> # on the VPS: update + restart
+> sed -i "s|^SOCIAL_RENDER_URL=.*|SOCIAL_RENDER_URL=<URL>/render|" ~/Black-Volt-Mobility/.env
+> docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend
+> ```
+> **Robust upgrade (recommended): Tailscale on the VPS** → reach the ROG worker
+> directly at `http://100.88.47.99:8090/render` (stable, no tunnel). Needs a
+> one-time `sudo tailscale up` login on the VPS. (The VPS-local `render-worker`
+> container remains as a simulated fallback.)
+>
+> ---
+
 Stage 1 ships **simulated by default** (`SOCIAL_SIMULATED=true`): the owner can
 generate content, approve, "publish", and draft comment replies end-to-end with
 **no external accounts or keys**. Nothing leaves the system. To publish for real
