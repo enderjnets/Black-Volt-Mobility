@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.31.0";
+export const CURRENT_VERSION = "0.32.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.32.0",
+    date: "2026-06-17",
+    title: "Social: real AI video render + admin-only",
+    changes: [
+      "The Social module now produces a real video: when you render a post, it's built by the video engine and the finished clip lands right in your content queue, ready to preview and approve (no more placeholder).",
+      "The 'Social' section is now admin-only — only you (and any admins you add) can see and manage it; regular drivers don't see it at all.",
+      "Behind the scenes: the rendered video is delivered over a signed, tamper-proof channel and validated before it's saved.",
+    ],
+  },
   {
     version: "0.31.0",
     date: "2026-06-17",

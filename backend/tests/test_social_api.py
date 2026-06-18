@@ -18,6 +18,7 @@ get_settings.cache_clear()
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
+from app.services import auth as A  # noqa: E402
 
 client = TestClient(app)
 
@@ -29,12 +30,26 @@ def _owner():
     return c
 
 
-def test_social_requires_staff():
+def _driver():
+    """A non-admin driver session (owner of some other tenant)."""
+    c = TestClient(app)
+    c.cookies.set(
+        A.COOKIE_NAME, A.make_token(role=A.ROLE_DRIVER, tenant_id=999999, email="driver@x.com")
+    )
+    return c
+
+
+def test_social_requires_admin():
+    # Anonymous → 401.
     assert client.get("/api/v1/social/posts").status_code == 401
-    assert client.get("/api/v1/social/inbox").status_code == 401
-    assert client.get("/api/v1/social/accounts").status_code == 401
-    assert client.get("/api/v1/social/analytics").status_code == 401
     assert client.post("/api/v1/social/posts/generate", json={"topic": "x"}).status_code == 401
+    # A regular (non-admin) driver → 403: the whole module is admin-only.
+    d = _driver()
+    assert d.get("/api/v1/social/posts").status_code == 403
+    assert d.get("/api/v1/social/inbox").status_code == 403
+    assert d.get("/api/v1/social/accounts").status_code == 403
+    assert d.get("/api/v1/social/analytics").status_code == 403
+    assert d.post("/api/v1/social/posts/generate", json={"topic": "x"}).status_code == 403
 
 
 def test_generate_creates_draft():

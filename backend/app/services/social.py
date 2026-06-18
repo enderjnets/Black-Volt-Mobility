@@ -17,11 +17,14 @@ Security (mirrors `coach.py`):
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import logging
+import os
 import re
 import secrets
+import time
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -445,20 +448,83 @@ def verify_render_callback(*, body: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, signature or "")
 
 
+# Video container magic. mp4/mov carry an `ftyp` box at bytes 4..8; webm/mkv
+# open with the EBML header. Only these decode-and-write; anything else is junk.
+_VIDEO_EXTS = {"mp4", "mov", "webm"}
+
+
+def _sniff_video(raw: bytes, ext: str) -> bool:
+    if ext in ("mp4", "mov"):
+        return len(raw) > 12 and raw[4:8] == b"ftyp"
+    if ext == "webm":
+        return raw[:4] == b"\x1a\x45\xdf\xa3"
+    return False
+
+
+def _write_render_asset(tenant_id: int, *, b64: str, ext: str) -> str | None:
+    """Decode a base64 rendered video from a verified callback and write it under
+    the public /media mount. Returns the rel path (served at /media/<rel>) or None
+    if it's too big, not valid base64, or not a real video container.
+
+    Security: the filename is server-generated (no caller-controlled path
+    component) and the extension is allow-listed, so there's no path traversal;
+    the magic-byte sniff + size cap reject anything that isn't a small video."""
+    settings = get_settings()
+    ext = (ext or "mp4").lower().lstrip(".")
+    if ext not in _VIDEO_EXTS:
+        return None
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if not raw or len(raw) > settings.SOCIAL_RENDER_MAX_MB * 1024 * 1024:
+        return None
+    if not _sniff_video(raw, ext):
+        return None
+    rel_dir = os.path.join("tenants", str(int(tenant_id)), "social")
+    abs_dir = os.path.join(settings.MEDIA_DIR, rel_dir)
+    os.makedirs(abs_dir, exist_ok=True)
+    fname = f"video-{int(time.time() * 1000)}.{ext}"
+    rel_path = os.path.join(rel_dir, fname)
+    # Write to a temp file then atomically rename → no truncated/half-written
+    # asset is ever served if the write is interrupted.
+    abs_path = os.path.join(settings.MEDIA_DIR, rel_path)
+    tmp = abs_path + ".part"
+    with open(tmp, "wb") as fh:
+        fh.write(raw)
+    os.replace(tmp, abs_path)
+    return rel_path
+
+
+# A render may only attach to a post that's awaiting one. This makes the callback
+# idempotent: a duplicate/replayed (still-validly-signed) callback for an
+# already-rendered or published post is a no-op, so it can't orphan a file or
+# reset state.
+_RENDER_ATTACHABLE = ("render_requested", "failed")
+
+
 async def apply_render_callback(db: AsyncSession, *, payload: dict) -> str:
     """Attach a finished render to its post (verified callback only). Tenant +
-    post are taken from the payload and re-checked against the row."""
-    post_id = payload.get("post_id")
-    tenant_id = payload.get("tenant_id")
-    media_path = payload.get("media_path")
-    if not (post_id and tenant_id and media_path):
+    post are taken from the payload and re-checked against the row; the worker
+    delivers the mp4 inline as base64 (`media_b64` + `media_ext`)."""
+    try:
+        post_id = int(payload.get("post_id"))
+        tenant_id = int(payload.get("tenant_id"))
+    except (TypeError, ValueError):
         return "ignored"
-    row = await _get_post(db, tenant_id=int(tenant_id), post_id=int(post_id))
-    if row is None:
+    row = await _get_post(db, tenant_id=tenant_id, post_id=post_id)
+    if row is None or row.status not in _RENDER_ATTACHABLE:
         return "ignored"
-    row.media_path = str(media_path)
-    if payload.get("cover_path"):
-        row.cover_path = str(payload["cover_path"])
+    if not payload.get("media_b64"):
+        return "ignored"
+    media_path = _write_render_asset(
+        tenant_id, b64=payload["media_b64"], ext=payload.get("media_ext", "mp4")
+    )
+    if media_path is None:
+        row.status = "failed"
+        await db.commit()
+        return "rejected_asset"
+    row.media_path = media_path
     row.status = "rendered"
     await db.commit()
     return "applied"
