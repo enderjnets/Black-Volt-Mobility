@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.30.0";
+export const CURRENT_VERSION = "0.31.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.31.0",
+    date: "2026-06-17",
+    title: "Social Media — let AI run your socials, you approve",
+    changes: [
+      "New 'Social' tab: tell the AI a topic and it writes a ready-to-post video script, caption and hashtags from your brand (the EV9, premium arrival, your city) — in English or Spanish. Nothing publishes until you approve it.",
+      "Content queue: every post moves Draft → Render → Approve → Publish, with one-tap Approve / Reject / Publish and a schedule option. You're always in control before anything goes out.",
+      "Social inbox: comments and DMs land in one place and the AI drafts a friendly, on-brand reply you can edit and send. Replies are drafted safely — a comment can never trick the AI into going off-script.",
+      "Connect Instagram, Facebook and TikTok (setup coming): until then everything runs in a safe simulated mode so you can try the whole flow end-to-end.",
+      "Works great on phone, tablet and desktop — the Social tab is in both the sidebar and the mobile menu.",
+    ],
+  },
   {
     version: "0.30.0",
     date: "2026-06-16",

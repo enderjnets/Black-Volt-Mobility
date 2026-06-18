@@ -8,6 +8,7 @@ pydantic-settings==2.6.1
 redis==5.2.1
 anthropic==0.40.0
 httpx==0.28.1
+apscheduler==3.11.0
 python-multipart==0.0.20
 google-auth==2.37.0
 google-auth-oauthlib==1.2.1

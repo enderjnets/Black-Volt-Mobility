@@ -16,6 +16,7 @@ const PRIMARY = [
 ];
 const MORE = [
   { seg: "stats", href: "/dashboard/stats", icon: "bar-chart-3", key: "dash.nav.stats" },
+  { seg: "social", href: "/dashboard/social", icon: "share-2", key: "dash.nav.social" },
   { seg: "add", href: "/dashboard/add", icon: "plus", key: "dash.nav.book" },
   { seg: "analytics", href: "/dashboard/analytics", icon: "trending-up", key: "dash.nav.insights" },
   { seg: "rates", href: "/dashboard/rates", icon: "dollar-sign", key: "dash.nav.rates" },
