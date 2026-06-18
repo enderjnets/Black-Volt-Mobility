@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.32.0";
+export const CURRENT_VERSION = "0.32.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.32.1",
+    date: "2026-06-18",
+    title: "Social: video render is now live",
+    changes: [
+      "Render is switched on in production: tapping 'Render video' on a Social post now builds a real video file and drops it into your queue to preview and approve — over a secure, signed channel.",
+      "For now it produces a branded Black Volt clip; wiring the full AI-video engine (Hailuo voiceover + clips) is the next step.",
+    ],
+  },
   {
     version: "0.32.0",
     date: "2026-06-17",

@@ -125,6 +125,24 @@ services:
       # 8012 — coexist with Eko backends (8000/8002/8010/8011).
       - "8012:8000"
 
+  # Stage 2 render bridge. Renders an mp4 from a signed job and posts it back to
+  # the backend's HMAC-verified callback. This image has no BitTrader pipeline, so
+  # it emits a branded ffmpeg sample clip (BV_RENDER_SAMPLE=1); for real AI video
+  # point SOCIAL_RENDER_URL at a BitTrader-equipped worker instead. No published
+  # ports — only reachable inside the compose network (backend → render-worker).
+  render-worker:
+    build:
+      context: ./render-worker
+      dockerfile: Dockerfile
+    container_name: blackvolt-render-worker
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BV_RENDER_SIGNING_KEY: ${SOCIAL_RENDER_SIGNING_KEY:-}
+      BV_RENDER_PORT: "8090"
+      BV_RENDER_SAMPLE: ${BV_RENDER_SAMPLE:-1}
+
   frontend:
     build:
       context: ./frontend
