@@ -1,0 +1,683 @@
+"use client";
+
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+
+import { Icon } from "../Icon";
+import { Button, Pill } from "../ui";
+import { useI18n } from "@/lib/i18n";
+import {
+  type SocialAccount,
+  type SocialAnalytics,
+  type SocialInteraction,
+  type SocialPlatform,
+  type SocialPost,
+  approvePost,
+  deletePost,
+  dismissInteraction,
+  draftReply,
+  generatePost,
+  getAnalytics,
+  listAccounts,
+  listInbox,
+  listPosts,
+  publishPost,
+  rejectPost,
+  renderPost,
+  sendReply,
+} from "@/lib/social";
+
+type Tab = "create" | "queue" | "inbox" | "accounts";
+
+const PLATFORM_ICON: Record<string, string> = {
+  instagram: "instagram",
+  facebook: "facebook",
+  tiktok: "music",
+};
+
+function Panel({ title, icon, children }: { title?: string; icon?: string; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        background: "var(--obsidian)",
+        border: "1px solid var(--line-strong)",
+        borderRadius: "var(--radius-lg)",
+        padding: 18,
+      }}
+    >
+      {title && (
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+          {icon && <Icon name={icon} size={18} color="var(--volt)" />}
+          <h2
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              fontSize: 16,
+              color: "var(--arctic)",
+              margin: 0,
+            }}
+          >
+            {title}
+          </h2>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function Kpi({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "var(--obsidian)",
+        border: "1px solid var(--line-strong)",
+        borderRadius: "var(--radius-lg)",
+        padding: "14px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <Icon name={icon} size={15} color="var(--volt)" />
+        <span style={{ fontSize: 12, color: "var(--fg3)", fontFamily: "var(--font-sans)" }}>{label}</span>
+      </div>
+      <span
+        style={{
+          fontFamily: "var(--font-display)",
+          fontWeight: 700,
+          fontSize: 26,
+          color: "var(--arctic)",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+const STATUS_TONE: Record<string, "volt" | "success" | "warning" | "muted"> = {
+  draft: "muted",
+  render_requested: "warning",
+  rendered: "volt",
+  approved: "volt",
+  scheduled: "warning",
+  published: "success",
+  failed: "warning",
+};
+
+function MediaPreview({ post }: { post: SocialPost }) {
+  const { t } = useI18n();
+  return (
+    <div
+      style={{
+        width: 90,
+        flexShrink: 0,
+        aspectRatio: "9 / 16",
+        borderRadius: "var(--radius-md)",
+        background: "var(--obsidian-3)",
+        border: "1px solid var(--line-strong)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        textAlign: "center",
+        padding: 6,
+      }}
+    >
+      <Icon
+        name={post.media_path && !post.simulated_render ? "play" : "video"}
+        size={22}
+        color="var(--volt)"
+      />
+      {post.simulated_render && (
+        <span style={{ fontSize: 9, color: "var(--fg3)", lineHeight: 1.2 }}>
+          {t("dash.social.simulatedRender")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function SocialMedia() {
+  const { t, lang } = useI18n();
+  const [tab, setTab] = useState<Tab>("create");
+  const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [inbox, setInbox] = useState<SocialInteraction[]>([]);
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [stats, setStats] = useState<SocialAnalytics | null>(null);
+  const [topic, setTopic] = useState("");
+  const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [err, setErr] = useState<string | null>(null);
+  const [replyEdits, setReplyEdits] = useState<Record<number, string>>({});
+
+  const setBusyKey = (k: string, on: boolean) =>
+    setBusy((s) => {
+      const n = new Set(s);
+      if (on) n.add(k);
+      else n.delete(k);
+      return n;
+    });
+  const isBusy = (k: string) => busy.has(k);
+
+  async function refresh() {
+    try {
+      const [p, ix, ac, an] = await Promise.all([
+        listPosts(),
+        listInbox(),
+        listAccounts(),
+        getAnalytics(),
+      ]);
+      setPosts(p);
+      setInbox(ix);
+      setAccounts(ac);
+      setStats(an);
+      setErr(null);
+    } catch {
+      setErr(t("dash.social.error"));
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function onGenerate() {
+    if (isBusy("gen")) return;
+    setBusyKey("gen", true);
+    try {
+      await generatePost({ topic: topic.trim() || undefined, lang });
+      setTopic("");
+      await refresh();
+      setTab("queue");
+    } catch {
+      setErr(t("dash.social.error"));
+    } finally {
+      setBusyKey("gen", false);
+    }
+  }
+
+  async function postAction(key: string, fn: () => Promise<unknown>) {
+    if (isBusy(key)) return;
+    setBusyKey(key, true);
+    try {
+      await fn();
+      await refresh();
+    } catch {
+      setErr(t("dash.social.error"));
+    } finally {
+      setBusyKey(key, false);
+    }
+  }
+
+  const tabs: { id: Tab; label: string; icon: string; badge?: number }[] = [
+    { id: "create", label: t("dash.social.tab.create"), icon: "sparkles" },
+    { id: "queue", label: t("dash.social.tab.queue"), icon: "video", badge: posts.length || undefined },
+    {
+      id: "inbox",
+      label: t("dash.social.tab.inbox"),
+      icon: "message-circle",
+      badge: stats?.pending_replies || undefined,
+    },
+    { id: "accounts", label: t("dash.social.tab.accounts"), icon: "share-2" },
+  ];
+
+  return (
+    <div style={{ padding: "20px 16px 120px", maxWidth: 920, margin: "0 auto" }}>
+      <p style={{ color: "var(--fg2)", fontSize: 14, margin: "0 0 16px", fontFamily: "var(--font-sans)" }}>
+        {t("dash.social.subtitle")}
+      </p>
+
+      {/* KPIs */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: 10,
+          marginBottom: 16,
+        }}
+      >
+        <Kpi icon="video" label={t("dash.social.kpi.posts")} value={String(stats?.posts_total ?? 0)} />
+        <Kpi icon="send" label={t("dash.social.kpi.published")} value={String(stats?.posts_published ?? 0)} />
+        <Kpi icon="eye" label={t("dash.social.kpi.views")} value={String(stats?.views ?? 0)} />
+        <Kpi
+          icon="message-circle"
+          label={t("dash.social.kpi.replies")}
+          value={String(stats?.pending_replies ?? 0)}
+        />
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {tabs.map((tb) => {
+          const active = tab === tb.id;
+          return (
+            <button
+              key={tb.id}
+              onClick={() => setTab(tb.id)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                minHeight: 40,
+                padding: "8px 14px",
+                borderRadius: "var(--radius-full)",
+                border: `1px solid ${active ? "var(--volt-border)" : "var(--line-strong)"}`,
+                background: active ? "var(--volt-bg)" : "transparent",
+                color: active ? "var(--volt)" : "var(--silver)",
+                cursor: "pointer",
+                fontFamily: "var(--font-sans)",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <Icon name={tb.icon} size={15} color="currentColor" />
+              {tb.label}
+              {tb.badge ? (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: active ? "var(--volt)" : "var(--obsidian-3)",
+                    color: active ? "var(--void)" : "var(--silver)",
+                    borderRadius: 99,
+                    padding: "0 6px",
+                    minWidth: 16,
+                    textAlign: "center",
+                  }}
+                >
+                  {tb.badge}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {err && (
+        <div
+          style={{
+            background: "rgba(255,92,110,0.1)",
+            border: "1px solid rgba(255,92,110,0.4)",
+            color: "var(--danger)",
+            borderRadius: "var(--radius-md)",
+            padding: "10px 14px",
+            fontSize: 13,
+            marginBottom: 14,
+          }}
+        >
+          {err}
+        </div>
+      )}
+
+      {tab === "create" && (
+        <Panel title={t("dash.social.generate.title")} icon="sparkles">
+          <label style={{ display: "block" }}>
+            <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>
+              {t("dash.social.generate.topic")}
+            </div>
+            <textarea
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder={t("dash.social.generate.placeholder")}
+              rows={2}
+              maxLength={200}
+              style={{
+                width: "100%",
+                background: "var(--obsidian-3)",
+                border: "1px solid var(--line-strong)",
+                borderRadius: "var(--radius-md)",
+                color: "var(--arctic)",
+                fontSize: 14,
+                fontFamily: "var(--font-sans)",
+                padding: "12px 14px",
+                resize: "vertical",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </label>
+          <div style={{ marginTop: 12 }}>
+            <Button variant="solid" icon="sparkles" onClick={onGenerate} disabled={isBusy("gen")} full>
+              {isBusy("gen") ? t("dash.social.generate.generating") : t("dash.social.generate.btn")}
+            </Button>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--fg3)", marginTop: 12, lineHeight: 1.5 }}>
+            {t("dash.social.generate.hint")}
+          </p>
+        </Panel>
+      )}
+
+      {tab === "queue" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {posts.length === 0 ? (
+            <Panel>
+              <p style={{ color: "var(--fg3)", fontSize: 14, margin: 0 }}>{t("dash.social.queue.empty")}</p>
+            </Panel>
+          ) : (
+            posts.map((p) => (
+              <PostCard
+                key={p.id}
+                post={p}
+                isBusy={isBusy}
+                onRender={() => postAction(`render-${p.id}`, () => renderPost(p.id))}
+                onApprove={() => postAction(`approve-${p.id}`, () => approvePost(p.id))}
+                onReject={() => postAction(`reject-${p.id}`, () => rejectPost(p.id))}
+                onPublish={() => postAction(`publish-${p.id}`, () => publishPost(p.id))}
+                onDelete={() => postAction(`delete-${p.id}`, () => deletePost(p.id))}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === "inbox" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {inbox.length === 0 ? (
+            <Panel>
+              <p style={{ color: "var(--fg3)", fontSize: 14, margin: 0 }}>{t("dash.social.inbox.empty")}</p>
+            </Panel>
+          ) : (
+            inbox.map((it) => (
+              <InboxCard
+                key={it.id}
+                it={it}
+                draftValue={replyEdits[it.id]}
+                onDraftChange={(v) => setReplyEdits((s) => ({ ...s, [it.id]: v }))}
+                isBusy={isBusy}
+                onDraft={() => postAction(`draft-${it.id}`, () => draftReply(it.id))}
+                onSend={() =>
+                  postAction(`send-${it.id}`, () =>
+                    sendReply(it.id, replyEdits[it.id] ?? it.ai_draft ?? undefined),
+                  )
+                }
+                onDismiss={() => postAction(`dismiss-${it.id}`, () => dismissInteraction(it.id))}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === "accounts" && (
+        <Panel title={t("dash.social.accounts.title")} icon="share-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {accounts.map((a) => (
+              <div
+                key={a.platform}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "12px 14px",
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--obsidian-2)",
+                  border: "1px solid var(--line)",
+                  flexWrap: "wrap",
+                }}
+              >
+                <Icon name={PLATFORM_ICON[a.platform] || "share-2"} size={22} color="var(--arctic)" />
+                <div style={{ flex: 1, minWidth: 120 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", textTransform: "capitalize" }}>
+                    {a.platform}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--fg3)" }}>
+                    {a.connected ? t("dash.social.accounts.connected") : t("dash.social.accounts.disconnected")}
+                  </div>
+                </div>
+                <Button variant="ghost" size="sm" disabled icon="lock">
+                  {t("dash.social.accounts.soon")}
+                </Button>
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 12, color: "var(--fg3)", marginTop: 14, lineHeight: 1.5 }}>
+            {t("dash.social.accounts.hint")}
+          </p>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+function chipStyle(): CSSProperties {
+  return {
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--silver)",
+    background: "var(--obsidian-3)",
+    border: "1px solid var(--line-strong)",
+    borderRadius: "var(--radius-full)",
+    padding: "3px 9px",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    textTransform: "capitalize",
+  };
+}
+
+function PostCard({
+  post,
+  isBusy,
+  onRender,
+  onApprove,
+  onReject,
+  onPublish,
+  onDelete,
+}: {
+  post: SocialPost;
+  isBusy: (k: string) => boolean;
+  onRender: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onPublish: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+  const s = post.status;
+  const anyBusy = ["render", "approve", "reject", "publish", "delete"].some((a) => isBusy(`${a}-${post.id}`));
+  return (
+    <Panel>
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+        <MediaPreview post={post} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <Pill tone={STATUS_TONE[s] || "muted"}>{t(`dash.social.status.${s}`)}</Pill>
+            {post.source && (
+              <span style={chipStyle()}>
+                <Icon name="sparkles" size={11} color="currentColor" />
+                {post.source === "ai" ? t("dash.social.byAI") : t("dash.social.byTemplate")}
+              </span>
+            )}
+          </div>
+          {post.caption && (
+            <p
+              style={{
+                fontSize: 13.5,
+                color: "var(--arctic)",
+                margin: "0 0 8px",
+                lineHeight: 1.5,
+                fontFamily: "var(--font-sans)",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {post.caption}
+            </p>
+          )}
+          {post.hashtags && (
+            <p style={{ fontSize: 12.5, color: "var(--volt)", margin: "0 0 10px", lineHeight: 1.5 }}>
+              {post.hashtags}
+            </p>
+          )}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+            {post.targets.map((tg) => (
+              <span key={tg} style={chipStyle()}>
+                <Icon name={PLATFORM_ICON[tg] || "share-2"} size={11} color="currentColor" />
+                {tg}
+              </span>
+            ))}
+          </div>
+          {post.scheduled_at && s === "scheduled" && (
+            <p style={{ fontSize: 12, color: "var(--warning)", margin: "4px 0 0" }}>
+              {t("dash.social.scheduledFor", { when: new Date(post.scheduled_at).toLocaleString() })}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+        {(s === "draft" || s === "failed") && (
+          <Button variant="solid" size="sm" icon="video" onClick={onRender} disabled={anyBusy}>
+            {isBusy(`render-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.render")}
+          </Button>
+        )}
+        {s === "rendered" && (
+          <Button variant="solid" size="sm" icon="check" onClick={onApprove} disabled={anyBusy}>
+            {isBusy(`approve-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.approve")}
+          </Button>
+        )}
+        {(s === "approved" || s === "scheduled") && (
+          <Button variant="solid" size="sm" icon="send" onClick={onPublish} disabled={anyBusy}>
+            {isBusy(`publish-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.publish")}
+          </Button>
+        )}
+        {(s === "rendered" || s === "approved" || s === "scheduled") && (
+          <Button variant="ghost" size="sm" icon="x" onClick={onReject} disabled={anyBusy}>
+            {t("dash.social.action.reject")}
+          </Button>
+        )}
+        <Button variant="plain" size="sm" icon="trash-2" onClick={onDelete} disabled={anyBusy}>
+          {t("dash.social.action.delete")}
+        </Button>
+      </div>
+    </Panel>
+  );
+}
+
+function InboxCard({
+  it,
+  draftValue,
+  onDraftChange,
+  isBusy,
+  onDraft,
+  onSend,
+  onDismiss,
+}: {
+  it: SocialInteraction;
+  draftValue: string | undefined;
+  onDraftChange: (v: string) => void;
+  isBusy: (k: string) => boolean;
+  onDraft: () => void;
+  onSend: () => void;
+  onDismiss: () => void;
+}) {
+  const { t } = useI18n();
+  const value = draftValue ?? it.ai_draft ?? "";
+  const sent = it.reply_status === "sent";
+  const dismissed = it.reply_status === "dismissed";
+  return (
+    <Panel>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8, flexWrap: "wrap" }}>
+        <Icon name={PLATFORM_ICON[it.platform] || "share-2"} size={18} color="var(--arctic)" />
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)" }}>
+          {it.author_handle || "—"}
+        </span>
+        {sent && <Pill tone="success">{t("dash.social.inbox.sent")}</Pill>}
+        {dismissed && <Pill tone="muted">{t("dash.social.inbox.dismissed")}</Pill>}
+      </div>
+      <p
+        style={{
+          fontSize: 13.5,
+          color: "var(--fg2)",
+          margin: "0 0 12px",
+          lineHeight: 1.5,
+          fontFamily: "var(--font-sans)",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {it.text}
+      </p>
+
+      {!sent && !dismissed && (
+        <>
+          {it.ai_draft ? (
+            <>
+              <textarea
+                value={value}
+                onChange={(e) => onDraftChange(e.target.value)}
+                placeholder={t("dash.social.inbox.replyPlaceholder")}
+                rows={3}
+                style={{
+                  width: "100%",
+                  background: "var(--obsidian-3)",
+                  border: "1px solid var(--line-strong)",
+                  borderRadius: "var(--radius-md)",
+                  color: "var(--arctic)",
+                  fontSize: 13.5,
+                  fontFamily: "var(--font-sans)",
+                  padding: "10px 12px",
+                  resize: "vertical",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  marginBottom: 10,
+                }}
+              />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Button
+                  variant="solid"
+                  size="sm"
+                  icon="send"
+                  onClick={onSend}
+                  disabled={isBusy(`send-${it.id}`)}
+                >
+                  {isBusy(`send-${it.id}`) ? t("dash.social.action.working") : t("dash.social.inbox.send")}
+                </Button>
+                <Button variant="plain" size="sm" icon="x" onClick={onDismiss}>
+                  {t("dash.social.inbox.dismiss")}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Button
+                variant="solid"
+                size="sm"
+                icon="sparkles"
+                onClick={onDraft}
+                disabled={isBusy(`draft-${it.id}`)}
+              >
+                {isBusy(`draft-${it.id}`)
+                  ? t("dash.social.inbox.drafting")
+                  : t("dash.social.inbox.draft")}
+              </Button>
+              <Button variant="plain" size="sm" icon="x" onClick={onDismiss}>
+                {t("dash.social.inbox.dismiss")}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {sent && it.ai_draft && (
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--silver)",
+            background: "var(--obsidian-2)",
+            borderLeft: "2px solid var(--success)",
+            borderRadius: 4,
+            padding: "8px 12px",
+            margin: 0,
+            lineHeight: 1.5,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {it.ai_draft}
+        </p>
+      )}
+    </Panel>
+  );
+}

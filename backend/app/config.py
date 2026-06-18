@@ -247,6 +247,52 @@ class Settings(BaseSettings):
         """Real email sending requires an explicit opt-out of simulation AND a key."""
         return not self.EMAIL_SIMULATED and bool(self.RESEND_API_KEY)
 
+    # ─── Social media (Phase "Social") ──────────────────────────────────
+    # AI-assisted content + owner-approval publishing to Instagram/Facebook
+    # (Meta) and TikTok. Heavy video rendering is offloaded to a separate
+    # BitTrader worker (hybrid). SOCIAL_SIMULATED (the default) makes the whole
+    # module work with no external apps/credentials: brief generation uses the
+    # text LLM when a key is set (else a deterministic template), rendering
+    # returns a bundled sample asset, and publishing / comment polling are
+    # no-ops. NEVER ship SOCIAL_SIMULATED=true with APP_ENV=production
+    # (anti-pattern #5) — the backend WARNs on startup if it sees that.
+    SOCIAL_SIMULATED: bool = True
+    # Hybrid render bridge → BitTrader. When simulated (or no URL) the render
+    # client returns a sample asset immediately. The mp4 the worker posts back
+    # is delivered to a callback signed with SOCIAL_RENDER_SIGNING_KEY (HMAC-
+    # SHA256 over the raw body, constant-time compare) — never act on an
+    # unsigned callback.
+    SOCIAL_RENDER_URL: str = ""           # BitTrader render endpoint
+    SOCIAL_RENDER_SIGNING_KEY: str = ""   # shared HMAC secret for the callback
+    SOCIAL_RENDER_CALLBACK_URL: str = ""  # public URL BitTrader posts the mp4 to
+    # Meta Graph API (Instagram/Facebook Reels). Per-tenant access tokens live in
+    # the SocialAccount row (never here / never committed); these are app-level.
+    META_APP_ID: str = ""
+    META_APP_SECRET: str = ""
+    META_GRAPH_VERSION: str = "v21.0"
+    # TikTok Content Posting API. Direct publish needs an approved TikTok app;
+    # until then the module prepares an assisted-upload pack. Gated by this flag.
+    TIKTOK_CLIENT_KEY: str = ""
+    TIKTOK_CLIENT_SECRET: str = ""
+    TIKTOK_DIRECT_PUBLISH: bool = False
+
+    @property
+    def social_live(self) -> bool:
+        """Real publishing requires an explicit opt-out of simulation. Per-platform
+        tokens are still checked at call time from the SocialAccount row, so this
+        only gates whether the module attempts any external call at all."""
+        return not self.SOCIAL_SIMULATED
+
+    @property
+    def social_render_live(self) -> bool:
+        """Real (BitTrader) rendering requires opting out of simulation AND a
+        configured render endpoint + signing key for the secured callback."""
+        return (
+            not self.SOCIAL_SIMULATED
+            and bool(self.SOCIAL_RENDER_URL)
+            and bool(self.SOCIAL_RENDER_SIGNING_KEY)
+        )
+
     # ─── CORS ───────────────────────────────────────────────────────────
     # The driver subscription landing (driver.blackvoltmobility.com) calls the
     # API same-origin through the Next /api proxy, so the browser normally never

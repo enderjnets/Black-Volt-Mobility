@@ -104,6 +104,18 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-Black Volt Mobility <noreply@blackvoltmobility.com>}
       PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-https://app.blackvoltmobility.com/dashboard}
+      # Social media module (Phase "Social") — simulated by default; live needs
+      # platform OAuth + a BitTrader render worker (see docs/setup-social-media.md).
+      SOCIAL_SIMULATED: ${SOCIAL_SIMULATED:-true}
+      SOCIAL_RENDER_URL: ${SOCIAL_RENDER_URL:-}
+      SOCIAL_RENDER_SIGNING_KEY: ${SOCIAL_RENDER_SIGNING_KEY:-}
+      SOCIAL_RENDER_CALLBACK_URL: ${SOCIAL_RENDER_CALLBACK_URL:-}
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_GRAPH_VERSION: ${META_GRAPH_VERSION:-v21.0}
+      TIKTOK_CLIENT_KEY: ${TIKTOK_CLIENT_KEY:-}
+      TIKTOK_CLIENT_SECRET: ${TIKTOK_CLIENT_SECRET:-}
+      TIKTOK_DIRECT_PUBLISH: ${TIKTOK_DIRECT_PUBLISH:-false}
     volumes:
       # Service-account JSON for Google Calendar (gitignored; absent in dev).
       - ./secrets:/secrets:ro

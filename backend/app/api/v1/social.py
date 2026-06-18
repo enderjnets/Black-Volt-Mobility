@@ -1,0 +1,291 @@
+"""Social-media module API (Phase "Social"). Staff-only, tenant-scoped.
+
+Owner-approval workflow:
+  POST /social/posts/generate     → AI brief → persisted draft
+  GET  /social/posts              → content calendar / approval queue
+  POST /social/posts              → create a draft by hand
+  PATCH/DELETE /social/posts/{id} → edit / remove
+  POST /social/posts/{id}/render  → request the (simulated) video render
+  POST /social/posts/{id}/approve → owner gate → approved | scheduled
+  POST /social/posts/{id}/reject  → back to draft
+  POST /social/posts/{id}/publish → publish now (simulated in Stage 1)
+  GET  /social/inbox              → comments / DMs needing a reply
+  POST /social/inbox/{id}/draft   → (re)generate the AI reply draft
+  POST /social/inbox/{id}/reply   → approve + send (optional owner edit)
+  POST /social/inbox/{id}/dismiss → ignore
+  GET  /social/accounts           → connected platforms
+  GET  /social/analytics          → engagement KPIs
+  POST /social/webhooks/render    → signed BitTrader render callback (Stage 2)
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import require_staff, resolve_tenant_id
+from app.db.base import get_db
+from app.services import social
+
+router = APIRouter(tags=["social"])
+
+
+class GenerateBody(BaseModel):
+    topic: str | None = Field(default=None, max_length=200)
+    angle: str | None = Field(default=None, max_length=200)
+    lang: str = Field(default="en", max_length=5)
+    targets: list[str] | None = Field(default=None, max_length=3)
+
+
+class CreatePostBody(BaseModel):
+    topic: str | None = Field(default=None, max_length=200)
+    script: str | None = Field(default=None, max_length=5000)
+    caption: str | None = Field(default=None, max_length=2200)
+    hashtags: str | None = Field(default=None, max_length=500)
+    lang: str = Field(default="en", max_length=5)
+    targets: list[str] | None = Field(default=None, max_length=3)
+
+
+class UpdatePostBody(BaseModel):
+    script: str | None = Field(default=None, max_length=5000)
+    caption: str | None = Field(default=None, max_length=2200)
+    hashtags: str | None = Field(default=None, max_length=500)
+    targets: list[str] | None = Field(default=None, max_length=3)
+    scheduled_at: datetime | None = None
+
+
+class ApproveBody(BaseModel):
+    scheduled_at: datetime | None = None
+
+
+class ReplyBody(BaseModel):
+    text: str | None = Field(default=None, max_length=2200)
+
+
+# ── posts ─────────────────────────────────────────────────────────────────────
+@router.post("/social/posts/generate", status_code=status.HTTP_201_CREATED)
+async def generate_post(
+    body: GenerateBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await social.generate_and_create(
+        db, tenant_id=tenant_id, topic=body.topic, angle=body.angle,
+        lang=body.lang, targets=body.targets,
+    )
+
+
+@router.get("/social/posts")
+async def list_posts(
+    request: Request,
+    status_filter: str | None = Query(default=None, alias="status", max_length=24),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await social.list_posts(db, tenant_id=tenant_id, status=status_filter, limit=limit)
+
+
+@router.post("/social/posts", status_code=status.HTTP_201_CREATED)
+async def create_post(
+    body: CreatePostBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await social.create_post(
+        db, tenant_id=tenant_id,
+        content=body.model_dump(include={"topic", "script", "caption", "hashtags"}),
+        lang=body.lang, targets=body.targets,
+    )
+
+
+@router.patch("/social/posts/{post_id}")
+async def update_post(
+    post_id: int,
+    body: UpdatePostBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    out = await social.update_post(
+        db, tenant_id=tenant_id, post_id=post_id, fields=body.model_dump(exclude_unset=True)
+    )
+    if out is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="post_not_found")
+    return out
+
+
+@router.delete("/social/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_post(
+    post_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    if not await social.delete_post(db, tenant_id=tenant_id, post_id=post_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="post_not_found")
+    return None
+
+
+def _require(out: dict | None) -> dict:
+    if out is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="post_not_found")
+    if isinstance(out, dict) and out.get("error"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=out["error"])
+    return out
+
+
+@router.post("/social/posts/{post_id}/render")
+async def render_post(
+    post_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return _require(await social.request_render(db, tenant_id=tenant_id, post_id=post_id))
+
+
+@router.post("/social/posts/{post_id}/approve")
+async def approve_post(
+    post_id: int,
+    body: ApproveBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return _require(
+        await social.approve_post(
+            db, tenant_id=tenant_id, post_id=post_id, scheduled_at=body.scheduled_at
+        )
+    )
+
+
+@router.post("/social/posts/{post_id}/reject")
+async def reject_post(
+    post_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return _require(await social.reject_post(db, tenant_id=tenant_id, post_id=post_id))
+
+
+@router.post("/social/posts/{post_id}/publish")
+async def publish_post(
+    post_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return _require(await social.publish_post(db, tenant_id=tenant_id, post_id=post_id))
+
+
+# ── inbox ─────────────────────────────────────────────────────────────────────
+@router.get("/social/inbox")
+async def list_inbox(
+    request: Request,
+    status_filter: str | None = Query(default=None, alias="status", max_length=20),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await social.list_inbox(db, tenant_id=tenant_id, status=status_filter)
+
+
+@router.post("/social/inbox/{interaction_id}/draft")
+async def draft_reply(
+    interaction_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    out = await social.draft_reply(db, tenant_id=tenant_id, interaction_id=interaction_id)
+    if out is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="interaction_not_found")
+    return out
+
+
+@router.post("/social/inbox/{interaction_id}/reply")
+async def send_reply(
+    interaction_id: int,
+    body: ReplyBody,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    out = await social.send_reply(
+        db, tenant_id=tenant_id, interaction_id=interaction_id, text=body.text
+    )
+    if out is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="interaction_not_found")
+    return out
+
+
+@router.post("/social/inbox/{interaction_id}/dismiss")
+async def dismiss_interaction(
+    interaction_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    out = await social.dismiss_interaction(
+        db, tenant_id=tenant_id, interaction_id=interaction_id
+    )
+    if out is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="interaction_not_found")
+    return out
+
+
+# ── accounts + analytics ──────────────────────────────────────────────────────
+@router.get("/social/accounts")
+async def list_accounts(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await social.list_accounts(db, tenant_id=tenant_id)
+
+
+@router.get("/social/analytics")
+async def get_analytics(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    return await social.analytics(db, tenant_id=tenant_id)
+
+
+# ── render callback (signed; no auth cookie — verified by HMAC) ───────────────
+@router.post("/social/webhooks/render")
+async def render_callback(request: Request, db: AsyncSession = Depends(get_db)):
+    body = await request.body()
+    signature = request.headers.get("x-bv-render-signature", "")
+    if not social.verify_render_callback(body=body, signature=signature):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid_signature")
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_json"
+        ) from None
+    result = await social.apply_render_callback(db, payload=payload)
+    return {"ok": True, "result": result}

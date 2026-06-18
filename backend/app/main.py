@@ -17,6 +17,7 @@ from app.api.v1.funnel import router as funnel_router
 from app.api.v1.health import router as health_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.rides import router as booking_router
+from app.api.v1.social import router as social_router
 from app.api.v1.subscriptions import router as subscriptions_router
 from app.api.v1.team import router as team_router
 from app.api.v1.tenant import router as tenant_router
@@ -68,6 +69,10 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "APP_ENV=production but payments not live — public subscriptions disabled (503)."
         )
+    if settings.is_production and settings.SOCIAL_SIMULATED:
+        logger.warning(
+            "APP_ENV=production but SOCIAL_SIMULATED=true — social publishing simulated."
+        )
     try:
         from app.services.tenancy import ensure_seed
 
@@ -76,7 +81,12 @@ async def lifespan(app: FastAPI):
             await _seed_admin_users(session, tenant_id=tenant.id)
     except Exception as e:  # DB not ready yet — get_default_tenant self-heals later
         logger.warning("startup seed skipped: %s", e)
+    # In-process scheduler for due social posts (single backend → safe).
+    from app.services import scheduler as social_scheduler
+
+    social_scheduler.start()
     yield
+    social_scheduler.shutdown()
     await dispose_engine()
 
 
@@ -103,6 +113,7 @@ app.include_router(subscriptions_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(funnel_router, prefix="/api/v1")
+app.include_router(social_router, prefix="/api/v1")
 app.include_router(tenant_router, prefix="/api/v1")
 app.include_router(team_router, prefix="/api/v1", dependencies=[Depends(require_admin)])
 
