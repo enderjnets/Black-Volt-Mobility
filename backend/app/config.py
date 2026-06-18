@@ -263,8 +263,12 @@ class Settings(BaseSettings):
     # SHA256 over the raw body, constant-time compare) — never act on an
     # unsigned callback.
     SOCIAL_RENDER_URL: str = ""           # BitTrader render endpoint
-    SOCIAL_RENDER_SIGNING_KEY: str = ""   # shared HMAC secret for the callback
+    SOCIAL_RENDER_SIGNING_KEY: str = ""   # shared HMAC secret (both directions)
     SOCIAL_RENDER_CALLBACK_URL: str = ""  # public URL BitTrader posts the mp4 to
+    # Ceiling on the base64-decoded rendered asset the callback may deliver. The
+    # worker posts the finished mp4 inline (b64) — never a fetched URL — so there
+    # is no SSRF surface; this cap is the only size guard.
+    SOCIAL_RENDER_MAX_MB: int = 60
     # Meta Graph API (Instagram/Facebook Reels). Per-tenant access tokens live in
     # the SocialAccount row (never here / never committed); these are app-level.
     META_APP_ID: str = ""

@@ -1,4 +1,8 @@
-"""Social-media module API (Phase "Social"). Staff-only, tenant-scoped.
+"""Social-media module API (Phase "Social"). Admin-only, tenant-scoped.
+
+The whole module is gated to super-admins (`require_admin`) — only the owner /
+admins manage Black Volt's social presence; regular drivers never see it. The one
+exception is the render callback, which carries no session and is HMAC-verified.
 
 Owner-approval workflow:
   POST /social/posts/generate     → AI brief → persisted draft
@@ -26,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_staff, resolve_tenant_id
+from app.api.deps import require_admin, resolve_tenant_id
 from app.db.base import get_db
 from app.services import social
 
@@ -71,7 +75,7 @@ async def generate_post(
     body: GenerateBody,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return await social.generate_and_create(
@@ -86,7 +90,7 @@ async def list_posts(
     status_filter: str | None = Query(default=None, alias="status", max_length=24),
     limit: int = Query(default=100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return await social.list_posts(db, tenant_id=tenant_id, status=status_filter, limit=limit)
@@ -97,7 +101,7 @@ async def create_post(
     body: CreatePostBody,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return await social.create_post(
@@ -113,7 +117,7 @@ async def update_post(
     body: UpdatePostBody,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     out = await social.update_post(
@@ -129,7 +133,7 @@ async def delete_post(
     post_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     if not await social.delete_post(db, tenant_id=tenant_id, post_id=post_id):
@@ -150,7 +154,7 @@ async def render_post(
     post_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return _require(await social.request_render(db, tenant_id=tenant_id, post_id=post_id))
@@ -162,7 +166,7 @@ async def approve_post(
     body: ApproveBody,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return _require(
@@ -177,7 +181,7 @@ async def reject_post(
     post_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return _require(await social.reject_post(db, tenant_id=tenant_id, post_id=post_id))
@@ -188,7 +192,7 @@ async def publish_post(
     post_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return _require(await social.publish_post(db, tenant_id=tenant_id, post_id=post_id))
@@ -200,7 +204,7 @@ async def list_inbox(
     request: Request,
     status_filter: str | None = Query(default=None, alias="status", max_length=20),
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return await social.list_inbox(db, tenant_id=tenant_id, status=status_filter)
@@ -211,7 +215,7 @@ async def draft_reply(
     interaction_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     out = await social.draft_reply(db, tenant_id=tenant_id, interaction_id=interaction_id)
@@ -226,7 +230,7 @@ async def send_reply(
     body: ReplyBody,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     out = await social.send_reply(
@@ -242,7 +246,7 @@ async def dismiss_interaction(
     interaction_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     out = await social.dismiss_interaction(
@@ -258,7 +262,7 @@ async def dismiss_interaction(
 async def list_accounts(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return await social.list_accounts(db, tenant_id=tenant_id)
@@ -268,7 +272,7 @@ async def list_accounts(
 async def get_analytics(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    payload: dict = Depends(require_staff),
+    payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return await social.analytics(db, tenant_id=tenant_id)

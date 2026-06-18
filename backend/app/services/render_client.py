@@ -13,6 +13,10 @@ BitTrader's "needs a public URL" gap for Meta/TikTok).
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import logging
 import secrets
 
@@ -54,7 +58,9 @@ async def submit(*, tenant_id: int, post_id: int, script: dict) -> dict:
         }
 
     # Live: hand the script to the BitTrader worker. It renders asynchronously and
-    # calls back our signed webhook with the mp4 — we only kick it off here.
+    # calls back our signed webhook with the mp4 — we only kick it off here. The
+    # outbound request is HMAC-signed with the shared key so the worker only ever
+    # renders for us (the same key it signs the callback with).
     payload = {
         "job_id": job_id,
         "tenant_id": tenant_id,
@@ -62,12 +68,16 @@ async def submit(*, tenant_id: int, post_id: int, script: dict) -> dict:
         "script": script,
         "callback_url": settings.SOCIAL_RENDER_CALLBACK_URL,
     }
+    body = json.dumps(payload).encode("utf-8")
+    sig = base64.b64encode(
+        hmac.new(settings.SOCIAL_RENDER_SIGNING_KEY.encode("utf-8"), body, hashlib.sha256).digest()
+    ).decode("ascii")
     try:
         async with httpx.AsyncClient(timeout=20.0) as http:
             resp = await http.post(
                 settings.SOCIAL_RENDER_URL,
-                json=payload,
-                headers={"Content-Type": "application/json"},
+                content=body,
+                headers={"Content-Type": "application/json", "x-bv-render-signature": sig},
             )
             resp.raise_for_status()
     except Exception as e:

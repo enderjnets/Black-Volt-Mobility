@@ -31,16 +31,31 @@ TIKTOK_DIRECT_PUBLISH=false       # true only once your TikTok app is approved
 Per-platform **access tokens** are stored per-tenant in the `social_accounts`
 table via the in-app OAuth connect flow (Stages 3–4), **not** in `.env`.
 
-## Stage 2 — real video render (BitTrader)
+## Stage 2 — real video render (BitTrader) — IMPLEMENTED
 
-1. Stand up the BitTrader render worker reachable from the VPS; it exposes a
-   render endpoint that accepts `{job_id, tenant_id, post_id, script, callback_url}`,
-   runs `agents/producer.produce_single(...)`, and POSTs the finished mp4 back to
-   `SOCIAL_RENDER_CALLBACK_URL` with header `x-bv-render-signature` = base64
-   HMAC-SHA256 of the raw body using `SOCIAL_RENDER_SIGNING_KEY`.
-2. Set `SOCIAL_RENDER_URL` + `SOCIAL_RENDER_SIGNING_KEY` + `SOCIAL_RENDER_CALLBACK_URL`.
-   The mp4 lands under the public `/media` mount (this is what gives Meta/TikTok a
-   public video URL to pull from).
+The worker ships in BitTrader as `render_worker.py` (stdlib HTTP + ffmpeg, no extra
+deps). It verifies an HMAC-signed render job, runs `agents/producer.produce_single`
+(or an ffmpeg sample if the paid video APIs aren't configured: `BV_RENDER_SAMPLE=1`),
+and POSTs the finished mp4 back inline as base64 to `SOCIAL_RENDER_CALLBACK_URL` with
+header `x-bv-render-signature` = base64 HMAC-SHA256 of the raw body. Black Volt
+verifies, magic-sniffs and size-caps it, and writes it under the public `/media`
+mount (atomic write) — which is also what later gives Meta/TikTok a public video URL.
+
+1. On a host reachable from the VPS, run:
+   ```bash
+   BV_RENDER_SIGNING_KEY=<shared-secret> python3 render_worker.py   # listens :8090
+   # add BV_RENDER_SAMPLE=1 to emit a placeholder clip without the paid video APIs
+   ```
+2. In Black Volt `.env` set the same secret + endpoints, then `SOCIAL_SIMULATED=false`:
+   ```bash
+   SOCIAL_RENDER_URL=https://<worker-host>:8090/render
+   SOCIAL_RENDER_SIGNING_KEY=<shared-secret>          # identical on both sides
+   SOCIAL_RENDER_CALLBACK_URL=https://app.blackvoltmobility.com/api/v1/social/webhooks/render
+   SOCIAL_RENDER_MAX_MB=60
+   ```
+
+> The Social module is **admin-only** (`require_admin`): only the owner / admins
+> see and manage it. The render callback carries no session — it's HMAC-verified.
 
 ## Stage 3 — Instagram + Facebook (Meta Graph API)
 

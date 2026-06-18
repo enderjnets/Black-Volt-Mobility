@@ -108,17 +108,42 @@ const STATUS_TONE: Record<string, "volt" | "success" | "warning" | "muted"> = {
   failed: "warning",
 };
 
+function mediaUrl(path: string | null): string | null {
+  // Real assets are stored as a rel path under the public /media mount.
+  if (!path || path.startsWith("simulated://")) return null;
+  return path.startsWith("/") ? path : `/media/${path}`;
+}
+
 function MediaPreview({ post }: { post: SocialPost }) {
   const { t } = useI18n();
+  const src = post.simulated_render ? null : mediaUrl(post.media_path);
+  const poster = mediaUrl(post.cover_path) ?? undefined;
+  const box: CSSProperties = {
+    width: 90,
+    flexShrink: 0,
+    aspectRatio: "9 / 16",
+    borderRadius: "var(--radius-md)",
+    background: "var(--obsidian-3)",
+    border: "1px solid var(--line-strong)",
+    overflow: "hidden",
+  };
+  if (src) {
+    return (
+      <video
+        src={src}
+        poster={poster}
+        controls
+        muted
+        playsInline
+        preload="metadata"
+        style={{ ...box, objectFit: "cover", display: "block" }}
+      />
+    );
+  }
   return (
     <div
       style={{
-        width: 90,
-        flexShrink: 0,
-        aspectRatio: "9 / 16",
-        borderRadius: "var(--radius-md)",
-        background: "var(--obsidian-3)",
-        border: "1px solid var(--line-strong)",
+        ...box,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -128,11 +153,7 @@ function MediaPreview({ post }: { post: SocialPost }) {
         padding: 6,
       }}
     >
-      <Icon
-        name={post.media_path && !post.simulated_render ? "play" : "video"}
-        size={22}
-        color="var(--volt)"
-      />
+      <Icon name="video" size={22} color="var(--volt)" />
       {post.simulated_render && (
         <span style={{ fontSize: 9, color: "var(--fg3)", lineHeight: 1.2 }}>
           {t("dash.social.simulatedRender")}

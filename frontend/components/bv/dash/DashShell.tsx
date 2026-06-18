@@ -65,20 +65,18 @@ const NAV: { seg: string; href: string; icon: string; key: string }[] = [
   { seg: "rides", href: "/dashboard/rides", icon: "navigation", key: "dash.nav.rides" },
   { seg: "clients", href: "/dashboard/clients", icon: "users", key: "dash.nav.clients" },
   { seg: "stats", href: "/dashboard/stats", icon: "bar-chart-3", key: "dash.nav.stats" },
-  { seg: "social", href: "/dashboard/social", icon: "share-2", key: "dash.nav.social" },
   { seg: "inbox", href: "/dashboard/inbox", icon: "message-circle", key: "dash.nav.inbox" },
   { seg: "analytics", href: "/dashboard/analytics", icon: "trending-up", key: "dash.nav.insights" },
   { seg: "rates", href: "/dashboard/rates", icon: "dollar-sign", key: "dash.nav.rates" },
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];
 
-// Super-admin only (the access list). Appended to the nav when me.is_admin.
-const ADMIN_NAV = {
-  seg: "team",
-  href: "/dashboard/team",
-  icon: "shield-check",
-  key: "dash.nav.team",
-};
+// Super-admin only (social management + the access list). Appended to the nav
+// when me.is_admin — regular drivers never see these.
+const ADMIN_NAV = [
+  { seg: "social", href: "/dashboard/social", icon: "share-2", key: "dash.nav.social" },
+  { seg: "team", href: "/dashboard/team", icon: "shield-check", key: "dash.nav.team" },
+];
 
 function SideLink({ href, icon, label, active }: { href: string; icon: string; label: string; active: boolean }) {
   const [h, setH] = useState(false);
@@ -129,7 +127,7 @@ export function DashShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const nav = me?.is_admin ? [...NAV, ADMIN_NAV] : NAV;
+  const nav = me?.is_admin ? [...NAV, ...ADMIN_NAV] : NAV;
   const identity = me?.email ? me.email.split("@")[0] : me?.is_admin ? "Owner" : "Driver";
   const roleLabel = t(me?.is_admin ? "dash.role.admin" : "dash.role.driver");
 

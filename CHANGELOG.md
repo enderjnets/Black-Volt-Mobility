@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.32.0 — 2026-06-17 — Social Media (Stage 2): real BitTrader render + admin-only
+
+**Feature — real video render (hybrid bridge → BitTrader).** Rendering a post now produces an actual mp4. A new **dependency-free BitTrader worker** (`BitTrader/render_worker.py`, stdlib HTTP + ffmpeg) accepts an **HMAC-signed** render job from Black Volt (`render_client.submit` now signs the outbound body), runs `agents.producer.produce_single` (or an ffmpeg sample when the paid video APIs aren't configured), and **POSTs the finished mp4 back inline as base64 over an HMAC-signed callback**. Black Volt's `social.apply_render_callback` verifies the signature, then `_write_render_asset` validates it (base64 decode, ≤`SOCIAL_RENDER_MAX_MB`, **magic-byte sniff** for mp4/mov/webm, server-generated filename, extension allow-list) and writes it under the public `/media` mount via an **atomic temp-then-rename**. The callback is **idempotent** (only attaches to a `render_requested`/`failed` post → a replayed signed callback is a no-op, never orphaning a file). The frontend now plays the real clip in a `<video>` (placeholder only while simulated). No base64-URL fetch → **no SSRF surface**. Full cross-process E2E verified: post → render → worker ffmpeg → signed callback → mp4 written → served `HTTP 200 video/mp4`.
+
+**Change — the Social module is admin-only.** The whole `/api/v1/social/*` surface is now gated to super-admins (`require_admin`; the render webhook stays HMAC-only), and the **Social** tab is hidden from non-admins in **both** navs (it now lives in the admin group next to Team). Regular drivers can neither see nor reach it (anonymous → 401, non-admin driver → 403).
+
+**Verification.** 272 backend tests (incl. signed-callback writes-real-asset + replay-idempotent, non-video/bad-ext rejected, unsigned 403, admin-gate: anon 401 / driver 403); `ruff` + `tsc` + `next lint` + `next build` clean; no migration. Live cross-process render E2E (8231-byte mp4 through the signed round-trip). Independent **security review** (no HIGH/MEDIUM — write path defended: server-generated filename + int-cast tenant dir + ext allow-list + magic sniff + size cap + HMAC-only + per-tenant DB re-validation; no command injection in the worker's fixed-arg ffmpeg) + **code review** (no must-fix; hardening applied: idempotency guard, dropped verbatim `media_path` branch, atomic write, safe int-cast).
+
 ## v0.31.0 — 2026-06-17 — Social Media module (Stage 1): AI content + owner-approval publishing
 
 **Feature — a new "Social" dashboard module.** The owner can have AI run Black Volt's social media while keeping a human gate on everything that goes out. Three flows, end-to-end demoable in **simulated mode** (no external apps/credentials needed):

@@ -16,13 +16,16 @@ const PRIMARY = [
 ];
 const MORE = [
   { seg: "stats", href: "/dashboard/stats", icon: "bar-chart-3", key: "dash.nav.stats" },
-  { seg: "social", href: "/dashboard/social", icon: "share-2", key: "dash.nav.social" },
   { seg: "add", href: "/dashboard/add", icon: "plus", key: "dash.nav.book" },
   { seg: "analytics", href: "/dashboard/analytics", icon: "trending-up", key: "dash.nav.insights" },
   { seg: "rates", href: "/dashboard/rates", icon: "dollar-sign", key: "dash.nav.rates" },
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];
-const ADMIN_ITEM = { seg: "team", href: "/dashboard/team", icon: "shield-check", key: "dash.nav.team" };
+// Super-admin only (social management + the access list).
+const ADMIN_ITEMS = [
+  { seg: "social", href: "/dashboard/social", icon: "share-2", key: "dash.nav.social" },
+  { seg: "team", href: "/dashboard/team", icon: "shield-check", key: "dash.nav.team" },
+];
 
 function segOf(pathname: string) {
   return pathname.split("/").filter(Boolean)[1] ?? "overview";
@@ -44,7 +47,7 @@ export function DriverTabBar() {
     };
   }, []);
 
-  const moreActive = (me?.is_admin ? [...MORE, ADMIN_ITEM] : MORE).some((m) => m.seg === seg);
+  const moreActive = (me?.is_admin ? [...MORE, ...ADMIN_ITEMS] : MORE).some((m) => m.seg === seg);
   const identity = me?.email ? me.email.split("@")[0] : me?.is_admin ? "Owner" : "Driver";
   const roleLabel = t(me?.is_admin ? "dash.role.admin" : "dash.role.driver");
 
@@ -126,30 +129,33 @@ export function DriverTabBar() {
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {me?.is_admin && (
                 <>
-                  <Link
-                    href={ADMIN_ITEM.href}
-                    onClick={() => setMoreOpen(false)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 13,
-                      padding: "14px 12px",
-                      borderRadius: "var(--radius-md)",
-                      textDecoration: "none",
-                      fontFamily: "var(--font-sans)",
-                      fontSize: 15,
-                      fontWeight: 700,
-                      background: "var(--volt-bg)",
-                      color: "var(--volt)",
-                      boxShadow: "inset 0 0 0 1px var(--volt-border)",
-                    }}
-                  >
-                    <Icon name={ADMIN_ITEM.icon} size={20} color="currentColor" />
-                    {t(ADMIN_ITEM.key)}
-                    <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--volt)", textTransform: "uppercase" }}>
-                      {t("dash.role.admin")}
-                    </span>
-                  </Link>
+                  {ADMIN_ITEMS.map((it) => (
+                    <Link
+                      key={it.seg}
+                      href={it.href}
+                      onClick={() => setMoreOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 13,
+                        padding: "14px 12px",
+                        borderRadius: "var(--radius-md)",
+                        textDecoration: "none",
+                        fontFamily: "var(--font-sans)",
+                        fontSize: 15,
+                        fontWeight: 700,
+                        background: seg === it.seg ? "var(--volt-bg)" : "transparent",
+                        color: "var(--volt)",
+                        boxShadow: "inset 0 0 0 1px var(--volt-border)",
+                      }}
+                    >
+                      <Icon name={it.icon} size={20} color="currentColor" />
+                      {t(it.key)}
+                      <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--volt)", textTransform: "uppercase" }}>
+                        {t("dash.role.admin")}
+                      </span>
+                    </Link>
+                  ))}
                   <div style={{ height: 1, background: "var(--line)", margin: "6px 2px" }} />
                 </>
               )}
