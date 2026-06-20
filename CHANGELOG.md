@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.34.0 — 2026-06-20 — Social: publish for real via Buffer
+
+**Approved posts now publish to real Instagram/Facebook/TikTok through the owner's Buffer account.** Buffer holds the platform OAuth tokens and does the actual posting, so Black Volt never touches Meta App Review or the TikTok Content Posting audit.
+
+- **Buffer adapter** (`backend/app/services/social_buffer.py`): a thin async GraphQL client (`list_channels` + `create_post`) over `https://api.buffer.com`, authed with a personal API key read from `.env` (never logged, never returned, never in an exception message).
+- **Connect = "Sync from Buffer"**: the Social → Accounts tab gets a Sync button that upserts a `SocialAccount` per Buffer channel (stores Buffer's channel id; our DB never holds a platform token). Disconnected platforms show a "Connect in Buffer" link. No DB migration (reuses existing columns).
+- **Real publish**: `_do_publish` now pushes each connected target's rendered video (by public `/media` URL) to Buffer — **Instagram as a Reel**, publish-now via `shareNow`, scheduled via `customScheduled` + `dueAt` — and stores the Buffer post id. Simulated fallback retained when Buffer isn't configured (`SOCIAL_PUBLISH_VIA_BUFFER` + key gate; never silently simulates in prod).
+- **Safety**: media URLs are validated to our own host before sending to Buffer (no SSRF); a *transient* Buffer/network error leaves a scheduled post for the next tick instead of burning it to `failed`; the scheduler takes `FOR UPDATE SKIP LOCKED` on due rows to prevent double-publish. New route `POST /social/accounts/sync` is admin-only + tenant-scoped.
+- Inbox replies + engagement analytics stay on their current path (Buffer's API exposes those poorly) — deferred.
+
 ## v0.33.0 — 2026-06-18 — Social: real Black Volt video ads (own renderer, Kling visuals, language voice)
 
 **The render is now a real Black Volt ad, not a BitTrader clip.** The live render was using BitTrader's `produce_single` (its crypto-channel orchestrator) → BitTrader logo watermark, Spanish-locked voice (mixed EN/ES), and a generic gradient fallback (Kling never fired for an "automotive" topic with no visual prompts). Replaced with a **dedicated Black Volt renderer**, `bv_producer.produce_blackvolt` (in the BitTrader repo, runs on the ROG worker), that reuses the low-level primitives but with Black Volt branding:

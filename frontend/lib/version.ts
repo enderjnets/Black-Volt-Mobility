@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.33.0";
+export const CURRENT_VERSION = "0.34.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.34.0",
+    date: "2026-06-20",
+    title: "Social: publish for real via Buffer",
+    changes: [
+      "Connect your Instagram, Facebook and TikTok through your Buffer account: open Social → Accounts and tap 'Sync from Buffer' to see your connected channels.",
+      "Approved posts now publish for real through Buffer (Instagram goes out as a Reel) — Buffer handles the platform logins and posting, so there's nothing to set up with Meta or TikTok.",
+      "If a channel isn't connected yet, a 'Connect in Buffer' link takes you straight there. Posts still wait for your approval before anything goes live.",
+    ],
+  },
   {
     version: "0.33.0",
     date: "2026-06-18",
