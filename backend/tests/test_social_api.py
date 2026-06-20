@@ -7,6 +7,9 @@ os.environ["AUTH_ENABLED"] = "true"
 os.environ["PAYMENTS_SIMULATED"] = "true"
 os.environ["MAPS_SIMULATED"] = "true"
 os.environ["SOCIAL_SIMULATED"] = "true"
+os.environ["SOCIAL_PUBLISH_VIA_BUFFER"] = "false"
+os.environ["BUFFER_API_KEY"] = ""
+os.environ["BUFFER_ORG_ID"] = ""
 # Force the deterministic template path (no real Kimi/MiniMax call).
 os.environ["KIMI_API_KEY"] = ""
 os.environ["MINIMAX_API_KEY"] = ""
@@ -153,3 +156,33 @@ def test_render_webhook_rejects_unsigned():
     # No signing key configured in tests → every callback is refused.
     r = client.post("/api/v1/social/webhooks/render", json={"post_id": 1})
     assert r.status_code == 403
+
+
+def test_accounts_sync_requires_admin():
+    assert client.post("/api/v1/social/accounts/sync").status_code == 401
+    d = _driver()
+    assert d.post("/api/v1/social/accounts/sync").status_code == 403
+
+
+def test_accounts_sync_requires_config():
+    # This suite runs with SOCIAL_SIMULATED=true and no Buffer key → not live.
+    c = _owner()
+    r = c.post("/api/v1/social/accounts/sync")
+    assert r.status_code == 400
+    assert r.json()["detail"] == "buffer_not_configured"
+
+
+def test_accounts_sync_502_on_buffer_error(monkeypatch):
+    from app.services import social as social_svc
+    from app.services import social_buffer
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+
+    async def boom(*args, **kwargs):
+        raise social_buffer.BufferError("buffer_request_failed", transient=True)
+
+    monkeypatch.setattr(social_svc, "sync_buffer_channels", boom)
+    c = _owner()
+    r = c.post("/api/v1/social/accounts/sync")
+    assert r.status_code == 502
+    assert r.json()["detail"] == "buffer_unavailable"

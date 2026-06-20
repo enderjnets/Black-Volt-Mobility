@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import SocialAccount, SocialInteraction, SocialPost
 from app.models.social import SOCIAL_PLATFORMS
-from app.services import llm, render_client
+from app.services import llm, render_client, social_buffer
 from app.services.tenancy import get_tenant
 
 logger = logging.getLogger("blackvolt.social")
@@ -473,10 +473,77 @@ async def reject_post(db: AsyncSession, *, tenant_id: int, post_id: int) -> dict
     return _post_out(row)
 
 
-def _do_publish(row: SocialPost) -> None:
-    """Mark a post published. Stage 1: simulated external ids per target. Stage 3
-    swaps in real Meta/TikTok calls via social_platforms."""
+def _compose_text(caption: str | None, hashtags: str | None) -> str:
+    parts = [p.strip() for p in (caption, hashtags) if p and p.strip()]
+    return "\n\n".join(parts)
+
+
+def _public_media_url(media_path: str | None) -> str | None:
+    """Absolute public URL for a rendered asset, or None if it isn't safe to send
+    to Buffer. Rejects the simulated sentinel, any scheme/absolute URL, and any
+    path that escapes our /media mount (no SSRF, no posting a placeholder)."""
+    if not media_path or "://" in media_path or ".." in media_path:
+        return None
+    rel = media_path.lstrip("/")
+    if not rel:
+        return None
+    base = get_settings().PUBLIC_BASE_URL.rstrip("/")
+    return f"{base}/media/{rel}"
+
+
+async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
+    """Publish a post. When Buffer is live, push each connected target's video to
+    Buffer (IG as a Reel) and store the Buffer post id; otherwise simulate."""
     targets = row.targets or list(_DEFAULT_TARGETS)
+    if social_buffer.is_live():
+        accounts = {
+            r.platform: r
+            for r in (
+                await db.execute(
+                    select(SocialAccount).where(SocialAccount.tenant_id == row.tenant_id)
+                )
+            ).scalars().all()
+        }
+        video_url = _public_media_url(row.media_path)
+        text = _compose_text(row.caption, row.hashtags)
+        mode = "customScheduled" if row.scheduled_at else "shareNow"
+        due_at = row.scheduled_at
+        ext = dict(row.external_ids or {})
+        published_any = False
+        transient_failure = False
+        if video_url:
+            for platform in targets:
+                acct = accounts.get(platform)
+                if not acct or acct.status != "connected" or not acct.external_account_id:
+                    continue
+                try:
+                    res = await social_buffer.create_post(
+                        channel_id=acct.external_account_id, service=platform,
+                        text=text, video_url=video_url, mode=mode, due_at=due_at,
+                    )
+                except social_buffer.BufferError as e:
+                    if getattr(e, "transient", False):
+                        transient_failure = True
+                    logger.error(
+                        "buffer publish failed post=%s platform=%s: %s", row.id, platform, e
+                    )
+                    continue
+                if res.get("id"):
+                    ext[platform] = res["id"]
+                    published_any = True
+        row.external_ids = ext
+        if published_any:
+            row.status = "published"
+            row.published_at = _now()
+        elif transient_failure:
+            # Transient Buffer/transport error — leave the post in its current
+            # status so the scheduler retries on the next tick, rather than
+            # burning an approved post to a terminal `failed`.
+            pass
+        else:
+            row.status = "failed"
+        return
+    # Simulated fallback: deterministic-ish sentinel ids per target.
     ext = dict(row.external_ids or {})
     for t in targets:
         ext[t] = f"sim_{secrets.token_hex(4)}"
@@ -491,7 +558,7 @@ async def publish_post(db: AsyncSession, *, tenant_id: int, post_id: int) -> dic
         return None
     if row.status not in ("approved", "scheduled"):
         return {"error": "not_approved", "post": _post_out(row)}
-    _do_publish(row)
+    await _do_publish(db, row)
     await db.commit()
     await db.refresh(row)
     return _post_out(row)
@@ -759,6 +826,35 @@ async def list_accounts(db: AsyncSession, *, tenant_id: int) -> list[dict]:
     return out
 
 
+async def sync_buffer_channels(db: AsyncSession, *, tenant_id: int) -> list[dict]:
+    """Pull the owner's Buffer channels and upsert a SocialAccount per channel
+    whose service we target (IG/FB/TikTok). Buffer holds the OAuth tokens, so we
+    only store its channel id + handle + connection state — never a token."""
+    channels = await social_buffer.list_channels()
+    existing = {
+        r.platform: r
+        for r in (
+            await db.execute(
+                select(SocialAccount).where(SocialAccount.tenant_id == tenant_id)
+            )
+        ).scalars().all()
+    }
+    for ch in channels:
+        platform = ch.get("service")
+        if platform not in SOCIAL_PLATFORMS:
+            continue
+        row = existing.get(platform)
+        if row is None:
+            row = SocialAccount(tenant_id=tenant_id, platform=platform)
+            db.add(row)
+            existing[platform] = row
+        row.external_account_id = ch.get("id")
+        row.display_name = ch.get("display_name")
+        row.status = "connected" if ch.get("connected") else "disconnected"
+    await db.commit()
+    return await list_accounts(db, tenant_id=tenant_id)
+
+
 async def analytics(db: AsyncSession, *, tenant_id: int) -> dict:
     rows = (
         await db.execute(select(SocialPost).where(SocialPost.tenant_id == tenant_id))
@@ -798,20 +894,18 @@ async def publish_due(db: AsyncSession) -> int:
     now = _now()
     rows = (
         await db.execute(
-            select(SocialPost).where(
-                SocialPost.status == "scheduled", SocialPost.scheduled_at <= now
-            )
+            select(SocialPost)
+            .where(SocialPost.status == "scheduled", SocialPost.scheduled_at <= now)
+            .with_for_update(skip_locked=True)
         )
     ).scalars().all()
     n = 0
     for row in rows:
         # Re-assert the status inside the loop: idempotency guard so a post can't be
-        # double-published if it changed between the select and here. Critical once
-        # Stage 3 makes _do_publish a real Meta/TikTok call — add SELECT ... FOR
-        # UPDATE SKIP LOCKED there if the backend is ever scaled past one instance.
+        # double-published between the lock acquisition and the publish call.
         if row.status != "scheduled":
             continue
-        _do_publish(row)
+        await _do_publish(db, row)
         n += 1
     if n:
         await db.commit()

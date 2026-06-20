@@ -24,6 +24,7 @@ import {
   rejectPost,
   renderPost,
   sendReply,
+  syncBufferChannels,
 } from "@/lib/social";
 
 type Tab = "create" | "queue" | "inbox" | "accounts";
@@ -170,6 +171,7 @@ export function SocialMedia() {
   const [inbox, setInbox] = useState<SocialInteraction[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [stats, setStats] = useState<SocialAnalytics | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
@@ -234,6 +236,18 @@ export function SocialMedia() {
       setBusyKey(key, false);
     }
   }
+
+  const onSyncBuffer = async () => {
+    setSyncing(true);
+    try {
+      const next = await syncBufferChannels();
+      setAccounts(next);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const tabs: { id: Tab; label: string; icon: string; badge?: number }[] = [
     { id: "create", label: t("dash.social.tab.create"), icon: "sparkles" },
@@ -425,6 +439,11 @@ export function SocialMedia() {
 
       {tab === "accounts" && (
         <Panel title={t("dash.social.accounts.title")} icon="share-2">
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <Button variant="solid" size="sm" icon="refresh-cw" onClick={onSyncBuffer} disabled={syncing}>
+              {syncing ? t("dash.social.accounts.syncing") : t("dash.social.accounts.sync")}
+            </Button>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {accounts.map((a) => (
               <div
@@ -443,20 +462,27 @@ export function SocialMedia() {
                 <Icon name={PLATFORM_ICON[a.platform] || "share-2"} size={22} color="var(--arctic)" />
                 <div style={{ flex: 1, minWidth: 120 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", textTransform: "capitalize" }}>
-                    {a.platform}
+                    {a.display_name || a.platform}
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--fg3)" }}>
+                  <div style={{ fontSize: 12, color: a.connected ? "var(--cyan)" : "var(--fg3)" }}>
                     {a.connected ? t("dash.social.accounts.connected") : t("dash.social.accounts.disconnected")}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" disabled icon="lock">
-                  {t("dash.social.accounts.soon")}
-                </Button>
+                {!a.connected && (
+                  <a
+                    href="https://publish.buffer.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: 12, color: "var(--cyan)", textDecoration: "none" }}
+                  >
+                    {t("dash.social.accounts.connectInBuffer")}
+                  </a>
+                )}
               </div>
             ))}
           </div>
           <p style={{ fontSize: 12, color: "var(--fg3)", marginTop: 14, lineHeight: 1.5 }}>
-            {t("dash.social.accounts.hint")}
+            {t("dash.social.accounts.viaBuffer")}
           </p>
         </Panel>
       )}

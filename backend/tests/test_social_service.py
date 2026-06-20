@@ -10,10 +10,14 @@ import uuid
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 os.environ["SOCIAL_SIMULATED"] = "true"
+os.environ["SOCIAL_PUBLISH_VIA_BUFFER"] = "false"
+os.environ["BUFFER_API_KEY"] = ""
+os.environ["BUFFER_ORG_ID"] = ""
 # Force the deterministic template path (no real Kimi/MiniMax call).
 os.environ["KIMI_API_KEY"] = ""
 os.environ["MINIMAX_API_KEY"] = ""
 
+import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
@@ -158,3 +162,138 @@ async def test_posts_are_tenant_scoped(db):
     # Cross-tenant fetch by id returns nothing.
     other_id = b_posts[0]["id"]
     assert await S.request_render(db, tenant_id=tid_a, post_id=other_id) is None
+
+
+def test_compose_text():
+    assert S._compose_text("Hi", "#a #b") == "Hi\n\n#a #b"
+    assert S._compose_text("Hi", None) == "Hi"
+    assert S._compose_text(None, "#a") == "#a"
+    assert S._compose_text("  ", "") == ""
+
+
+def test_public_media_url_rejects_bad_and_builds_good():
+    assert S._public_media_url(None) is None
+    assert S._public_media_url("simulated://sample.mp4") is None
+    assert S._public_media_url("../etc/passwd") is None
+    assert S._public_media_url("https://evil.com/x.mp4") is None
+    url = S._public_media_url("social/a.mp4")
+    assert url is not None and url.endswith("/media/social/a.mp4")
+
+
+@pytest.mark.asyncio
+async def test_sync_buffer_channels_upserts_targets_only(db, monkeypatch):
+    from app.services import social_buffer
+
+    async def fake_list():
+        return [
+            {"id": "ch-ig", "service": "instagram", "name": "bv",
+             "display_name": "bv", "connected": True},
+            {"id": "ch-yt", "service": "youtube", "name": "yt",
+             "display_name": "yt", "connected": True},
+        ]
+
+    monkeypatch.setattr(social_buffer, "list_channels", fake_list)
+    t = Tenant(slug=f"t-{uuid.uuid4().hex[:8]}", name="Sync Test")
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    tid = t.id
+    out = await S.sync_buffer_channels(db, tenant_id=tid)
+    ig = next(a for a in out if a["platform"] == "instagram")
+    assert ig["connected"] is True and ig["status"] == "connected"
+    assert all(a["platform"] != "youtube" for a in out)
+    row = (await db.execute(
+        S.select(S.SocialAccount).where(
+            S.SocialAccount.tenant_id == tid, S.SocialAccount.platform == "instagram"
+        )
+    )).scalars().first()
+    assert row is not None and row.external_account_id == "ch-ig"
+
+
+@pytest_asyncio.fixture
+async def _approved_ig_post(db):
+    """A post with a real-looking media_path, targeting instagram, approved."""
+    t = Tenant(slug=f"t-{uuid.uuid4().hex[:8]}", name="Buffer Test")
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    tid = t.id
+    post = await S.create_post(
+        db, tenant_id=tid,
+        content={"caption": "Ride in style", "hashtags": "#blackvolt"},
+        lang="en", targets=["instagram"],
+    )
+    row = await S._get_post(db, tenant_id=tid, post_id=post["id"])
+    row.media_path = "social/test.mp4"
+    row.status = "approved"
+    await db.commit()
+    return tid, post["id"]
+
+
+@pytest.mark.asyncio
+async def test_do_publish_via_buffer(db, monkeypatch, _approved_ig_post):
+    from app.services import social_buffer
+    tid, pid = _approved_ig_post
+    existing = (await db.execute(
+        S.select(S.SocialAccount).where(
+            S.SocialAccount.tenant_id == tid, S.SocialAccount.platform == "instagram"
+        )
+    )).scalar_one_or_none()
+    if existing:
+        existing.external_account_id = "ch-ig"
+        existing.display_name = "bv"
+        existing.status = "connected"
+    else:
+        db.add(S.SocialAccount(
+            tenant_id=tid, platform="instagram", external_account_id="ch-ig",
+            display_name="bv", status="connected",
+        ))
+    await db.commit()
+    calls = []
+
+    async def fake_create(**kw):
+        calls.append(kw)
+        return {"id": f"buf-{kw['service']}", "status": "queued", "due_at": None}
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", fake_create)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert out["status"] == "published"
+    assert out["external_ids"]["instagram"] == "buf-instagram"
+    assert calls[0]["mode"] == "shareNow"
+    assert "/media/social/test.mp4" in calls[0]["video_url"]
+    assert calls[0]["text"] == "Ride in style\n\n#blackvolt"
+
+
+@pytest.mark.asyncio
+async def test_do_publish_buffer_no_channel_marks_failed(db, monkeypatch, _approved_ig_post):
+    from app.services import social_buffer
+    tid, pid = _approved_ig_post
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    # No connected SocialAccount for instagram → nothing to publish to.
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert out["status"] == "failed"
+    assert out["external_ids"] == {}
+
+
+@pytest.mark.asyncio
+async def test_do_publish_transient_buffer_error_keeps_status(db, monkeypatch, _approved_ig_post):
+    from app.services import social_buffer
+    tid, pid = _approved_ig_post
+    db.add(S.SocialAccount(
+        tenant_id=tid, platform="instagram", external_account_id="ch-ig",
+        display_name="bv", status="connected",
+    ))
+    await db.commit()
+
+    async def boom(**kw):
+        raise social_buffer.BufferError("buffer_request_failed", transient=True)
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", boom)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    # Transient failure must NOT mark the post failed — it stays publishable.
+    assert out["status"] != "failed"
+    assert out["external_ids"] == {}

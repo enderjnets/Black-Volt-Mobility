@@ -280,6 +280,14 @@ class Settings(BaseSettings):
     TIKTOK_CLIENT_SECRET: str = ""
     TIKTOK_DIRECT_PUBLISH: bool = False
 
+    # ─── Buffer (social publishing aggregator) ──────────────────────────
+    # The owner's Buffer account holds the IG/FB/TikTok OAuth tokens and does the
+    # real publishing. We push approved posts to it with a personal API key (read
+    # from .env, never logged, never returned). Org id is the Buffer organization.
+    BUFFER_API_KEY: str = ""
+    BUFFER_ORG_ID: str = ""
+    SOCIAL_PUBLISH_VIA_BUFFER: bool = False
+
     @property
     def social_live(self) -> bool:
         """Real publishing requires an explicit opt-out of simulation. Per-platform
@@ -295,6 +303,16 @@ class Settings(BaseSettings):
             not self.SOCIAL_SIMULATED
             and bool(self.SOCIAL_RENDER_URL)
             and bool(self.SOCIAL_RENDER_SIGNING_KEY)
+        )
+
+    @property
+    def is_buffer_live(self) -> bool:
+        """Real publishing via Buffer requires the flag plus a key + org id. The
+        flag alone (without credentials) falls back to simulation, never crashes."""
+        return (
+            self.SOCIAL_PUBLISH_VIA_BUFFER
+            and bool(self.BUFFER_API_KEY)
+            and bool(self.BUFFER_ORG_ID)
         )
 
     # ─── CORS ───────────────────────────────────────────────────────────
