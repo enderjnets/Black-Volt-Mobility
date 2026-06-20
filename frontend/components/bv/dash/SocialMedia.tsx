@@ -261,6 +261,11 @@ export function SocialMedia() {
     { id: "accounts", label: t("dash.social.tab.accounts"), icon: "share-2" },
   ];
 
+  // Posts awaiting the owner's decision (auto-generated daily + manual drafts alike).
+  const pendingDaily = posts.filter((p) =>
+    ["draft", "render_requested", "rendered", "approved", "scheduled"].includes(p.status),
+  );
+
   return (
     <div style={{ padding: "20px 16px 120px", maxWidth: 920, margin: "0 auto" }}>
       <p style={{ color: "var(--fg2)", fontSize: 14, margin: "0 0 16px", fontFamily: "var(--font-sans)" }}>
@@ -350,41 +355,69 @@ export function SocialMedia() {
       )}
 
       {tab === "create" && (
-        <Panel title={t("dash.social.generate.title")} icon="sparkles">
-          <label style={{ display: "block" }}>
-            <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>
-              {t("dash.social.generate.topic")}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Panel title={t("dash.social.generate.title")} icon="sparkles">
+            <label style={{ display: "block" }}>
+              <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>
+                {t("dash.social.generate.topic")}
+              </div>
+              <textarea
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder={t("dash.social.generate.placeholder")}
+                rows={2}
+                maxLength={200}
+                style={{
+                  width: "100%",
+                  background: "var(--obsidian-3)",
+                  border: "1px solid var(--line-strong)",
+                  borderRadius: "var(--radius-md)",
+                  color: "var(--arctic)",
+                  fontSize: 14,
+                  fontFamily: "var(--font-sans)",
+                  padding: "12px 14px",
+                  resize: "vertical",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </label>
+            <div style={{ marginTop: 12 }}>
+              <Button variant="solid" icon="sparkles" onClick={onGenerate} disabled={isBusy("gen")} full>
+                {isBusy("gen") ? t("dash.social.generate.generating") : t("dash.social.generate.btn")}
+              </Button>
             </div>
-            <textarea
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder={t("dash.social.generate.placeholder")}
-              rows={2}
-              maxLength={200}
-              style={{
-                width: "100%",
-                background: "var(--obsidian-3)",
-                border: "1px solid var(--line-strong)",
-                borderRadius: "var(--radius-md)",
-                color: "var(--arctic)",
-                fontSize: 14,
-                fontFamily: "var(--font-sans)",
-                padding: "12px 14px",
-                resize: "vertical",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </label>
-          <div style={{ marginTop: 12 }}>
-            <Button variant="solid" icon="sparkles" onClick={onGenerate} disabled={isBusy("gen")} full>
-              {isBusy("gen") ? t("dash.social.generate.generating") : t("dash.social.generate.btn")}
-            </Button>
-          </div>
-          <p style={{ fontSize: 12, color: "var(--fg3)", marginTop: 12, lineHeight: 1.5 }}>
-            {t("dash.social.generate.hint")}
-          </p>
-        </Panel>
+            <p style={{ fontSize: 12, color: "var(--fg3)", marginTop: 12, lineHeight: 1.5 }}>
+              {t("dash.social.generate.hint")}
+            </p>
+          </Panel>
+
+          <Panel title={t("dash.social.daily.title")} icon="sparkles">
+            <p style={{ fontSize: 12, color: "var(--fg3)", margin: "0 0 12px", lineHeight: 1.5 }}>
+              {t("dash.social.daily.hint")}
+            </p>
+            {pendingDaily.length === 0 ? (
+              <p style={{ color: "var(--fg3)", fontSize: 14, margin: 0 }}>
+                {t("dash.social.daily.empty")}
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {pendingDaily.map((p) => (
+                  <PostCard
+                    key={p.id}
+                    post={p}
+                    isBusy={isBusy}
+                    onRender={() => postAction(`render-${p.id}`, () => renderPost(p.id))}
+                    onApprove={() => postAction(`approve-${p.id}`, () => approvePost(p.id))}
+                    onReject={() => postAction(`reject-${p.id}`, () => rejectPost(p.id))}
+                    onPublish={() => postAction(`publish-${p.id}`, () => publishPost(p.id))}
+                    onDelete={() => postAction(`delete-${p.id}`, () => deletePost(p.id))}
+                  />
+                ))}
+              </div>
+            )}
+          </Panel>
+        </div>
       )}
 
       {tab === "queue" && (

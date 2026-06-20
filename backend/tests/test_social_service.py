@@ -127,6 +127,53 @@ async def test_publish_due_publishes_past_scheduled(db):
     assert any(p["id"] == post["id"] for p in rows)
 
 
+# ── daily auto-generation ─────────────────────────────────────────────────────
+def test_daily_angle_rotates():
+    assert S._daily_angle(0) != S._daily_angle(1)
+    # Wraps modulo the rotation length.
+    assert S._daily_angle(len(S._DAILY_ANGLES)) == S._daily_angle(0)
+
+
+def test_daily_prompt_contract_still_parses():
+    # The MrBeast prompt rewrite must keep the 3-line SCRIPT/CAPTION/HASHTAGS contract.
+    sample = (
+        "SCRIPT: Stop scrolling.\n"
+        "CAPTION: You won't believe this ride 🚗✨\n"
+        "HASHTAGS: #a #b #c"
+    )
+    out = S._parse_brief(sample, {"hashtags": "#fallback"})
+    assert out["script"] == "Stop scrolling."
+    assert out["caption"] == "You won't believe this ride 🚗✨"
+    assert out["hashtags"] == "#a #b #c"
+
+
+async def test_generate_daily_for_all_tenants_creates_and_renders(db):
+    # Fresh tenant with no posts today, so the 24h idempotency guard doesn't skip it.
+    from app.services.tenancy import create_tenant_for
+
+    tid = (await create_tenant_for(db, name="Daily Auto Co")).id
+    n = await S.generate_daily_for_all_tenants(db)
+    assert n >= 1
+    posts = await S.list_posts(db, tenant_id=tid)
+    assert len(posts) == 1
+    # The post is rendered (auto-render immediate) and never auto-published.
+    assert posts[0]["status"] == "rendered" and posts[0]["simulated_render"] is True
+    assert posts[0]["status"] != "published"
+
+
+async def test_daily_generation_is_idempotent_same_day(db):
+    from app.services.tenancy import create_tenant_for
+
+    tid = (await create_tenant_for(db, name="Idempotent Co")).id
+    await S.generate_daily_for_all_tenants(db)
+    after_first = len(await S.list_posts(db, tenant_id=tid))
+    assert after_first == 1
+    # A second run the same day must create nothing more for this tenant (24h guard).
+    await S.generate_daily_for_all_tenants(db)
+    after_second = len(await S.list_posts(db, tenant_id=tid))
+    assert after_second == after_first
+
+
 async def test_draft_reply_is_inert_to_prompt_injection(db):
     """A comment whose text tries to hijack the model still gets the fixed,
     on-brand canned reply (template mode) — the untrusted text never steers it."""

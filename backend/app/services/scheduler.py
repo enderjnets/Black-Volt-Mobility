@@ -34,6 +34,18 @@ async def _publish_due_job() -> None:
         logger.warning("publish_due job failed: %s", e)
 
 
+async def _daily_generate_job() -> None:
+    """Generate + render one MrBeast-style post per tenant per day (09:00 Denver)."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import social
+
+        async with get_session_factory()() as db:
+            await social.generate_daily_for_all_tenants(db)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("daily_generate job failed: %s", e)
+
+
 def start() -> None:
     """Start the scheduler. Best-effort: a missing APScheduler or any startup
     error degrades to 'no background publishing' rather than breaking the app."""
@@ -50,6 +62,14 @@ def start() -> None:
         sched.add_job(
             _publish_due_job, "interval", minutes=2, id="social_publish_due",
             max_instances=1, coalesce=True,
+        )
+        # One MrBeast-style auto-post per tenant each morning (Denver local time).
+        from apscheduler.triggers.cron import CronTrigger
+
+        sched.add_job(
+            _daily_generate_job,
+            CronTrigger(hour=9, minute=0, timezone="America/Denver"),
+            id="social_daily_generate", max_instances=1, coalesce=True,
         )
         sched.start()
         _scheduler = sched
