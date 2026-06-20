@@ -153,6 +153,10 @@ export async function listAccounts(): Promise<SocialAccount[]> {
   return jget<SocialAccount[]>("/v1/social/accounts");
 }
 
+export async function syncBufferChannels(): Promise<SocialAccount[]> {
+  return jsend<SocialAccount[]>("/v1/social/accounts/sync", "POST");
+}
+
 export async function getAnalytics(): Promise<SocialAnalytics> {
   return jget<SocialAnalytics>("/v1/social/analytics");
 }
