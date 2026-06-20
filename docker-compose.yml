@@ -116,6 +116,10 @@ services:
       TIKTOK_CLIENT_KEY: ${TIKTOK_CLIENT_KEY:-}
       TIKTOK_CLIENT_SECRET: ${TIKTOK_CLIENT_SECRET:-}
       TIKTOK_DIRECT_PUBLISH: ${TIKTOK_DIRECT_PUBLISH:-false}
+      # Buffer publishing — approved posts go out via the owner's Buffer account.
+      BUFFER_API_KEY: ${BUFFER_API_KEY:-}
+      BUFFER_ORG_ID: ${BUFFER_ORG_ID:-}
+      SOCIAL_PUBLISH_VIA_BUFFER: ${SOCIAL_PUBLISH_VIA_BUFFER:-false}
     volumes:
       # Service-account JSON for Google Calendar (gitignored; absent in dev).
       - ./secrets:/secrets:ro
