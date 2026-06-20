@@ -10,6 +10,9 @@ import uuid
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 os.environ["SOCIAL_SIMULATED"] = "true"
+os.environ["SOCIAL_PUBLISH_VIA_BUFFER"] = "false"
+os.environ["BUFFER_API_KEY"] = ""
+os.environ["BUFFER_ORG_ID"] = ""
 # Force the deterministic template path (no real Kimi/MiniMax call).
 os.environ["KIMI_API_KEY"] = ""
 os.environ["MINIMAX_API_KEY"] = ""
@@ -201,3 +204,66 @@ async def test_sync_buffer_channels_upserts_targets_only(db, monkeypatch):
         )
     )).scalars().first()
     assert row is not None and row.external_account_id == "ch-ig"
+
+
+@pytest_asyncio.fixture
+async def _approved_ig_post(db):
+    """A post with a real-looking media_path, targeting instagram, approved."""
+    tid = (await get_default_tenant(db)).id
+    post = await S.create_post(
+        db, tenant_id=tid,
+        content={"caption": "Ride in style", "hashtags": "#blackvolt"},
+        lang="en", targets=["instagram"],
+    )
+    row = await S._get_post(db, tenant_id=tid, post_id=post["id"])
+    row.media_path = "social/test.mp4"
+    row.status = "approved"
+    await db.commit()
+    return tid, post["id"]
+
+
+@pytest.mark.asyncio
+async def test_do_publish_via_buffer(db, monkeypatch, _approved_ig_post):
+    from app.services import social_buffer
+    tid, pid = _approved_ig_post
+    existing = (await db.execute(
+        S.select(S.SocialAccount).where(
+            S.SocialAccount.tenant_id == tid, S.SocialAccount.platform == "instagram"
+        )
+    )).scalar_one_or_none()
+    if existing:
+        existing.external_account_id = "ch-ig"
+        existing.display_name = "bv"
+        existing.status = "connected"
+    else:
+        db.add(S.SocialAccount(
+            tenant_id=tid, platform="instagram", external_account_id="ch-ig",
+            display_name="bv", status="connected",
+        ))
+    await db.commit()
+    calls = []
+
+    async def fake_create(**kw):
+        calls.append(kw)
+        return {"id": f"buf-{kw['service']}", "status": "queued", "due_at": None}
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", fake_create)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert out["status"] == "published"
+    assert out["external_ids"]["instagram"] == "buf-instagram"
+    assert calls[0]["mode"] == "shareNow"
+    assert "/media/social/test.mp4" in calls[0]["video_url"]
+    assert calls[0]["text"] == "Ride in style\n\n#blackvolt"
+
+
+@pytest.mark.asyncio
+async def test_do_publish_buffer_no_channel_marks_failed(db, monkeypatch, _approved_ig_post):
+    from app.services import social_buffer
+    tid, pid = _approved_ig_post
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    # No connected SocialAccount for instagram → nothing to publish to.
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert out["status"] == "failed"
+    assert out["external_ids"] == {}

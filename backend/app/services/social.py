@@ -491,10 +491,52 @@ def _public_media_url(media_path: str | None) -> str | None:
     return f"{base}/media/{rel}"
 
 
-def _do_publish(row: SocialPost) -> None:
-    """Mark a post published. Stage 1: simulated external ids per target. Stage 3
-    swaps in real Meta/TikTok calls via social_platforms."""
+async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
+    """Publish a post. When Buffer is live, push each connected target's video to
+    Buffer (IG as a Reel) and store the Buffer post id; otherwise simulate."""
     targets = row.targets or list(_DEFAULT_TARGETS)
+    if social_buffer.is_live():
+        accounts = {
+            r.platform: r
+            for r in (
+                await db.execute(
+                    select(SocialAccount).where(SocialAccount.tenant_id == row.tenant_id)
+                )
+            ).scalars().all()
+        }
+        video_url = _public_media_url(row.media_path)
+        text = _compose_text(row.caption, row.hashtags)
+        mode = "customScheduled" if row.scheduled_at else "shareNow"
+        due_at = row.scheduled_at if row.scheduled_at else None
+        ext = dict(row.external_ids or {})
+        published_any = False
+        if video_url:
+            for platform in targets:
+                acct = accounts.get(platform)
+                if not acct or acct.status != "connected" or not acct.external_account_id:
+                    continue
+                try:
+                    res = await social_buffer.create_post(
+                        channel_id=acct.external_account_id, service=platform,
+                        text=text, video_url=video_url, mode=mode, due_at=due_at,
+                    )
+                except social_buffer.BufferError as e:
+                    logger.error(
+                        "buffer publish failed post=%s platform=%s: %s",
+                        row.id, platform, e,
+                    )
+                    continue
+                if res.get("id"):
+                    ext[platform] = res["id"]
+                    published_any = True
+        row.external_ids = ext
+        if published_any:
+            row.status = "published"
+            row.published_at = _now()
+        else:
+            row.status = "failed"
+        return
+    # Simulated fallback: deterministic-ish sentinel ids per target.
     ext = dict(row.external_ids or {})
     for t in targets:
         ext[t] = f"sim_{secrets.token_hex(4)}"
@@ -509,7 +551,7 @@ async def publish_post(db: AsyncSession, *, tenant_id: int, post_id: int) -> dic
         return None
     if row.status not in ("approved", "scheduled"):
         return {"error": "not_approved", "post": _post_out(row)}
-    _do_publish(row)
+    await _do_publish(db, row)
     await db.commit()
     await db.refresh(row)
     return _post_out(row)
@@ -858,7 +900,7 @@ async def publish_due(db: AsyncSession) -> int:
         # UPDATE SKIP LOCKED there if the backend is ever scaled past one instance.
         if row.status != "scheduled":
             continue
-        _do_publish(row)
+        await _do_publish(db, row)
         n += 1
     if n:
         await db.commit()

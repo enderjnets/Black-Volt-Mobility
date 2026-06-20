@@ -1,14 +1,32 @@
 """Buffer adapter + config tests (no network; GraphQL layer mocked)."""
 import os
+from datetime import UTC, datetime
 
-os.environ["BUFFER_API_KEY"] = "test-buffer-key"
-os.environ["BUFFER_ORG_ID"] = "org-test"
-os.environ["SOCIAL_PUBLISH_VIA_BUFFER"] = "true"
-os.environ["SOCIAL_SIMULATED"] = "false"
+import pytest
 
-from app.config import get_settings  # noqa: E402
+from app.config import get_settings
+from app.services import social_buffer as B
 
-get_settings.cache_clear()
+_BUFFER_ENV = {
+    "BUFFER_API_KEY": "test-buffer-key",
+    "BUFFER_ORG_ID": "org-test",
+    "SOCIAL_PUBLISH_VIA_BUFFER": "true",
+    "SOCIAL_SIMULATED": "false",
+}
+
+
+@pytest.fixture(autouse=True)
+def _buffer_env():
+    saved = {k: os.environ.get(k) for k in _BUFFER_ENV}
+    os.environ.update(_BUFFER_ENV)
+    get_settings.cache_clear()
+    yield
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+    get_settings.cache_clear()
 
 
 def test_is_buffer_live_true_when_configured():
@@ -22,13 +40,6 @@ def test_is_buffer_live_false_without_key(monkeypatch):
     from app.config import Settings
     s = Settings(BUFFER_API_KEY="", BUFFER_ORG_ID="org", SOCIAL_PUBLISH_VIA_BUFFER=True)
     assert s.is_buffer_live is False
-
-
-from datetime import UTC, datetime  # noqa: E402
-
-import pytest  # noqa: E402
-
-from app.services import social_buffer as B  # noqa: E402
 
 
 @pytest.mark.asyncio
