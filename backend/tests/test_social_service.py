@@ -14,6 +14,7 @@ os.environ["SOCIAL_SIMULATED"] = "true"
 os.environ["KIMI_API_KEY"] = ""
 os.environ["MINIMAX_API_KEY"] = ""
 
+import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
@@ -158,3 +159,45 @@ async def test_posts_are_tenant_scoped(db):
     # Cross-tenant fetch by id returns nothing.
     other_id = b_posts[0]["id"]
     assert await S.request_render(db, tenant_id=tid_a, post_id=other_id) is None
+
+
+def test_compose_text():
+    assert S._compose_text("Hi", "#a #b") == "Hi\n\n#a #b"
+    assert S._compose_text("Hi", None) == "Hi"
+    assert S._compose_text(None, "#a") == "#a"
+    assert S._compose_text("  ", "") == ""
+
+
+def test_public_media_url_rejects_bad_and_builds_good():
+    assert S._public_media_url(None) is None
+    assert S._public_media_url("simulated://sample.mp4") is None
+    assert S._public_media_url("../etc/passwd") is None
+    assert S._public_media_url("https://evil.com/x.mp4") is None
+    url = S._public_media_url("social/a.mp4")
+    assert url is not None and url.endswith("/media/social/a.mp4")
+
+
+@pytest.mark.asyncio
+async def test_sync_buffer_channels_upserts_targets_only(db, monkeypatch):
+    from app.services import social_buffer
+
+    async def fake_list():
+        return [
+            {"id": "ch-ig", "service": "instagram", "name": "bv",
+             "display_name": "bv", "connected": True},
+            {"id": "ch-yt", "service": "youtube", "name": "yt",
+             "display_name": "yt", "connected": True},
+        ]
+
+    monkeypatch.setattr(social_buffer, "list_channels", fake_list)
+    tid = (await get_default_tenant(db)).id
+    out = await S.sync_buffer_channels(db, tenant_id=tid)
+    ig = next(a for a in out if a["platform"] == "instagram")
+    assert ig["connected"] is True and ig["status"] == "connected"
+    assert all(a["platform"] != "youtube" for a in out)
+    row = (await db.execute(
+        S.select(S.SocialAccount).where(
+            S.SocialAccount.tenant_id == tid, S.SocialAccount.platform == "instagram"
+        )
+    )).scalars().first()
+    assert row is not None and row.external_account_id == "ch-ig"

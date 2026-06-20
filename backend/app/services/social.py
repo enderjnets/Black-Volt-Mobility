@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import SocialAccount, SocialInteraction, SocialPost
 from app.models.social import SOCIAL_PLATFORMS
-from app.services import llm, render_client
+from app.services import llm, render_client, social_buffer
 from app.services.tenancy import get_tenant
 
 logger = logging.getLogger("blackvolt.social")
@@ -473,6 +473,24 @@ async def reject_post(db: AsyncSession, *, tenant_id: int, post_id: int) -> dict
     return _post_out(row)
 
 
+def _compose_text(caption: str | None, hashtags: str | None) -> str:
+    parts = [p.strip() for p in (caption, hashtags) if p and p.strip()]
+    return "\n\n".join(parts)
+
+
+def _public_media_url(media_path: str | None) -> str | None:
+    """Absolute public URL for a rendered asset, or None if it isn't safe to send
+    to Buffer. Rejects the simulated sentinel, any scheme/absolute URL, and any
+    path that escapes our /media mount (no SSRF, no posting a placeholder)."""
+    if not media_path or "://" in media_path or ".." in media_path:
+        return None
+    rel = media_path.lstrip("/")
+    if not rel:
+        return None
+    base = get_settings().PUBLIC_BASE_URL.rstrip("/")
+    return f"{base}/media/{rel}"
+
+
 def _do_publish(row: SocialPost) -> None:
     """Mark a post published. Stage 1: simulated external ids per target. Stage 3
     swaps in real Meta/TikTok calls via social_platforms."""
@@ -757,6 +775,35 @@ async def list_accounts(db: AsyncSession, *, tenant_id: int) -> list[dict]:
             out.append({"id": None, "platform": p, "display_name": None,
                         "status": "disconnected", "connected": False, "token_expires_at": None})
     return out
+
+
+async def sync_buffer_channels(db: AsyncSession, *, tenant_id: int) -> list[dict]:
+    """Pull the owner's Buffer channels and upsert a SocialAccount per channel
+    whose service we target (IG/FB/TikTok). Buffer holds the OAuth tokens, so we
+    only store its channel id + handle + connection state — never a token."""
+    channels = await social_buffer.list_channels()
+    existing = {
+        r.platform: r
+        for r in (
+            await db.execute(
+                select(SocialAccount).where(SocialAccount.tenant_id == tenant_id)
+            )
+        ).scalars().all()
+    }
+    for ch in channels:
+        platform = ch.get("service")
+        if platform not in SOCIAL_PLATFORMS:
+            continue
+        row = existing.get(platform)
+        if row is None:
+            row = SocialAccount(tenant_id=tenant_id, platform=platform)
+            db.add(row)
+            existing[platform] = row
+        row.external_account_id = ch.get("id")
+        row.display_name = ch.get("display_name")
+        row.status = "connected" if ch.get("connected") else "disconnected"
+    await db.commit()
+    return await list_accounts(db, tenant_id=tenant_id)
 
 
 async def analytics(db: AsyncSession, *, tenant_id: int) -> dict:
