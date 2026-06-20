@@ -193,7 +193,11 @@ async def test_sync_buffer_channels_upserts_targets_only(db, monkeypatch):
         ]
 
     monkeypatch.setattr(social_buffer, "list_channels", fake_list)
-    tid = (await get_default_tenant(db)).id
+    t = Tenant(slug=f"t-{uuid.uuid4().hex[:8]}", name="Sync Test")
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    tid = t.id
     out = await S.sync_buffer_channels(db, tenant_id=tid)
     ig = next(a for a in out if a["platform"] == "instagram")
     assert ig["connected"] is True and ig["status"] == "connected"
@@ -209,7 +213,11 @@ async def test_sync_buffer_channels_upserts_targets_only(db, monkeypatch):
 @pytest_asyncio.fixture
 async def _approved_ig_post(db):
     """A post with a real-looking media_path, targeting instagram, approved."""
-    tid = (await get_default_tenant(db)).id
+    t = Tenant(slug=f"t-{uuid.uuid4().hex[:8]}", name="Buffer Test")
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    tid = t.id
     post = await S.create_post(
         db, tenant_id=tid,
         content={"caption": "Ride in style", "hashtags": "#blackvolt"},
