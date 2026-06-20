@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin, resolve_tenant_id
 from app.db.base import get_db
-from app.services import social
+from app.services import social, social_buffer
 
 router = APIRouter(tags=["social"])
 
@@ -266,6 +266,25 @@ async def list_accounts(
 ):
     tenant_id = await resolve_tenant_id(db, payload)
     return await social.list_accounts(db, tenant_id=tenant_id)
+
+
+@router.post("/social/accounts/sync")
+async def sync_accounts(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_admin),
+):
+    if not social_buffer.is_live():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="buffer_not_configured"
+        )
+    tenant_id = await resolve_tenant_id(db, payload)
+    try:
+        return await social.sync_buffer_channels(db, tenant_id=tenant_id)
+    except social_buffer.BufferError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="buffer_unavailable"
+        ) from None
 
 
 @router.get("/social/analytics")

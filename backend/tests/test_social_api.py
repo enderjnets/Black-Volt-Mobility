@@ -156,3 +156,17 @@ def test_render_webhook_rejects_unsigned():
     # No signing key configured in tests → every callback is refused.
     r = client.post("/api/v1/social/webhooks/render", json={"post_id": 1})
     assert r.status_code == 403
+
+
+def test_accounts_sync_requires_admin():
+    assert client.post("/api/v1/social/accounts/sync").status_code == 401
+    d = _driver()
+    assert d.post("/api/v1/social/accounts/sync").status_code == 403
+
+
+def test_accounts_sync_requires_config():
+    # This suite runs with SOCIAL_SIMULATED=true and no Buffer key → not live.
+    c = _owner()
+    r = c.post("/api/v1/social/accounts/sync")
+    assert r.status_code == 400
+    assert r.json()["detail"] == "buffer_not_configured"
