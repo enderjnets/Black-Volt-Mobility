@@ -27,9 +27,20 @@ query Channels($orgId: OrganizationId!) {
 }
 """
 
+# createPost returns a PostActionPayload union: PostActionSuccess wraps the Post,
+# every other member is a typed error carrying a human message.
 _CREATE_POST_M = """
 mutation CreatePost($input: CreatePostInput!) {
-  createPost(input: $input) { id status dueAt channelId }
+  createPost(input: $input) {
+    __typename
+    ... on PostActionSuccess { post { id status dueAt channelId } }
+    ... on InvalidInputError { message }
+    ... on UnauthorizedError { message }
+    ... on NotFoundError { message }
+    ... on LimitReachedError { message }
+    ... on RestProxyError { message code }
+    ... on UnexpectedError { message }
+  }
 }
 """
 
@@ -114,5 +125,11 @@ async def create_post(
     if meta_fn:
         input_obj["metadata"] = meta_fn()
     data = await _gql(_CREATE_POST_M, {"input": input_obj})
-    post = data.get("createPost") or {}
-    return {"id": post.get("id"), "status": post.get("status"), "due_at": post.get("dueAt")}
+    result = data.get("createPost") or {}
+    if result.get("__typename") == "PostActionSuccess":
+        post = result.get("post") or {}
+        return {"id": post.get("id"), "status": post.get("status"), "due_at": post.get("dueAt")}
+    # Any other union member is a terminal rejection from Buffer (bad input, limit
+    # reached, …) — retrying won't help, so surface it as a non-transient error.
+    msg = result.get("message") or result.get("__typename") or "create_failed"
+    raise BufferError(f"buffer_create_rejected: {msg}")

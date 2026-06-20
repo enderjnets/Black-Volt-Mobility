@@ -48,7 +48,10 @@ async def test_create_post_builds_ig_reel_sharenow(monkeypatch):
 
     async def fake_gql(query, variables):
         captured["v"] = variables
-        return {"createPost": {"id": "bufpost1", "status": "queued", "dueAt": None}}
+        return {"createPost": {
+            "__typename": "PostActionSuccess",
+            "post": {"id": "bufpost1", "status": "queued", "dueAt": None},
+        }}
 
     monkeypatch.setattr(B, "_gql", fake_gql)
     res = await B.create_post(
@@ -71,7 +74,10 @@ async def test_create_post_scheduled_sets_dueat(monkeypatch):
 
     async def fake_gql(query, variables):
         captured["v"] = variables
-        return {"createPost": {"id": "p2", "status": "scheduled"}}
+        return {"createPost": {
+            "__typename": "PostActionSuccess",
+            "post": {"id": "p2", "status": "scheduled", "dueAt": None},
+        }}
 
     monkeypatch.setattr(B, "_gql", fake_gql)
     dt = datetime(2030, 1, 1, 12, 0, tzinfo=UTC)
@@ -80,6 +86,21 @@ async def test_create_post_scheduled_sets_dueat(monkeypatch):
         video_url="https://h/m.mp4", mode="customScheduled", due_at=dt,
     )
     assert captured["v"]["input"]["dueAt"] == dt.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_create_post_raises_on_union_error(monkeypatch):
+    async def fake_gql(query, variables):
+        return {"createPost": {"__typename": "InvalidInputError", "message": "bad video"}}
+
+    monkeypatch.setattr(B, "_gql", fake_gql)
+    with pytest.raises(B.BufferError) as ei:
+        await B.create_post(
+            channel_id="ch1", service="instagram", text="x",
+            video_url="https://h/m.mp4", mode="shareNow",
+        )
+    assert "bad video" in str(ei.value)
+    assert ei.value.transient is False
 
 
 @pytest.mark.asyncio
