@@ -41,6 +41,10 @@ _NETWORK_META = {
 class BufferError(Exception):
     """A Buffer HTTP or GraphQL failure (message is sanitized — never the key)."""
 
+    def __init__(self, message: str, *, transient: bool = False):
+        super().__init__(message)
+        self.transient = transient
+
 
 def is_live() -> bool:
     return get_settings().is_buffer_live
@@ -61,7 +65,7 @@ async def _gql(query: str, variables: dict) -> dict:
             data = resp.json()
     except Exception as e:
         logger.error("buffer request failed: %s", type(e).__name__)
-        raise BufferError("buffer_request_failed") from e
+        raise BufferError("buffer_request_failed", transient=True) from e
     if data.get("errors"):
         msgs = "; ".join(str(err.get("message", "?")) for err in data["errors"])
         logger.error("buffer graphql error: %s", msgs)

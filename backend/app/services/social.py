@@ -507,9 +507,10 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
         video_url = _public_media_url(row.media_path)
         text = _compose_text(row.caption, row.hashtags)
         mode = "customScheduled" if row.scheduled_at else "shareNow"
-        due_at = row.scheduled_at if row.scheduled_at else None
+        due_at = row.scheduled_at
         ext = dict(row.external_ids or {})
         published_any = False
+        transient_failure = False
         if video_url:
             for platform in targets:
                 acct = accounts.get(platform)
@@ -521,9 +522,10 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
                         text=text, video_url=video_url, mode=mode, due_at=due_at,
                     )
                 except social_buffer.BufferError as e:
+                    if getattr(e, "transient", False):
+                        transient_failure = True
                     logger.error(
-                        "buffer publish failed post=%s platform=%s: %s",
-                        row.id, platform, e,
+                        "buffer publish failed post=%s platform=%s: %s", row.id, platform, e
                     )
                     continue
                 if res.get("id"):
@@ -533,6 +535,11 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
         if published_any:
             row.status = "published"
             row.published_at = _now()
+        elif transient_failure:
+            # Transient Buffer/transport error — leave the post in its current
+            # status so the scheduler retries on the next tick, rather than
+            # burning an approved post to a terminal `failed`.
+            pass
         else:
             row.status = "failed"
         return
@@ -887,17 +894,15 @@ async def publish_due(db: AsyncSession) -> int:
     now = _now()
     rows = (
         await db.execute(
-            select(SocialPost).where(
-                SocialPost.status == "scheduled", SocialPost.scheduled_at <= now
-            )
+            select(SocialPost)
+            .where(SocialPost.status == "scheduled", SocialPost.scheduled_at <= now)
+            .with_for_update(skip_locked=True)
         )
     ).scalars().all()
     n = 0
     for row in rows:
         # Re-assert the status inside the loop: idempotency guard so a post can't be
-        # double-published if it changed between the select and here. Critical once
-        # Stage 3 makes _do_publish a real Meta/TikTok call — add SELECT ... FOR
-        # UPDATE SKIP LOCKED there if the backend is ever scaled past one instance.
+        # double-published between the lock acquisition and the publish call.
         if row.status != "scheduled":
             continue
         await _do_publish(db, row)

@@ -275,3 +275,25 @@ async def test_do_publish_buffer_no_channel_marks_failed(db, monkeypatch, _appro
     out = await S.publish_post(db, tenant_id=tid, post_id=pid)
     assert out["status"] == "failed"
     assert out["external_ids"] == {}
+
+
+@pytest.mark.asyncio
+async def test_do_publish_transient_buffer_error_keeps_status(db, monkeypatch, _approved_ig_post):
+    from app.services import social_buffer
+    tid, pid = _approved_ig_post
+    db.add(S.SocialAccount(
+        tenant_id=tid, platform="instagram", external_account_id="ch-ig",
+        display_name="bv", status="connected",
+    ))
+    await db.commit()
+
+    async def boom(**kw):
+        raise social_buffer.BufferError("buffer_request_failed", transient=True)
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", boom)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    # Transient failure must NOT mark the post failed — it stays publishable.
+    assert out["status"] != "failed"
+    assert out["external_ids"] == {}

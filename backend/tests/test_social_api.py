@@ -170,3 +170,19 @@ def test_accounts_sync_requires_config():
     r = c.post("/api/v1/social/accounts/sync")
     assert r.status_code == 400
     assert r.json()["detail"] == "buffer_not_configured"
+
+
+def test_accounts_sync_502_on_buffer_error(monkeypatch):
+    from app.services import social as social_svc
+    from app.services import social_buffer
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+
+    async def boom(*args, **kwargs):
+        raise social_buffer.BufferError("buffer_request_failed", transient=True)
+
+    monkeypatch.setattr(social_svc, "sync_buffer_channels", boom)
+    c = _owner()
+    r = c.post("/api/v1/social/accounts/sync")
+    assert r.status_code == 502
+    assert r.json()["detail"] == "buffer_unavailable"
