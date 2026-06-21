@@ -154,7 +154,7 @@ export async function generateFromImage(
 
 export async function updatePost(
   id: number,
-  body: Partial<{ script: string; caption: string; hashtags: string; targets: SocialPlatform[]; scheduled_at: string | null }>,
+  body: Partial<{ script: string; caption: string; hashtags: string; targets: SocialPlatform[]; reference_image_paths: string[]; scheduled_at: string | null }>,
 ): Promise<SocialPost> {
   return jsend<SocialPost>(`/v1/social/posts/${id}`, "PATCH", body);
 }

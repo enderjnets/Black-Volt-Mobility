@@ -532,6 +532,17 @@ async def update_post(
         row.hashtags = fields["hashtags"]
     if "targets" in fields and fields["targets"] is not None:
         row.targets = _clean_targets(fields["targets"])
+    if "reference_image_paths" in fields and fields["reference_image_paths"] is not None:
+        new_refs = _clean_ref_paths(tenant_id, fields["reference_image_paths"])
+        if new_refs != (row.reference_image_paths or []):
+            row.reference_image_paths = new_refs
+            # Images changed → the existing render no longer matches. Send the post
+            # back to draft so the owner re-renders, and clear stale progress.
+            if row.status in ("rendered", "approved", "scheduled"):
+                row.status = "draft"
+                row.scheduled_at = None
+            row.render_progress = None
+            row.render_stage = None
     # scheduled_at is only meaningful for an already-scheduled post (editing its
     # time). Scheduling itself is approve_post's job, so ignore it otherwise.
     if "scheduled_at" in fields and row.status == "scheduled":
@@ -581,19 +592,35 @@ def _template_video_prompts(brand: dict, topic: str) -> list[str]:
 
 
 async def _video_prompts(
-    db: AsyncSession, *, tenant_id: int, topic: str | None, lang: str
+    db: AsyncSession, *, tenant_id: int, topic: str | None, lang: str,
+    correction: str | None = None,
 ) -> list[str]:
     """3-4 English cinematic visual prompts for Kling, grounded in the brand. AI when
-    a key is set, deterministic template otherwise. `topic` is treated as data."""
+    a key is set, deterministic template otherwise. `topic` is treated as data. The
+    owner's accumulated lessons (and a per-post `correction` after a rejection) steer
+    the visuals so re-rendering reflects "I don't like these images" feedback."""
     topic = _sanitize_topic(topic)
     brand = await _brand_ctx(db, tenant_id)
+    lessons = await _tenant_lessons(db, tenant_id)
     template = _template_video_prompts(brand, topic)
     providers = _providers()
     if providers:
         system = _VP_SYSTEM.format(
             brand=brand["name"], vehicle=brand["vehicle"], city=brand["city"]
         )
+        if lessons:
+            bullets = "\n".join(f"- {ln}" for ln in lessons)
+            system += (
+                " The owner has given FEEDBACK on past posts — apply these as the "
+                "HIGHEST-priority visual/style preferences and never violate them:\n"
+                f"{bullets}"
+            )
         prompt = f"<topic>{topic or 'premium electric chauffeur arrival'}</topic>"
+        if correction:
+            prompt += (
+                "\nThe previous visuals were REJECTED by the owner. You MUST "
+                f"specifically address this in the new shots: {correction}"
+            )
         for model, base_url, api_key in providers:
             try:
                 text = await llm.text_complete(
@@ -617,7 +644,10 @@ async def request_render(db: AsyncSession, *, tenant_id: int, post_id: int) -> d
     row = await _get_post(db, tenant_id=tenant_id, post_id=post_id)
     if row is None:
         return None
-    prompts = await _video_prompts(db, tenant_id=tenant_id, topic=row.topic, lang=row.lang)
+    prompts = await _video_prompts(
+        db, tenant_id=tenant_id, topic=row.topic, lang=row.lang,
+        correction=row.rejection_reason,
+    )
     # Public URLs for any owner-uploaded reference images, so the worker (and
     # MiniMax i2v, which fetches the URL itself) can animate them into the video.
     ref_urls = [

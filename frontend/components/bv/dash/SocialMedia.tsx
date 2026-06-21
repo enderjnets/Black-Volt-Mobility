@@ -27,6 +27,7 @@ import {
   renderPost,
   sendReply,
   syncBufferChannels,
+  updatePost,
   uploadReferenceImage,
 } from "@/lib/social";
 
@@ -682,6 +683,7 @@ export function SocialMedia() {
                     onRender={() => postAction(`render-${p.id}`, () => renderPost(p.id))}
                     onApprove={() => postAction(`approve-${p.id}`, () => approvePost(p.id))}
                     onReject={(reason) => postAction(`reject-${p.id}`, () => rejectPost(p.id, reason))}
+                    onUpdateRefs={(paths) => postAction(`refs-${p.id}`, () => updatePost(p.id, { reference_image_paths: paths }))}
                     onPublish={() => postAction(`publish-${p.id}`, () => publishPost(p.id))}
                     onDelete={() => postAction(`delete-${p.id}`, () => deletePost(p.id))}
                   />
@@ -707,6 +709,7 @@ export function SocialMedia() {
                 onRender={() => postAction(`render-${p.id}`, () => renderPost(p.id))}
                 onApprove={() => postAction(`approve-${p.id}`, () => approvePost(p.id))}
                 onReject={(reason) => postAction(`reject-${p.id}`, () => rejectPost(p.id, reason))}
+                onUpdateRefs={(paths) => postAction(`refs-${p.id}`, () => updatePost(p.id, { reference_image_paths: paths }))}
                 onPublish={() => postAction(`publish-${p.id}`, () => publishPost(p.id))}
                 onDelete={() => postAction(`delete-${p.id}`, () => deletePost(p.id))}
               />
@@ -817,6 +820,7 @@ function PostCard({
   onRender,
   onApprove,
   onReject,
+  onUpdateRefs,
   onPublish,
   onDelete,
 }: {
@@ -825,6 +829,7 @@ function PostCard({
   onRender: () => void;
   onApprove: () => void;
   onReject: (reason?: string) => void;
+  onUpdateRefs: (paths: string[]) => void;
   onPublish: () => void;
   onDelete: () => void;
 }) {
@@ -832,8 +837,33 @@ function PostCard({
   const s = post.status;
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
-  const anyBusy = ["render", "approve", "reject", "publish", "delete"].some((a) => isBusy(`${a}-${post.id}`));
+  const [editImgs, setEditImgs] = useState(false);
+  const [imgList, setImgList] = useState<string[]>(post.reference_image_paths);
+  const [imgBusy, setImgBusy] = useState(false);
+  const imgInput = useRef<HTMLInputElement>(null);
+  const anyBusy = ["render", "approve", "reject", "publish", "delete", "refs"].some((a) => isBusy(`${a}-${post.id}`));
   const rejectBusy = isBusy(`reject-${post.id}`);
+  const refsBusy = isBusy(`refs-${post.id}`);
+  const editable = s === "draft" || s === "failed" || s === "rendered";
+
+  async function onAddImg(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+    setImgBusy(true);
+    try {
+      const room = MAX_REFS - imgList.length;
+      const added: string[] = [];
+      for (const f of files.slice(0, Math.max(0, room))) {
+        added.push((await uploadReferenceImage(f)).path);
+      }
+      if (added.length) setImgList((s2) => [...s2, ...added].slice(0, MAX_REFS));
+    } catch {
+      /* surfaced by the parent's error banner on save; keep the picker resilient */
+    } finally {
+      setImgBusy(false);
+    }
+  }
   return (
     <Panel>
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
@@ -943,10 +973,140 @@ function PostCard({
         </div>
       )}
 
+      {editImgs && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ fontSize: 12, color: "var(--fg3)", margin: "0 0 8px", lineHeight: 1.4 }}>
+            {t("dash.social.images.hint")}
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {imgList.length === 0 && (
+              <span style={{ fontSize: 12, color: "var(--fg3)" }}>{t("dash.social.images.none")}</span>
+            )}
+            {imgList.map((p, i) => (
+              <div
+                key={p}
+                style={{
+                  position: "relative",
+                  width: 64,
+                  height: 64,
+                  borderRadius: "var(--radius-md)",
+                  overflow: "hidden",
+                  border: "1px solid var(--line)",
+                  background: "var(--void)",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={mediaUrl(p) ?? `/media/${p}`}
+                  alt={`image ${i + 1}`}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+                <button
+                  onClick={() => setImgList((s2) => s2.filter((_, j) => j !== i))}
+                  title={t("dash.social.refs.remove")}
+                  disabled={refsBusy}
+                  style={{
+                    position: "absolute",
+                    top: 3,
+                    right: 3,
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    border: "none",
+                    cursor: refsBusy ? "default" : "pointer",
+                    background: "rgba(10,10,15,0.8)",
+                    color: "var(--arctic)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Icon name="x" size={12} color="currentColor" />
+                </button>
+              </div>
+            ))}
+            {imgList.length < MAX_REFS && (
+              <button
+                onClick={() => imgInput.current?.click()}
+                disabled={imgBusy || refsBusy}
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: "var(--radius-md)",
+                  border: "1.5px dashed var(--line-strong)",
+                  background: "var(--obsidian-3)",
+                  color: "var(--silver)",
+                  cursor: imgBusy ? "default" : "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 3,
+                  fontSize: 10,
+                  textAlign: "center",
+                  padding: 4,
+                }}
+              >
+                <Icon name="plus" size={16} color="var(--volt)" />
+                {imgBusy ? t("dash.social.refs.adding") : t("dash.social.refs.add")}
+              </button>
+            )}
+          </div>
+          <input
+            ref={imgInput}
+            type="file"
+            accept={ACCEPT_IMG}
+            multiple
+            onChange={onAddImg}
+            style={{ display: "none" }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button
+              variant="solid"
+              size="sm"
+              icon="check"
+              onClick={() => {
+                onUpdateRefs(imgList);
+                setEditImgs(false);
+              }}
+              disabled={refsBusy || imgBusy}
+            >
+              {refsBusy ? t("dash.social.action.working") : t("dash.social.images.save")}
+            </Button>
+            <Button
+              variant="plain"
+              size="sm"
+              icon="x"
+              onClick={() => {
+                setImgList(post.reference_image_paths);
+                setEditImgs(false);
+              }}
+              disabled={refsBusy}
+            >
+              {t("dash.social.action.cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         {(s === "draft" || s === "failed") && (
           <Button variant="solid" size="sm" icon="video" onClick={onRender} disabled={anyBusy}>
             {isBusy(`render-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.render")}
+          </Button>
+        )}
+        {editable && !editImgs && !rejecting && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="image"
+            onClick={() => {
+              setImgList(post.reference_image_paths);
+              setEditImgs(true);
+            }}
+            disabled={anyBusy}
+          >
+            {t("dash.social.images.edit")}
           </Button>
         )}
         {s === "rendered" && (
