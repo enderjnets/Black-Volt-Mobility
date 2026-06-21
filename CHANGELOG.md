@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.35.0 — 2026-06-21 — Social: owner-uploaded reference images + generate-from-image + Denver framing
+
+**The owner can now bring their own images into a post, or generate a whole post from a single image — and every post is grounded in the real service area (all of Denver ⇄ DEN airport, both directions).**
+
+- **Reference images** (`social_posts.reference_image_paths`, migration `0019`): the "Generate a post" panel gets a multi-upload (≤4, png/jpg/webp/gif, 5 MB) via `POST /social/uploads`. Uploads are magic-byte sniffed, written atomically under the tenant's own `media/tenants/{id}/social/refs/` dir with a server-generated name, and the paths attached to the post are validated to that exact prefix (no traversal, no cross-tenant reference).
+- **Worker animates them** (`bv_producer.py` on the ROG): uploaded images are turned into clips — **Hailuo image-to-video** first (real motion, ~2/day free quota), an elegant **Ken Burns** zoom as the always-available fallback — and placed first in the video (order: uploaded → Kling AI → branded gradient). The render request now carries `reference_images` (public `/media` URLs MiniMax fetches itself). One image failing never sinks the render.
+- **Generate from an image** (`POST /social/posts/generate-from-image`): upload one photo → the vision model (Kimi/MiniMax, never Anthropic OAuth) derives a short subject (treated as untrusted data), then the normal MrBeast brief→draft flow runs with the image attached.
+- **Always-on Denver framing**: brand context now carries the service area + DEN airport, injected into the brief, caption and visual prompts so posts reflect premium door-to-door rides across the whole Denver metro and **both-way** airport transfers — never rides outside it.
+- The motion prompt for i2v is fixed brand text, never built from user input (no prompt-injection surface).
+
 ## v0.34.0 — 2026-06-20 — Social: publish for real via Buffer
 
 **Approved posts now publish to real Instagram/Facebook/TikTok through the owner's Buffer account.** Buffer holds the platform OAuth tokens and does the actual posting, so Black Volt never touches Meta App Review or the TikTok Content Posting audit.

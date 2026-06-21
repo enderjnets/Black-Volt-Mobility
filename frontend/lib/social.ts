@@ -22,6 +22,7 @@ export interface SocialPost {
   cover_path: string | null;
   simulated_render: boolean;
   targets: SocialPlatform[];
+  reference_image_paths: string[];
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -99,8 +100,53 @@ export async function generatePost(body: {
   angle?: string;
   lang: string;
   targets?: SocialPlatform[];
+  reference_paths?: string[];
 }): Promise<SocialPost> {
   return jsend<SocialPost>("/v1/social/posts/generate", "POST", body);
+}
+
+export interface UploadedRef {
+  path: string;
+  public_url: string | null;
+}
+
+// Upload one reference image (vehicle, backdrop…) the renderer animates into the
+// video. Returns its rel path (pass to generatePost) + a public URL for preview.
+export async function uploadReferenceImage(file: File): Promise<UploadedRef> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch("/api/v1/social/uploads", {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(fmtApiDetail((d as { detail?: unknown }).detail, `upload:${r.status}`));
+  }
+  return r.json();
+}
+
+// Generate a whole post FROM a single image: the AI "sees" it, writes the post
+// around it, and the image is attached so the render is built around it.
+export async function generateFromImage(
+  file: File,
+  opts: { lang: string; topic?: string },
+): Promise<SocialPost> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("lang", opts.lang);
+  if (opts.topic) fd.append("topic", opts.topic);
+  const r = await fetch("/api/v1/social/posts/generate-from-image", {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(fmtApiDetail((d as { detail?: unknown }).detail, `fromImage:${r.status}`));
+  }
+  return r.json();
 }
 
 export async function updatePost(

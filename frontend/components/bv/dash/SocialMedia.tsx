@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
@@ -11,10 +11,12 @@ import {
   type SocialInteraction,
   type SocialPlatform,
   type SocialPost,
+  type UploadedRef,
   approvePost,
   deletePost,
   dismissInteraction,
   draftReply,
+  generateFromImage,
   generatePost,
   getAnalytics,
   listAccounts,
@@ -25,7 +27,11 @@ import {
   renderPost,
   sendReply,
   syncBufferChannels,
+  uploadReferenceImage,
 } from "@/lib/social";
+
+const MAX_REFS = 4;
+const ACCEPT_IMG = "image/png,image/jpeg,image/webp,image/gif";
 
 type Tab = "create" | "queue" | "inbox" | "accounts";
 
@@ -176,6 +182,9 @@ export function SocialMedia() {
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const [replyEdits, setReplyEdits] = useState<Record<number, string>>({});
+  const [refs, setRefs] = useState<UploadedRef[]>([]);
+  const refInput = useRef<HTMLInputElement>(null);
+  const fromImgInput = useRef<HTMLInputElement>(null);
 
   const setBusyKey = (k: string, on: boolean) =>
     setBusy((s) => {
@@ -213,14 +222,54 @@ export function SocialMedia() {
     if (isBusy("gen")) return;
     setBusyKey("gen", true);
     try {
-      await generatePost({ topic: topic.trim() || undefined, lang });
+      await generatePost({
+        topic: topic.trim() || undefined,
+        lang,
+        reference_paths: refs.length ? refs.map((r) => r.path) : undefined,
+      });
       setTopic("");
+      setRefs([]);
       await refresh();
       setTab("queue");
     } catch {
       setErr(t("dash.social.error"));
     } finally {
       setBusyKey("gen", false);
+    }
+  }
+
+  async function onPickRefs(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+    setBusyKey("refs", true);
+    try {
+      const room = MAX_REFS - refs.length;
+      const uploaded: UploadedRef[] = [];
+      for (const f of files.slice(0, Math.max(0, room))) {
+        uploaded.push(await uploadReferenceImage(f));
+      }
+      if (uploaded.length) setRefs((s) => [...s, ...uploaded].slice(0, MAX_REFS));
+    } catch {
+      setErr(t("dash.social.error"));
+    } finally {
+      setBusyKey("refs", false);
+    }
+  }
+
+  async function onGenerateFromImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || isBusy("fromImg")) return;
+    setBusyKey("fromImg", true);
+    try {
+      await generateFromImage(file, { lang });
+      await refresh();
+      setTab("queue");
+    } catch {
+      setErr(t("dash.social.fromImage.error"));
+    } finally {
+      setBusyKey("fromImg", false);
     }
   }
 
@@ -382,6 +431,94 @@ export function SocialMedia() {
                 }}
               />
             </label>
+
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>
+                {t("dash.social.refs.label")}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {refs.map((r, i) => (
+                  <div
+                    key={r.path}
+                    style={{
+                      position: "relative",
+                      width: 64,
+                      height: 64,
+                      borderRadius: "var(--radius-md)",
+                      overflow: "hidden",
+                      border: "1px solid var(--line)",
+                      background: "var(--void)",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={r.public_url ?? `/media/${r.path}`}
+                      alt={`reference ${i + 1}`}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                    <button
+                      onClick={() => setRefs((s) => s.filter((_, j) => j !== i))}
+                      title={t("dash.social.refs.remove")}
+                      style={{
+                        position: "absolute",
+                        top: 3,
+                        right: 3,
+                        width: 20,
+                        height: 20,
+                        borderRadius: "50%",
+                        border: "none",
+                        cursor: "pointer",
+                        background: "rgba(10,10,15,0.8)",
+                        color: "var(--arctic)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Icon name="x" size={12} color="currentColor" />
+                    </button>
+                  </div>
+                ))}
+                {refs.length < MAX_REFS && (
+                  <button
+                    onClick={() => refInput.current?.click()}
+                    disabled={isBusy("refs")}
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: "var(--radius-md)",
+                      border: "1.5px dashed var(--line-strong)",
+                      background: "var(--obsidian-3)",
+                      color: "var(--silver)",
+                      cursor: isBusy("refs") ? "default" : "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 3,
+                      fontSize: 10,
+                      textAlign: "center",
+                      padding: 4,
+                    }}
+                  >
+                    <Icon name="plus" size={16} color="var(--volt)" />
+                    {isBusy("refs") ? t("dash.social.refs.adding") : t("dash.social.refs.add")}
+                  </button>
+                )}
+              </div>
+              <p style={{ fontSize: 11.5, color: "var(--fg3)", margin: "8px 0 0", lineHeight: 1.5 }}>
+                {t("dash.social.refs.hint")}
+              </p>
+              <input
+                ref={refInput}
+                type="file"
+                accept={ACCEPT_IMG}
+                multiple
+                onChange={onPickRefs}
+                style={{ display: "none" }}
+              />
+            </div>
+
             <div style={{ marginTop: 12 }}>
               <Button variant="solid" icon="sparkles" onClick={onGenerate} disabled={isBusy("gen")} full>
                 {isBusy("gen") ? t("dash.social.generate.generating") : t("dash.social.generate.btn")}
@@ -390,6 +527,30 @@ export function SocialMedia() {
             <p style={{ fontSize: 12, color: "var(--fg3)", marginTop: 12, lineHeight: 1.5 }}>
               {t("dash.social.generate.hint")}
             </p>
+          </Panel>
+
+          <Panel title={t("dash.social.fromImage.title")} icon="image">
+            <p style={{ fontSize: 12, color: "var(--fg3)", margin: "0 0 12px", lineHeight: 1.5 }}>
+              {t("dash.social.fromImage.hint")}
+            </p>
+            <Button
+              variant="solid"
+              icon="upload"
+              onClick={() => fromImgInput.current?.click()}
+              disabled={isBusy("fromImg")}
+              full
+            >
+              {isBusy("fromImg")
+                ? t("dash.social.fromImage.generating")
+                : t("dash.social.fromImage.btn")}
+            </Button>
+            <input
+              ref={fromImgInput}
+              type="file"
+              accept={ACCEPT_IMG}
+              onChange={onGenerateFromImage}
+              style={{ display: "none" }}
+            />
           </Panel>
 
           <Panel title={t("dash.social.daily.title")} icon="sparkles">

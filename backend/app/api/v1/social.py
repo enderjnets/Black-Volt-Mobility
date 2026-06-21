@@ -26,11 +26,22 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin, resolve_tenant_id
+from app.config import get_settings
 from app.db.base import get_db
 from app.services import social, social_buffer
 
@@ -42,6 +53,9 @@ class GenerateBody(BaseModel):
     angle: str | None = Field(default=None, max_length=200)
     lang: str = Field(default="en", max_length=5)
     targets: list[str] | None = Field(default=None, max_length=3)
+    # Rel paths of previously-uploaded reference images (POST /social/uploads).
+    # Validated server-side to this tenant's own social/refs dir.
+    reference_paths: list[str] | None = Field(default=None, max_length=4)
 
 
 class CreatePostBody(BaseModel):
@@ -80,8 +94,59 @@ async def generate_post(
     tenant_id = await resolve_tenant_id(db, payload)
     return await social.generate_and_create(
         db, tenant_id=tenant_id, topic=body.topic, angle=body.angle,
-        lang=body.lang, targets=body.targets,
+        lang=body.lang, targets=body.targets, reference_paths=body.reference_paths,
     )
+
+
+# ── reference-image uploads + generate-from-image ─────────────────────────────
+async def _read_upload(file: UploadFile) -> bytes:
+    """Read an upload, enforcing the shared media size cap. Raises 400/413."""
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty_file")
+    if len(raw) > get_settings().MEDIA_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="file_too_large"
+        )
+    return raw
+
+
+@router.post("/social/uploads", status_code=status.HTTP_201_CREATED)
+async def upload_reference_image(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_admin),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    raw = await _read_upload(file)
+    saved = social.save_reference_image(tenant_id, raw=raw)
+    if saved is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported_image_type"
+        )
+    rel_path, _ctype = saved
+    return {"path": rel_path, "public_url": social._public_media_url(rel_path)}
+
+
+@router.post("/social/posts/generate-from-image", status_code=status.HTTP_201_CREATED)
+async def generate_from_image(
+    file: UploadFile = File(...),
+    lang: str = Form("en"),
+    topic: str | None = Form(None),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_admin),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    raw = await _read_upload(file)
+    out = await social.generate_from_image(
+        db, tenant_id=tenant_id, raw=raw,
+        lang=(lang or "en")[:5], topic=(topic or None),
+    )
+    if out is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported_image_type"
+        )
+    return out
 
 
 @router.get("/social/posts")
