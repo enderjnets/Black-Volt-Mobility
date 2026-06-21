@@ -166,6 +166,25 @@ async def test_reject_without_reason_is_plain_draft(db):
     assert after == before  # no lesson logged for a plain reject
 
 
+async def test_update_reference_images_resets_to_draft_and_scopes(db):
+    tid = (await get_default_tenant(db)).id
+    post = await S.create_post(
+        db, tenant_id=tid, content={"caption": "c", "script": "s", "topic": "t"}, lang="en"
+    )
+    await S.request_render(db, tenant_id=tid, post_id=post["id"])  # → rendered
+    good = f"tenants/{tid}/social/refs/ref-1.jpg"
+    cross = "tenants/999999/social/refs/ref-evil.jpg"
+    out = await S.update_post(
+        db, tenant_id=tid, post_id=post["id"],
+        fields={"reference_image_paths": [good, cross, "../escape.jpg"]},
+    )
+    # Cross-tenant + traversal paths dropped; only the tenant's own ref kept.
+    assert out["reference_image_paths"] == [good]
+    # Images changed → back to draft, render progress cleared (re-render needed).
+    assert out["status"] == "draft"
+    assert out["render_progress"] is None and out["render_stage"] is None
+
+
 async def test_publish_due_publishes_past_scheduled(db):
     from datetime import UTC, datetime, timedelta
 

@@ -72,6 +72,7 @@ class UpdatePostBody(BaseModel):
     caption: str | None = Field(default=None, max_length=2200)
     hashtags: str | None = Field(default=None, max_length=500)
     targets: list[str] | None = Field(default=None, max_length=3)
+    reference_image_paths: list[str] | None = Field(default=None, max_length=4)
     scheduled_at: datetime | None = None
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.38.0 — 2026-06-21 — Social: image adjustments — reject-reason steers the AI visuals + manage uploaded images
+
+**The reject-with-reason correction now extends to images, and the owner can manage a post's uploaded images directly.** Two parts:
+
+- **A) Reason + lessons steer the AI-generated visuals** (`_video_prompts`, `app/services/social.py`): the Kling visual prompts now receive the post's `rejection_reason` (as a per-render correction) and the tenant's accumulated lessons (`_tenant_lessons`, injected into `_VP_SYSTEM` as highest-priority visual preferences). Since prompts are built at render time, the next **Render** after a rejection produces scenes that reflect the feedback (e.g. "show daytime Denver, not night"), and visual lessons accumulate across future posts — reusing the existing `social_feedback` table (no migration).
+- **B) Manage uploaded images on an existing post**: `UpdatePostBody` + `update_post` gain `reference_image_paths` (validated by `_clean_ref_paths` — tenant-prefixed, no traversal, cap 4). Changing a post's images sends it back to **draft** and clears stale render progress so the owner re-renders. Frontend (`v0.38.0`): an "Edit images" panel on the post card (reusing the 64×64 thumbnail + remove/add pattern) → `updatePost(id, { reference_image_paths })`.
+- **Security / multi-tenant**: image paths are validated to the tenant's own `social/refs/` dir (`PATCH` stays `require_admin` + tenant-scoped); reason/lessons are trusted admin guidance injected separately from the untrusted `<topic>` data, preserving the visual-prompt output contract. No worker changes.
+
 ## v0.37.0 — 2026-06-21 — Social: reject with a reason → the system corrects the post and learns
 
 **When the owner rejects a proposed post, they can now write *why* — the system instantly regenerates a corrected draft applying that reason, and accumulates the reasons as brand "lessons" injected into every future post so the AI stops repeating mistakes.**

@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.37.0";
+export const CURRENT_VERSION = "0.38.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.38.0",
+    date: "2026-06-21",
+    title: "Social: adjust a post's images too — by feedback and by hand",
+    changes: [
+      "Rejecting a post with a reason now also steers the images: your reason (and your past lessons) guide the AI-generated scenes, so when you re-render the visuals reflect what you asked for — not just the text.",
+      "New 'Edit images' on a post: add or remove your own uploaded images right on the card. Saving changes sends the post back to draft so you can re-render with the new images.",
+    ],
+  },
   {
     version: "0.37.0",
     date: "2026-06-21",
