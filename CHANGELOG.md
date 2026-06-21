@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.36.0 — 2026-06-21 — Social: live render progress bar (real worker-reported progress)
+
+**While a Social post renders, the dashboard now shows a real progress bar with the current stage — not just a "Rendering" pill.** The render worker reports each stage back to Black Volt over the same signed channel it uses for the finished video.
+
+- **Worker → backend progress** (`render_worker.py` + `bv_producer.py` on the ROG, worker `v2.8.40`): `produce_blackvolt` takes a best-effort `progress(stage, pct)` hook and emits it across the pipeline (`voiceover → images → scenes → backgrounds → assembling → encoding`), interpolating per uploaded image and per Kling visual. The worker POSTs each update to a new `progress_url` (derived from the callback URL) with the **same HMAC-SHA256 signature** (`x-bv-render-signature`), short timeout, errors swallowed — progress can never break or slow a render.
+- **Backend** (`social_posts.render_progress` int + `render_stage`, migration `0020`): new signed webhook `POST /social/webhooks/render/progress` → `apply_render_progress` validates tenant+post, clamps progress to 0–100, only ever raises it (tolerates out-of-order POSTs), and treats the stage as opaque data. It never touches `media_path`/`status`. `request_render` initialises the bar (`progress=0`, stage `queued`).
+- **Frontend** (`v0.36.0`): the queue polls `listPosts` every 3s **only while a post is `render_requested`** (capped at ~25 min), and `SocialMedia.tsx` draws a branded determinate bar from `render_progress` with a localized stage label — falling back to an indeterminate animation if a worker doesn't report progress. The finished video then appears on its own.
+- **Security**: progress webhook is authenticated solely by the existing HMAC (no user auth), verified with `verify_render_callback` (constant-time). `progress_url` is server-derived from the trusted callback host; the worker only POSTs there.
+
 ## v0.35.0 — 2026-06-21 — Social: owner-uploaded reference images + generate-from-image + Denver framing
 
 **The owner can now bring their own images into a post, or generate a whole post from a single image — and every post is grounded in the real service area (all of Denver ⇄ DEN airport, both directions).**

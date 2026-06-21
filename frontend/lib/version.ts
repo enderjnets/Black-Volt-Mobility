@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.35.0";
+export const CURRENT_VERSION = "0.36.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.36.0",
+    date: "2026-06-21",
+    title: "Social: live progress bar while your video renders",
+    changes: [
+      "When you render a Social post you now see a real progress bar that moves as the video is built — recording the voiceover, animating your photos, creating the scenes, assembling and finishing — instead of just a 'Rendering' tag.",
+      "The queue refreshes itself while a post is rendering, so the finished video appears on its own the moment it's ready — no need to reload the page.",
+    ],
+  },
   {
     version: "0.35.0",
     date: "2026-06-21",

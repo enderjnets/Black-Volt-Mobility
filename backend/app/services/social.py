@@ -174,6 +174,8 @@ def _post_out(p: SocialPost) -> dict:
         "targets": p.targets or [],
         "reference_image_paths": p.reference_image_paths or [],
         "status": p.status,
+        "render_progress": p.render_progress,
+        "render_stage": p.render_stage,
         "scheduled_at": p.scheduled_at.isoformat() if p.scheduled_at else None,
         "published_at": p.published_at.isoformat() if p.published_at else None,
         "external_ids": p.external_ids or {},
@@ -587,6 +589,11 @@ async def request_render(db: AsyncSession, *, tenant_id: int, post_id: int) -> d
         return _post_out(row)
     row.render_job_id = result["job_id"]
     row.status = result["status"]
+    # Start the progress bar clean for a live render; the worker reports updates
+    # via the signed progress webhook. (A simulated render is already "rendered".)
+    if row.status == "render_requested":
+        row.render_progress = 0
+        row.render_stage = "queued"
     if result.get("media_path") is not None:
         row.media_path = result["media_path"]
     if result.get("cover_path") is not None:
@@ -810,6 +817,35 @@ async def apply_render_callback(db: AsyncSession, *, payload: dict) -> str:
         return "rejected_asset"
     row.media_path = media_path
     row.status = "rendered"
+    await db.commit()
+    return "applied"
+
+
+async def apply_render_progress(db: AsyncSession, *, payload: dict) -> str:
+    """Record live render progress from the worker (verified callback only).
+
+    Only updates a post that's actively awaiting a render. Progress is clamped to
+    0–100 and only ever raised (so out-of-order POSTs can't make the bar jump
+    backwards); the stage key is treated as opaque data and truncated. Never
+    touches `media_path` or `status` — it's purely cosmetic UI feedback."""
+    try:
+        post_id = int(payload.get("post_id"))
+        tenant_id = int(payload.get("tenant_id"))
+    except (TypeError, ValueError):
+        return "ignored"
+    row = await _get_post(db, tenant_id=tenant_id, post_id=post_id)
+    if row is None or row.status != "render_requested":
+        return "ignored"
+    try:
+        progress = int(payload.get("progress"))
+    except (TypeError, ValueError):
+        progress = row.render_progress or 0
+    progress = max(0, min(100, progress))
+    if progress > (row.render_progress or 0):
+        row.render_progress = progress
+    stage = payload.get("stage")
+    if isinstance(stage, str) and stage:
+        row.render_stage = stage[:48]
     await db.commit()
     return "applied"
 

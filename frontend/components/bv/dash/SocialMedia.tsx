@@ -170,6 +170,95 @@ function MediaPreview({ post }: { post: SocialPost }) {
   );
 }
 
+const RENDER_STAGES = [
+  "queued",
+  "voiceover",
+  "images",
+  "scenes",
+  "backgrounds",
+  "assembling",
+  "encoding",
+];
+
+function RenderProgress({ post }: { post: SocialPost }) {
+  const { t } = useI18n();
+  const pct =
+    typeof post.render_progress === "number"
+      ? Math.max(0, Math.min(100, Math.round(post.render_progress)))
+      : null;
+  const stageKey = post.render_stage || "queued";
+  const stageLabel = RENDER_STAGES.includes(stageKey)
+    ? t(`dash.social.render.stage.${stageKey}`)
+    : stageKey;
+  return (
+    <div style={{ marginTop: 12 }} aria-live="polite">
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 6,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 12,
+            color: "var(--fg2)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            minWidth: 0,
+          }}
+        >
+          <Icon name="clock" size={13} color="var(--volt)" />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {t("dash.social.render.rendering")} · {stageLabel}
+          </span>
+        </span>
+        {pct !== null && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--volt)", flexShrink: 0 }}>
+            {pct}%
+          </span>
+        )}
+      </div>
+      <div
+        style={{
+          height: 6,
+          borderRadius: 999,
+          background: "var(--obsidian-3)",
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
+        {pct !== null ? (
+          <div
+            style={{
+              height: "100%",
+              width: `${pct}%`,
+              background: "var(--volt)",
+              borderRadius: 999,
+              transition: "width .4s ease",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              height: "100%",
+              width: "40%",
+              background: "var(--volt)",
+              borderRadius: 999,
+              animation: "bvRenderIndet 1.2s ease-in-out infinite",
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SocialMedia() {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>("create");
@@ -217,6 +306,28 @@ export function SocialMedia() {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // While any post is actively rendering, poll its status (and live progress)
+  // every 3s so the progress bar advances and the video appears on completion.
+  // Capped at ~25 min so a dead worker never leaves us polling forever.
+  const hasRendering = posts.some((p) => p.status === "render_requested");
+  useEffect(() => {
+    if (!hasRendering) return;
+    let elapsed = 0;
+    const id = setInterval(async () => {
+      elapsed += 3000;
+      if (elapsed > 25 * 60 * 1000) {
+        clearInterval(id);
+        return;
+      }
+      try {
+        setPosts(await listPosts());
+      } catch {
+        /* transient; keep last good state, mount/action refresh surfaces errors */
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [hasRendering]);
 
   async function onGenerate() {
     if (isBusy("gen")) return;
@@ -768,6 +879,8 @@ function PostCard({
           )}
         </div>
       </div>
+
+      {s === "render_requested" && <RenderProgress post={post} />}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         {(s === "draft" || s === "failed") && (
