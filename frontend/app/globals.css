@@ -96,6 +96,16 @@ body {
   }
 }
 
+/* Indeterminate render-progress bar (social dashboard) */
+@keyframes bvRenderIndet {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;

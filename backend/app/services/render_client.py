@@ -61,12 +61,18 @@ async def submit(*, tenant_id: int, post_id: int, script: dict) -> dict:
     # calls back our signed webhook with the mp4 — we only kick it off here. The
     # outbound request is HMAC-signed with the shared key so the worker only ever
     # renders for us (the same key it signs the callback with).
+    # The worker POSTs the finished mp4 to callback_url and live progress to
+    # progress_url (same signed scheme); the latter is derived so no new setting
+    # is needed. A worker that doesn't know about progress simply ignores it.
+    callback_url = settings.SOCIAL_RENDER_CALLBACK_URL
+    progress_url = callback_url.rstrip("/") + "/progress" if callback_url else None
     payload = {
         "job_id": job_id,
         "tenant_id": tenant_id,
         "post_id": post_id,
         "script": script,
-        "callback_url": settings.SOCIAL_RENDER_CALLBACK_URL,
+        "callback_url": callback_url,
+        "progress_url": progress_url,
     }
     body = json.dumps(payload).encode("utf-8")
     sig = base64.b64encode(

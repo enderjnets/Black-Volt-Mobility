@@ -24,6 +24,8 @@ export interface SocialPost {
   targets: SocialPlatform[];
   reference_image_paths: string[];
   status: PostStatus;
+  render_progress: number | null;
+  render_stage: string | null;
   scheduled_at: string | null;
   published_at: string | null;
   external_ids: Record<string, string>;

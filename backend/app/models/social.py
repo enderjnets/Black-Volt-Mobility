@@ -111,6 +111,12 @@ class SocialPost(Base):
 
     status: Mapped[str] = mapped_column(String(24), default="draft", index=True)  # POST_STATUSES
     render_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Live render progress (0–100) + current stage key, reported by the worker via
+    # the signed /social/webhooks/render/progress webhook while status is
+    # "render_requested". Null until a render is requested; the frontend draws a
+    # progress bar from these and clears it once the final asset arrives.
+    render_progress: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    render_stage: Mapped[str | None] = mapped_column(String(48), nullable=True)
     scheduled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )

@@ -377,3 +377,20 @@ async def render_callback(request: Request, db: AsyncSession = Depends(get_db)):
         ) from None
     result = await social.apply_render_callback(db, payload=payload)
     return {"ok": True, "result": result}
+
+
+# ── render progress (signed; no auth cookie — verified by HMAC) ───────────────
+@router.post("/social/webhooks/render/progress")
+async def render_progress(request: Request, db: AsyncSession = Depends(get_db)):
+    body = await request.body()
+    signature = request.headers.get("x-bv-render-signature", "")
+    if not social.verify_render_callback(body=body, signature=signature):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid_signature")
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_json"
+        ) from None
+    result = await social.apply_render_progress(db, payload=payload)
+    return {"ok": True, "result": result}
