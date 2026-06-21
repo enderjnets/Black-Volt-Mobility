@@ -681,7 +681,7 @@ export function SocialMedia() {
                     isBusy={isBusy}
                     onRender={() => postAction(`render-${p.id}`, () => renderPost(p.id))}
                     onApprove={() => postAction(`approve-${p.id}`, () => approvePost(p.id))}
-                    onReject={() => postAction(`reject-${p.id}`, () => rejectPost(p.id))}
+                    onReject={(reason) => postAction(`reject-${p.id}`, () => rejectPost(p.id, reason))}
                     onPublish={() => postAction(`publish-${p.id}`, () => publishPost(p.id))}
                     onDelete={() => postAction(`delete-${p.id}`, () => deletePost(p.id))}
                   />
@@ -706,7 +706,7 @@ export function SocialMedia() {
                 isBusy={isBusy}
                 onRender={() => postAction(`render-${p.id}`, () => renderPost(p.id))}
                 onApprove={() => postAction(`approve-${p.id}`, () => approvePost(p.id))}
-                onReject={() => postAction(`reject-${p.id}`, () => rejectPost(p.id))}
+                onReject={(reason) => postAction(`reject-${p.id}`, () => rejectPost(p.id, reason))}
                 onPublish={() => postAction(`publish-${p.id}`, () => publishPost(p.id))}
                 onDelete={() => postAction(`delete-${p.id}`, () => deletePost(p.id))}
               />
@@ -824,13 +824,16 @@ function PostCard({
   isBusy: (k: string) => boolean;
   onRender: () => void;
   onApprove: () => void;
-  onReject: () => void;
+  onReject: (reason?: string) => void;
   onPublish: () => void;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
   const s = post.status;
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
   const anyBusy = ["render", "approve", "reject", "publish", "delete"].some((a) => isBusy(`${a}-${post.id}`));
+  const rejectBusy = isBusy(`reject-${post.id}`);
   return (
     <Panel>
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
@@ -877,10 +880,68 @@ function PostCard({
               {t("dash.social.scheduledFor", { when: new Date(post.scheduled_at).toLocaleString() })}
             </p>
           )}
+          {post.rejection_reason && s === "draft" && (
+            <p style={{ fontSize: 12, color: "var(--fg3)", margin: "4px 0 0", lineHeight: 1.4 }}>
+              {t("dash.social.reject.note", { reason: post.rejection_reason })}
+            </p>
+          )}
         </div>
       </div>
 
       {s === "render_requested" && <RenderProgress post={post} />}
+
+      {rejecting && (
+        <div style={{ marginTop: 12 }}>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={t("dash.social.reject.why")}
+            rows={2}
+            autoFocus
+            style={{
+              width: "100%",
+              background: "var(--obsidian-3)",
+              border: "1px solid var(--line-strong)",
+              borderRadius: "var(--radius-md)",
+              color: "var(--arctic)",
+              fontSize: 13.5,
+              fontFamily: "var(--font-sans)",
+              padding: "10px 12px",
+              resize: "vertical",
+              outline: "none",
+              boxSizing: "border-box",
+              marginBottom: 10,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button
+              variant="solid"
+              size="sm"
+              icon="sparkles"
+              onClick={() => {
+                onReject(reason.trim() || undefined);
+                setRejecting(false);
+                setReason("");
+              }}
+              disabled={rejectBusy}
+            >
+              {rejectBusy ? t("dash.social.action.working") : t("dash.social.reject.submit")}
+            </Button>
+            <Button
+              variant="plain"
+              size="sm"
+              icon="x"
+              onClick={() => {
+                setRejecting(false);
+                setReason("");
+              }}
+              disabled={rejectBusy}
+            >
+              {t("dash.social.reject.cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         {(s === "draft" || s === "failed") && (
@@ -898,8 +959,14 @@ function PostCard({
             {isBusy(`publish-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.publish")}
           </Button>
         )}
-        {(s === "rendered" || s === "approved" || s === "scheduled") && (
-          <Button variant="ghost" size="sm" icon="x" onClick={onReject} disabled={anyBusy}>
+        {(s === "rendered" || s === "approved" || s === "scheduled") && !rejecting && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="x"
+            onClick={() => setRejecting(true)}
+            disabled={anyBusy}
+          >
             {t("dash.social.action.reject")}
           </Button>
         )}

@@ -25,7 +25,7 @@ from app.config import get_settings  # noqa: E402
 
 get_settings.cache_clear()
 
-from app.models import SocialInteraction, Tenant  # noqa: E402
+from app.models import SocialFeedback, SocialInteraction, Tenant  # noqa: E402
 from app.services import social as S  # noqa: E402
 from app.services.tenancy import get_default_tenant  # noqa: E402
 
@@ -110,6 +110,60 @@ async def test_render_approve_publish_state_machine(db):
     published = await S.publish_post(db, tenant_id=tid, post_id=post["id"])
     assert published["status"] == "published"
     assert set(published["external_ids"]) == set(S._DEFAULT_TARGETS)
+
+
+async def test_reject_with_reason_regenerates_and_learns(db):
+    from sqlalchemy import func, select
+
+    tid = (await get_default_tenant(db)).id
+    post = await S.create_post(
+        db, tenant_id=tid, content={"caption": "c", "script": "s", "topic": "t"}, lang="en"
+    )
+    await S.request_render(db, tenant_id=tid, post_id=post["id"])  # → rendered
+    reason = "too salesy, focus on the calm experience"
+    out = await S.reject_post(db, tenant_id=tid, post_id=post["id"], reason=reason)
+    # Back to draft, reason stored, render progress cleared, content regenerated.
+    assert out["status"] == "draft"
+    assert out["rejection_reason"] == reason
+    assert out["render_progress"] is None and out["render_stage"] is None
+    assert out["script"] and out["caption"]
+    # Learned: a feedback row exists and the lesson is surfaced for future briefs.
+    n = (
+        await db.execute(
+            select(func.count())
+            .select_from(SocialFeedback)
+            .where(SocialFeedback.tenant_id == tid)
+        )
+    ).scalar_one()
+    assert n >= 1
+    assert reason in await S._tenant_lessons(db, tid)
+
+
+async def test_reject_without_reason_is_plain_draft(db):
+    from sqlalchemy import func, select
+
+    tid = (await get_default_tenant(db)).id
+    before = (
+        await db.execute(
+            select(func.count()).select_from(SocialFeedback).where(
+                SocialFeedback.tenant_id == tid
+            )
+        )
+    ).scalar_one()
+    post = await S.create_post(
+        db, tenant_id=tid, content={"caption": "c", "script": "s", "topic": "t"}, lang="en"
+    )
+    await S.request_render(db, tenant_id=tid, post_id=post["id"])
+    out = await S.reject_post(db, tenant_id=tid, post_id=post["id"])
+    assert out["status"] == "draft" and out["rejection_reason"] is None
+    after = (
+        await db.execute(
+            select(func.count()).select_from(SocialFeedback).where(
+                SocialFeedback.tenant_id == tid
+            )
+        )
+    ).scalar_one()
+    assert after == before  # no lesson logged for a plain reject
 
 
 async def test_publish_due_publishes_past_scheduled(db):

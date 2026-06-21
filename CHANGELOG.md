@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.37.0 — 2026-06-21 — Social: reject with a reason → the system corrects the post and learns
+
+**When the owner rejects a proposed post, they can now write *why* — the system instantly regenerates a corrected draft applying that reason, and accumulates the reasons as brand "lessons" injected into every future post so the AI stops repeating mistakes.**
+
+- **db** (migration `0021`): `social_posts.rejection_reason` (Text) + new tenant-scoped `social_feedback` table (`tenant_id`, `post_id`, `reason`, `created_at`) — the growing log of owner lessons. New model `SocialFeedback` re-exported from `app/models/__init__.py`.
+- **service** (`app/services/social.py`): `reject_post(reason=…)` now stores the reason, logs a `SocialFeedback` row, and **regenerates** the post's script/caption/hashtags via `generate_brief(correction=reason)`, then clears stale render progress (re-render stays manual). `_tenant_lessons()` returns the most-recent-distinct reasons (capped 12); `_ai_brief`/`generate_brief` inject them as high-priority "OWNER PREFERENCES" into **every** brief (so generate, generate-from-image and daily auto-posts all learn). Reject without a reason behaves exactly as before.
+- **api**: `POST /social/posts/{id}/reject` gains an optional `RejectBody { reason }` (still `require_admin` + tenant-scoped; backward compatible with no-body callers).
+- **frontend** (`v0.37.0`): the Reject button opens an inline reason textarea ("Reject & fix" / "Cancel"); the reason is sent to `rejectPost(id, reason)`. A corrected draft comes back and shows a subtle "You asked to change: …" note. EN/ES strings added.
+- **Security / multi-tenant**: feedback is strictly tenant-scoped (one tenant never learns from another's). The owner's reason is trusted admin guidance (sanitized, capped 500) injected as a separate high-priority block — the untrusted `<subject>`/`<angle>` handling is unchanged, and the strict 3-line brief contract is preserved. No worker changes.
+
 ## v0.36.0 — 2026-06-21 — Social: live render progress bar (real worker-reported progress)
 
 **While a Social post renders, the dashboard now shows a real progress bar with the current stage — not just a "Rendering" pill.** The render worker reports each stage back to Black Volt over the same signed channel it uses for the finished video.

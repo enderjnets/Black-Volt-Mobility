@@ -26,6 +26,7 @@ export interface SocialPost {
   status: PostStatus;
   render_progress: number | null;
   render_stage: string | null;
+  rejection_reason: string | null;
   scheduled_at: string | null;
   published_at: string | null;
   external_ids: Record<string, string>;
@@ -171,8 +172,8 @@ export async function approvePost(id: number, scheduledAt?: string | null): Prom
   return jsend<SocialPost>(`/v1/social/posts/${id}/approve`, "POST", { scheduled_at: scheduledAt ?? null });
 }
 
-export async function rejectPost(id: number): Promise<SocialPost> {
-  return jsend<SocialPost>(`/v1/social/posts/${id}/reject`, "POST");
+export async function rejectPost(id: number, reason?: string): Promise<SocialPost> {
+  return jsend<SocialPost>(`/v1/social/posts/${id}/reject`, "POST", { reason: reason ?? null });
 }
 
 export async function publishPost(id: number): Promise<SocialPost> {
