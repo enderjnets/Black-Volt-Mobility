@@ -117,6 +117,10 @@ class SocialPost(Base):
     # progress bar from these and clears it once the final asset arrives.
     render_progress: Mapped[int | None] = mapped_column(Integer, nullable=True)
     render_stage: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    # Last reason the owner gave when rejecting this post. Stored for display and
+    # used to regenerate a corrected draft; also logged to SocialFeedback so the
+    # brand "learns" across all future posts.
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     scheduled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
@@ -137,6 +141,27 @@ class SocialPost(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SocialFeedback(Base):
+    """A "lesson" the owner taught the AI by rejecting a post with a reason. These
+    accumulate per tenant and are injected (most-recent-distinct) into every future
+    brief's system prompt so the AI stops repeating the same mistakes. Tenant-scoped;
+    one tenant never learns from another's feedback."""
+
+    __tablename__ = "social_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    # The post whose rejection produced this lesson (nullable; not an FK so deleting
+    # the post never erases the lesson the brand learned from it).
+    post_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

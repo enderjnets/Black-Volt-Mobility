@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.36.0";
+export const CURRENT_VERSION = "0.37.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.37.0",
+    date: "2026-06-21",
+    title: "Social: reject a post with a reason — it fixes itself and learns",
+    changes: [
+      "When you reject a proposed post you can now write why. The system instantly rewrites the script, caption and hashtags to fix exactly what you flagged and leaves it as a corrected draft, ready to re-render.",
+      "It also remembers your feedback: every reason you give becomes a brand lesson that's applied to all future posts, so the AI stops repeating the same mistakes over time.",
+      "Rejecting without a note still just sends the post back to draft, like before.",
+    ],
+  },
   {
     version: "0.36.0",
     date: "2026-06-21",

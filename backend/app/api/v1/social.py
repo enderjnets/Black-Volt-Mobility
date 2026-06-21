@@ -79,6 +79,10 @@ class ApproveBody(BaseModel):
     scheduled_at: datetime | None = None
 
 
+class RejectBody(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class ReplyBody(BaseModel):
     text: str | None = Field(default=None, max_length=2200)
 
@@ -246,10 +250,15 @@ async def reject_post(
     post_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    body: RejectBody | None = None,
     payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
-    return _require(await social.reject_post(db, tenant_id=tenant_id, post_id=post_id))
+    return _require(
+        await social.reject_post(
+            db, tenant_id=tenant_id, post_id=post_id, reason=body.reason if body else None
+        )
+    )
 
 
 @router.post("/social/posts/{post_id}/publish")

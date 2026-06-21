@@ -7,7 +7,12 @@ from app.models.payment import Payment, PaymentStatus
 from app.models.platform_stat import PlatformStat
 from app.models.rate_config import RateConfig
 from app.models.ride import PaymentMethod, Ride, RideStatus
-from app.models.social import SocialAccount, SocialInteraction, SocialPost
+from app.models.social import (
+    SocialAccount,
+    SocialFeedback,
+    SocialInteraction,
+    SocialPost,
+)
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.tenant import Tenant
 
@@ -29,5 +34,6 @@ __all__ = [
     "PlatformStat",
     "SocialAccount",
     "SocialPost",
+    "SocialFeedback",
     "SocialInteraction",
 ]
