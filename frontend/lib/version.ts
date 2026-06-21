@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.34.0";
+export const CURRENT_VERSION = "0.35.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.35.0",
+    date: "2026-06-21",
+    title: "Social: add your own images to posts + generate from one image",
+    changes: [
+      "In 'Generate a post' you can now attach your own photos — a vehicle, a backdrop — and they're animated right into the video (smooth motion when AI-video credits allow, an elegant Ken Burns zoom otherwise).",
+      "New 'Generate from an image' button: upload one photo and the AI looks at it, writes the whole post around it, and builds the video from it.",
+      "Every post is now framed for the real service: premium rides across all of Denver and both-way airport transfers (anywhere in Denver → DEN, and DEN → anywhere in Denver).",
+    ],
+  },
   {
     version: "0.34.0",
     date: "2026-06-20",

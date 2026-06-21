@@ -102,6 +102,12 @@ class SocialPost(Base):
     cover_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Target platforms — a subset of SOCIAL_PLATFORMS. Defaulted in the service.
     targets: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
+    # Owner-uploaded reference images (vehicles, backgrounds…) the worker animates
+    # into the video. Stored as rel paths under the public /media mount; always
+    # scoped to this tenant's social/refs dir (validated on write).
+    reference_image_paths: Mapped[list | None] = mapped_column(
+        JSON, nullable=True, default=list
+    )
 
     status: Mapped[str] = mapped_column(String(24), default="draft", index=True)  # POST_STATUSES
     render_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
