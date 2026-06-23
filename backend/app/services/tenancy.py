@@ -350,6 +350,8 @@ async def find_or_create_client(
     google_sub: str,
     email: str | None,
     name: str | None,
+    first_name: str | None = None,
+    last_name: str | None = None,
 ) -> Client:
     """Find the passenger by google_sub (then email) within the tenant, else create."""
     row = (
@@ -368,13 +370,20 @@ async def find_or_create_client(
         if row is not None and not row.google_sub:
             row.google_sub = google_sub
     if row is None:
-        row = Client(tenant_id=tenant_id, google_sub=google_sub, email=email, name=name)
+        row = Client(
+            tenant_id=tenant_id, google_sub=google_sub, email=email,
+            name=name, first_name=first_name, last_name=last_name,
+        )
         db.add(row)
     else:
         if email and not row.email:
             row.email = email
         if name and not row.name:
             row.name = name
+        if first_name and not row.first_name:
+            row.first_name = first_name
+        if last_name and not row.last_name:
+            row.last_name = last_name
     await db.commit()
     await db.refresh(row)
     return row

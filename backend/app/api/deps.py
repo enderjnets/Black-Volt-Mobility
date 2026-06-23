@@ -37,6 +37,17 @@ def require_staff(payload: dict = Depends(require_auth)) -> dict:
     return payload
 
 
+def require_passenger(payload: dict = Depends(require_auth)) -> dict:
+    """A signed-in passenger, identified by a client_id in the session.
+
+    Profile endpoints are inherently per-client, so a `cid` is required: staff,
+    admin, and open-mode (AUTH_ENABLED=false) sessions carry no client_id and are
+    rejected."""
+    if payload.get("role") != auth.ROLE_PASSENGER or payload.get("cid") is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="passenger_only")
+    return payload
+
+
 async def session_is_admin(db: AsyncSession, payload: dict | None) -> bool:
     """Whether a session is a super-admin. True when: its email is a pinned admin
     (GOOGLE_ADMIN_EMAILS); OR it's the owner of the default (Black Volt) tenant —

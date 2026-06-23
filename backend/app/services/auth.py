@@ -105,7 +105,7 @@ class GoogleAuthError(Exception):
 
 
 def verify_google_id_token(id_token_str: str) -> dict:
-    """Validate a Google ID token; return {email, sub, name}.
+    """Validate a Google ID token; return {email, sub, name, given_name, family_name}.
 
     Checks signature against Google's keys, `aud` == GOOGLE_CLIENT_ID, and that
     the email is verified. Raises GoogleAuthError otherwise.
@@ -132,7 +132,13 @@ def verify_google_id_token(id_token_str: str) -> dict:
     sub = claims.get("sub") or ""
     if not email or not sub:
         raise GoogleAuthError("missing_email_or_sub")
-    return {"email": email, "sub": sub, "name": claims.get("name") or ""}
+    return {
+        "email": email,
+        "sub": sub,
+        "name": claims.get("name") or "",
+        "given_name": claims.get("given_name") or "",
+        "family_name": claims.get("family_name") or "",
+    }
 
 
 # ─── Access list (DB-backed allow-list for the dashboard) ────────────────────
