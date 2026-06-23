@@ -2,6 +2,8 @@
 
 import { type ReactNode, useState } from "react";
 
+import { ProfileGate } from "./ProfileGate";
+
 import { Icon } from "../Icon";
 import { Button, GoogleG, Pill, Toggle } from "../ui";
 import { useI18n } from "@/lib/i18n";
@@ -39,6 +41,7 @@ export function Account() {
   ]);
   const [sms, setSms] = useState(true);
   const [email, setEmail] = useState(true);
+  const [editing, setEditing] = useState(false);
 
   if (!user) {
     return (
@@ -100,7 +103,7 @@ export function Account() {
                 {t("acct.member")} {user.since}
               </div>
             </div>
-            <Button variant="ghost" size="sm" icon="settings">
+            <Button variant="ghost" size="sm" icon="settings" onClick={() => setEditing(true)}>
               {t("acct.edit")}
             </Button>
           </div>
@@ -244,6 +247,10 @@ export function Account() {
           </Button>
         </div>
       </div>
+
+      {editing && (
+        <ProfileGate onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />
+      )}
     </div>
   );
 }
