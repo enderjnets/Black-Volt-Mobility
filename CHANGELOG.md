@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.39.0 — 2026-06-23 — Client onboarding: profile gate right after Google sign-in
+
+**New riders complete the data Google can't give us (phone, names) before their first booking continues, and passengers can finally edit their own profile.** Three parts:
+
+- **A) Backend — profile data + completeness** (migration `0022_client_onboarding_profile`): `clients` gains `first_name`, `last_name`, and `sms_consent`. `verify_google_id_token` now also returns `given_name`/`family_name`, and `find_or_create_client` persists them, keeping the existing `name` synced to `"First Last"`. A profile is "complete" once it has first name + last name + phone (derived, no stored flag). `profile_complete` is added to `POST /login/google` and `GET /me` so the client can decide to show the gate without an extra round trip.
+- **B) Backend — passenger self-service API** (`app/api/v1/me.py`, `require_passenger` dep): `GET /api/v1/me/profile` and `PATCH /api/v1/me/profile`, scoped by the session's `client_id` (`cid`) — never a body value. Phone is normalized to E.164 server-side (`app/services/phone.py`, US default, international allowed; invalid → 422). The backend is the source of truth.
+- **C) Frontend — the gate** (`ProfileGate.tsx`): a blocking, mobile-first modal shown from `WebShell` right after a Google sign-in when `profile_complete` is false; saving resumes the booking, dismissing cancels. The optional default-address field reuses the booking `AddressField` (Google Places autocomplete). The Account page's Edit button opens the same gate, so passengers can edit their own profile. All strings added to EN + ES.
+- **Security / multi-tenant**: profile endpoints require a passenger session with a `cid`; staff/admin/open-mode sessions are rejected. A passenger can only read/update their own record (the `cid` comes from the signed token, not the request).
+
 ## v0.38.0 — 2026-06-21 — Social: image adjustments — reject-reason steers the AI visuals + manage uploaded images
 
 **The reject-with-reason correction now extends to images, and the owner can manage a post's uploaded images directly.** Two parts:
