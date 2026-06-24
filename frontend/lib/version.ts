@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.38.0";
+export const CURRENT_VERSION = "0.39.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.39.0",
+    date: "2026-06-23",
+    title: "Finish your profile right after you sign in",
+    changes: [
+      "New riders are now asked for the details Google can't share — your phone, and your name if it's missing — right after you sign in, so your driver can always reach you before your first ride.",
+      "Your phone is saved in a clean, standard format (US numbers and international both work).",
+      "Add an optional default address, with the same address autocomplete used on the booking form, to speed up future pickups.",
+      "You can now edit your own profile from the Account page.",
+    ],
+  },
   {
     version: "0.38.0",
     date: "2026-06-21",

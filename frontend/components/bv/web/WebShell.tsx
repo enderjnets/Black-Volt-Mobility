@@ -13,6 +13,7 @@ import { fetchMe, logout } from "@/lib/auth";
 import { track } from "@/lib/analytics";
 import { ChatAssistant } from "./Chat";
 import { ClientTabBar } from "./ClientTabBar";
+import { ProfileGate } from "./ProfileGate";
 import { BV_USER, type BvUser, SignInModal } from "./SignInModal";
 
 interface WebCtx {
@@ -74,6 +75,7 @@ export function WebShell({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<BvUser | null>(null);
   const [signin, setSignin] = useState(false);
   const [afterSignIn, setAfterSignIn] = useState<(() => void) | null>(null);
+  const [gateNext, setGateNext] = useState<(() => void) | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [menu, setMenu] = useState(false);
 
@@ -266,8 +268,9 @@ export function WebShell({ children }: { children: ReactNode }) {
             onSignedIn={async (mode) => {
               setSignin(false);
               track("sign_in", { mode });
+              let me = null;
               if (mode === "google") {
-                const me = await fetchMe();
+                me = await fetchMe();
                 const email = me.email || "";
                 setUser(
                   me.authenticated
@@ -281,8 +284,28 @@ export function WebShell({ children }: { children: ReactNode }) {
               // otherwise land on the account page.
               const resume = afterSignIn;
               setAfterSignIn(null);
-              if (resume) resume();
-              else router.push("/account");
+              const cont = () => {
+                if (resume) resume();
+                else router.push("/account");
+              };
+              // New passengers must complete their profile (phone + name) before
+              // the booking continues. Dismissing the gate cancels the flow.
+              if (me && me.authenticated && me.role === "passenger" && me.profile_complete === false) {
+                setGateNext(() => cont);
+              } else {
+                cont();
+              }
+            }}
+          />
+        )}
+
+        {gateNext && (
+          <ProfileGate
+            onClose={() => setGateNext(null)}
+            onSaved={() => {
+              const cont = gateNext;
+              setGateNext(null);
+              cont?.();
             }}
           />
         )}

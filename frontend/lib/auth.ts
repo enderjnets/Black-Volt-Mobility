@@ -11,6 +11,7 @@ export interface Me {
   tenant_id?: number | null;
   tenant_slug?: string | null;
   is_admin?: boolean;
+  profile_complete?: boolean;
 }
 
 async function jpost(path: string, body?: unknown): Promise<Response> {

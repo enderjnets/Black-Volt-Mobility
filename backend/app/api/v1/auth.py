@@ -11,7 +11,7 @@ from app.api.deps import session_is_admin
 from app.config import get_settings
 from app.db.base import get_db
 from app.models.allowed_user import ROLE_ADMIN
-from app.services import auth
+from app.services import auth, profile
 from app.services.tenancy import (
     create_tenant_for,
     find_client_by_google_sub,
@@ -105,8 +105,11 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
         tenant_id = existing.tenant_id
     else:
         tenant_id = (await resolve_referral_tenant(db, body.ref)).id
+    given, family = info.get("given_name") or "", info.get("family_name") or ""
+    full_name = info["name"] or f"{given} {family}".strip() or None
     client = await find_or_create_client(
-        db, tenant_id=tenant_id, google_sub=info["sub"], email=email, name=info["name"]
+        db, tenant_id=tenant_id, google_sub=info["sub"], email=email, name=full_name,
+        first_name=given or None, last_name=family or None,
     )
     token = auth.make_token(
         role=auth.ROLE_PASSENGER, tenant_id=tenant_id, email=email, client_id=client.id
@@ -116,6 +119,7 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
         "ok": True,
         "role": auth.ROLE_PASSENGER,
         "client": {"id": client.id, "name": client.name, "email": client.email},
+        "profile_complete": profile.is_complete(client),
     }
 
 
@@ -146,6 +150,17 @@ async def me(request: Request, db: AsyncSession = Depends(get_db)):
             "is_admin": await session_is_admin(db, payload),
         }
     )
+    cid = payload.get("cid")
+    if cid is not None:
+        from sqlalchemy import select
+
+        from app.models import Client
+        from app.services import profile as profile_svc
+
+        client = (
+            await db.execute(select(Client).where(Client.id == int(cid)))
+        ).scalar_one_or_none()
+        base["profile_complete"] = profile_svc.is_complete(client) if client else False
     return base
 
 
