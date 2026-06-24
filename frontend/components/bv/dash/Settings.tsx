@@ -9,6 +9,12 @@ import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { Button, Field, Pill } from "../ui";
 import { ShareLink } from "./ShareLink";
+import {
+  type CalendarConnection,
+  disconnectCalendar,
+  getCalendarConnection,
+  startCalendarConnect,
+} from "@/lib/calendar";
 import { useI18n } from "@/lib/i18n";
 import {
   getTenantSettings,
@@ -284,11 +290,139 @@ export function Settings() {
           <p style={{ fontSize: 13, color: "var(--silver)", margin: 0, lineHeight: 1.5 }}>{t("dash.settings.paymentsBody")}</p>
         </StatusCard>
 
+        <GoogleCalendarCard />
+
         <StatusCard title={t("dash.settings.notifSection")} icon="message-circle">
           <p style={{ fontSize: 13, color: "var(--silver)", margin: 0, lineHeight: 1.5 }}>{t("dash.settings.notifSoon")}</p>
         </StatusCard>
       </div>
     </div>
+  );
+}
+
+function GoogleCalendarCard() {
+  const { t } = useI18n();
+  const [conn, setConn] = useState<CalendarConnection | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  // Surface the ?calendar=connected|error flag the OAuth callback redirects with.
+  const [flag, setFlag] = useState<string | null>(null);
+
+  useEffect(() => {
+    getCalendarConnection().then(setConn).catch(() => setConn(null));
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search).get("calendar");
+      if (p) {
+        setFlag(p);
+        // Clean the URL so a refresh doesn't re-show the banner.
+        const url = new URL(window.location.href);
+        url.searchParams.delete("calendar");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
+  }, []);
+
+  const connect = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await startCalendarConnect(); // full-page redirect to Google
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "error");
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await disconnectCalendar();
+      setConn(await getCalendarConnection());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const body = (text: string) => (
+    <p style={{ fontSize: 13, color: "var(--silver)", margin: 0, lineHeight: 1.5 }}>{text}</p>
+  );
+
+  return (
+    <StatusCard title={t("dash.calendar.title")} icon="external-link">
+      {flag === "connected" && (
+        <div style={{ marginBottom: 10 }}>
+          <Pill tone="success" icon="circle-check">
+            {t("dash.calendar.justConnected")}
+          </Pill>
+        </div>
+      )}
+      {flag === "error" && (
+        <div style={{ marginBottom: 10 }}>
+          <Pill tone="warning" icon="alert-circle">
+            {t("dash.calendar.connectError")}
+          </Pill>
+        </div>
+      )}
+
+      {conn?.is_admin ? (
+        <>
+          <div style={{ marginBottom: 10 }}>
+            <Pill tone="volt" icon="shield-check">
+              {t("dash.calendar.adminShared")}
+            </Pill>
+          </div>
+          {body(t("dash.calendar.adminBody"))}
+        </>
+      ) : !conn?.oauth_configured ? (
+        <>
+          <div style={{ marginBottom: 10 }}>
+            <Pill tone="muted" icon="circle-dot">
+              {t("dash.calendar.unavailable")}
+            </Pill>
+          </div>
+          {body(t("dash.calendar.unavailableBody"))}
+        </>
+      ) : conn?.connected ? (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <Pill tone="success" icon="circle-check">
+              {t("dash.calendar.connected")}
+            </Pill>
+            {conn.google_email && (
+              <Pill tone="muted">
+                {conn.google_email}
+              </Pill>
+            )}
+          </div>
+          {body(t("dash.calendar.connectedBody"))}
+          <div style={{ marginTop: 12 }}>
+            <Button variant="ghost" size="sm" onClick={disconnect} disabled={busy}>
+              {t("dash.calendar.disconnect")}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ marginBottom: 10 }}>
+            <Pill tone="muted" icon="circle-dot">
+              {t("dash.calendar.notConnected")}
+            </Pill>
+          </div>
+          {body(t("dash.calendar.body"))}
+          <div style={{ marginTop: 12 }}>
+            <Button variant="solid" size="sm" icon="external-link" onClick={connect} disabled={busy}>
+              {t("dash.calendar.connect")}
+            </Button>
+          </div>
+        </>
+      )}
+      {err && (
+        <p style={{ fontSize: 12, color: "var(--danger, #FF5C6E)", marginTop: 8 }}>{err}</p>
+      )}
+    </StatusCard>
   );
 }
 

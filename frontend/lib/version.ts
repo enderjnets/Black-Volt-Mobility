@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.39.0";
+export const CURRENT_VERSION = "0.40.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.40.0",
+    date: "2026-06-23",
+    title: "Connect your own Google Calendar",
+    changes: [
+      "Team members can now connect their own Google Calendar from Settings, so the rides you create sync to YOUR calendar — not the admin's.",
+      "Admins keep using the shared Black Volt calendar, exactly as before.",
+      "Until a member connects their calendar, their rides simply don't sync anywhere — no more events landing on the wrong calendar.",
+      "Your Google permission is limited to managing calendar events, and your token is stored encrypted. Disconnect any time from Settings.",
+    ],
+  },
   {
     version: "0.39.0",
     date: "2026-06-23",

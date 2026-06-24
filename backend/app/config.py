@@ -170,6 +170,31 @@ class Settings(BaseSettings):
     CALENDAR_INVITEES: str = ""  # CSV, e.g. "margie240478@gmail.com,enderjnets@gmail.com"
     CALENDAR_BLOCK_BUFFER_MIN: int = 20  # turnaround buffer at the end of the block
 
+    # ─── Per-user calendar OAuth (team members connect their own Google) ──────
+    # A Web OAuth client (DISTINCT from GOOGLE_CLIENT_ID, which only verifies
+    # Sign-In ID tokens) drives the authorization-code flow so each team member
+    # links their own Google Calendar. Their refresh token is stored encrypted
+    # (Fernet) with CALENDAR_TOKEN_ENC_KEY. The admin keeps the global calendar
+    # above; non-admin members route to their own connected calendar.
+    GOOGLE_OAUTH_CLIENT_ID: str = ""  # Web OAuth client id
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""  # Web OAuth client secret
+    CALENDAR_TOKEN_ENC_KEY: str = ""  # Fernet key (base64, 32 bytes) for token-at-rest
+
+    @property
+    def calendar_oauth_configured(self) -> bool:
+        """True when the per-user connect flow can run (client creds + enc key)."""
+        return bool(
+            self.GOOGLE_OAUTH_CLIENT_ID
+            and self.GOOGLE_OAUTH_CLIENT_SECRET
+            and self.CALENDAR_TOKEN_ENC_KEY
+        )
+
+    @property
+    def calendar_oauth_redirect_uri(self) -> str:
+        """Backend callback that Google redirects to after consent. Must be
+        registered as an authorized redirect URI on the Web OAuth client."""
+        return f"{self.PUBLIC_BASE_URL.rstrip('/')}/api/v1/calendar/callback"
+
     @property
     def calendar_live(self) -> bool:
         return (

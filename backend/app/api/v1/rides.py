@@ -367,12 +367,9 @@ async def patch_ride(
         await booking.apply_ride_update(db, ride=ride, changes=changes, persist=False)
 
     if body.status is not None:
-        # Cancelled/no-show rides leave the calendar.
+        # Cancelled/no-show rides leave the calendar (the correct per-tenant one).
         if body.status in (RideStatus.CANCELLED, RideStatus.NO_SHOW) and ride.google_event_id:
-            from app.services import calendar
-
-            calendar.delete_event(ride.google_event_id)
-            ride.google_event_id = None
+            await booking.remove_ride_from_calendar(db, ride)
         ride.status = body.status
     if body.payment_method is not None:
         ride.payment_method = body.payment_method

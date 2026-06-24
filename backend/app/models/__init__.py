@@ -1,6 +1,7 @@
 """Re-export every model so Alembic autogenerate + the app see them."""
 from app.models.allowed_user import AllowedUser
 from app.models.analytics import AnalyticsEvent
+from app.models.calendar_credential import CalendarCredential
 from app.models.client import Client
 from app.models.driver_funnel import DriverFunnelLog, DriverGoal
 from app.models.payment import Payment, PaymentStatus
@@ -27,6 +28,7 @@ __all__ = [
     "Payment",
     "PaymentStatus",
     "AllowedUser",
+    "CalendarCredential",
     "Subscription",
     "SubscriptionStatus",
     "DriverFunnelLog",
