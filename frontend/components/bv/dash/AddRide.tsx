@@ -9,6 +9,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
 import { SuggestionDropdown, useAddressSuggest } from "../AddressAutocomplete";
+import { BVDatePicker, BVTimePicker } from "../DateTimePicker";
+import { buildScheduledAt, normDate, normTime } from "@/lib/datetime";
 import { ClientSuggestionDropdown, useClientSuggest } from "../ClientAutocomplete";
 import { useI18n } from "@/lib/i18n";
 import { getClientDetail, inferRoute, type ClientLite } from "@/lib/dashboard";
@@ -155,67 +157,6 @@ function bvSuggestFare(pickup: string, dropoff: string): number | null {
   const s = `${pickup || ""} ${dropoff || ""}`.toLowerCase();
   if (/\bden\b|airport|aeropuerto|intl|international/.test(s)) return 74;
   return null;
-}
-
-/* Combine the human date + time fields into a scheduled_at ISO string (best
-   effort). Parsed in the driver's local timezone → so the calendar shows the
-   right local pickup time. Returns null if it can't be parsed. */
-const pad2 = (n: number) => String(n).padStart(2, "0");
-
-// Normalize a free-text/AI date to YYYY-MM-DD (what the native date input needs).
-// Returns "" when it can't be parsed — better an empty picker than a silently
-// wrong value. Handles ISO and English-style dates; Spanish month names that
-// JS can't parse fall through to "" so the driver picks the date.
-function normDate(s: string): string {
-  const d = (s || "").trim();
-  if (!d) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-  // Append the current year first (deterministic across engines — a bare
-  // `new Date("Jun 24")` parses to wildly wrong years in some runtimes), and
-  // only if that already-has-a-year string fails, try the raw value.
-  const yr = new Date().getFullYear();
-  let dt = new Date(`${d} ${yr}`);
-  if (isNaN(dt.getTime())) dt = new Date(d);
-  if (isNaN(dt.getTime())) return "";
-  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
-}
-
-// Normalize a free-text/AI time to 24h HH:MM (what the native time input needs).
-function normTime(s: string): string {
-  const x = (s || "").trim().toLowerCase();
-  if (!x) return "";
-  let m = x.match(/^(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)$/);
-  if (m) {
-    let h = Number(m[1]) % 12;
-    if (m[3].startsWith("p")) h += 12;
-    return `${pad2(h)}:${m[2]}`;
-  }
-  m = x.match(/^(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)$/);
-  if (m) {
-    let h = Number(m[1]) % 12;
-    if (m[2].startsWith("p")) h += 12;
-    return `${pad2(h)}:00`;
-  }
-  m = x.match(/^(\d{1,2}):(\d{2})$/);
-  if (m) return `${pad2(Number(m[1]))}:${m[2]}`;
-  m = x.match(/^(\d{3,4})$/);
-  if (m) {
-    const v = m[1].padStart(4, "0");
-    return `${v.slice(0, 2)}:${v.slice(2)}`;
-  }
-  return "";
-}
-
-// Combine the (native, already-normalized) date + time into an ISO timestamp.
-// Returns null only when the date is missing/invalid — callers must treat null
-// as "no scheduled time" and block, never silently save a timeless ride.
-function buildScheduledAt(date: string, time: string): string | null {
-  const d = (date || "").trim();
-  if (!d) return null;
-  const t = (time || "").trim() || "00:00";
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T${t}` : `${d} ${new Date().getFullYear()} ${t}`;
-  const parsed = new Date(iso);
-  return isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 // Offline sample for "Try a sample" — the real extraction runs server-side
@@ -590,8 +531,8 @@ export function AddRide() {
                 </button>
               </div>
               <AutocompleteField id="dropoff" label={t.dropoff} icon="map-pin" ph={t.dropoffPh} value={form.dropoff} onChange={(v) => set("dropoff", v)} state={fieldState("dropoff", form, aiFields, mode, aiRan)} t={t} />
-              <RideField id="date" label={t.date} icon="calendar" ph={t.datePh} type="date" value={form.date} onChange={(v) => set("date", v)} state={fieldState("date", form, aiFields, mode, aiRan)} t={t} half />
-              <RideField id="time" label={t.time} icon="clock" ph={t.timePh} type="time" value={form.time} onChange={(v) => set("time", v)} state={fieldState("time", form, aiFields, mode, aiRan)} t={t} half />
+              <BVDatePicker label={t.date} value={form.date} onChange={(v) => set("date", v)} lang={lang} state={fieldState("date", form, aiFields, mode, aiRan)} half required />
+              <BVTimePicker label={t.time} value={form.time} onChange={(v) => set("time", v)} lang={lang} state={fieldState("time", form, aiFields, mode, aiRan)} half required />
             </FormSection>
 
             <FormSection title={t.secExtra} icon="plane">

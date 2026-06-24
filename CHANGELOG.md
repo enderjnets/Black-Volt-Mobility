@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.41.0 — 2026-06-24 — Branded date & time picker (dashboard + client booking)
+
+**Picking a date and pickup time is now fully tap-and-click on every device, and clients can finally schedule a ride for later.** Native inputs (v0.40.1) still felt like "typing segments" on desktop, and the public booking form's "Schedule" toggle was dead — it showed no fields and never sent `scheduled_at`, so a client could not book for later at all. The backend already accepts `scheduled_at` (`RideInput`), so this is a frontend change.
+
+- **Shared helpers** (`lib/datetime.ts`, new): `pad2`/`normDate`/`normTime`/`buildScheduledAt` moved out of `AddRide.tsx` (single source of truth for the v0.40.1 "never save a timeless ride" rule), plus `formatDateDisplay`/`formatTimeDisplay` (locale-aware via `Intl`).
+- **Branded picker** (`components/bv/DateTimePicker.tsx`, new): `BVDatePicker` (month calendar + Today/Tomorrow/+2d shortcuts, past days disabled) and `BVTimePicker` (common-time chips + AM/PM + hour/minute steppers). 100% clickable, identical on phone and desktop, in the Black Volt aesthetic. Reuses the existing popover style and outside-click/Escape pattern from `AddressAutocomplete`; value formats unchanged (`YYYY-MM-DD` / `HH:MM` 24h).
+- **Dashboard** (`components/bv/dash/AddRide.tsx`): the date/time fields use the new pickers (drop-in; the submit guard and Smart/AI pre-fill via `normDate`/`normTime` keep working).
+- **Client booking** (`components/bv/web/Booking.tsx`): selecting "Schedule" now reveals the date/time pickers and the ride is created with `scheduled_at`; "Now" stays immediate. Validation blocks advancing if "Schedule" is chosen without a date (`book.sched.err`, EN+ES).
+
 ## v0.40.1 — 2026-06-24 — Reliable scheduled_at on Add Ride (native date/time pickers)
 
 **Fix:** the dashboard "Add ride" form could save a ride with `scheduled_at = null` — which silently kept it off Google Calendar (calendar sync, correctly, skips rides with no time). Root cause: the date field was free text parsed with `new Date(...)`, which fails on non-ISO/localized input (e.g. Spanish "24 jun") and returned `null` without warning.

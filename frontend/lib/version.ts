@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.40.1";
+export const CURRENT_VERSION = "0.41.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.41.0",
+    date: "2026-06-24",
+    title: "Easy date & time picker — on phone and computer",
+    changes: [
+      "Picking a date and pickup time is now fully tap-and-click — a branded calendar and time selector with quick shortcuts (Today, Tomorrow, common times). No more typing, especially on your phone.",
+      "Clients can finally schedule a ride for later: choosing \"Schedule\" on the booking page now shows the date and time picker (it previously did nothing).",
+      "Works the same on phone, tablet and computer.",
+    ],
+  },
   {
     version: "0.40.1",
     date: "2026-06-24",

@@ -6,7 +6,9 @@ import { Icon } from "../Icon";
 import { Button, Card, Field } from "../ui";
 import { AddressField } from "./AddressField";
 import { SquareCard } from "./SquareCard";
+import { BVDatePicker, BVTimePicker } from "../DateTimePicker";
 import { useI18n } from "@/lib/i18n";
+import { buildScheduledAt } from "@/lib/datetime";
 import { ApiError, createRide, getQuote, type Quote } from "@/lib/booking";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
 import { track } from "@/lib/analytics";
@@ -102,12 +104,15 @@ function Stat({ icon, label, value, accent }: { icon: string; label: string; val
 }
 
 export function Booking() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { openSignIn } = useWeb();
   const [step, setStep] = useState(0);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("Denver Intl (DEN)");
   const [when, setWhen] = useState("now");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [schedErr, setSchedErr] = useState(false);
   const [pax, setPax] = useState(2);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -185,6 +190,7 @@ export function Booking() {
           pickup: (from || "Downtown Denver").trim(),
           dropoff: to.trim(),
           pax,
+          scheduled_at: when === "schedule" && date ? buildScheduledAt(date, time) : null,
           confirm: false,
         });
         setRideId(ride.id);
@@ -239,7 +245,10 @@ export function Booking() {
                   ].map(([v, l]) => (
                     <button
                       key={v}
-                      onClick={() => setWhen(v)}
+                      onClick={() => {
+                        setWhen(v);
+                        if (v === "now") setSchedErr(false);
+                      }}
                       style={{
                         flex: 1,
                         padding: "11px 0",
@@ -289,7 +298,48 @@ export function Booking() {
                 </div>
               </div>
             </div>
-            <Button variant="solid" full size="lg" iconRight="arrow-right" onClick={() => setStep(1)}>
+            {when === "schedule" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <BVDatePicker
+                      label={t("book.date")}
+                      value={date}
+                      onChange={(v) => {
+                        setDate(v);
+                        setSchedErr(false);
+                      }}
+                      lang={lang}
+                      state={schedErr && !date ? "missing" : "normal"}
+                      half
+                      required
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <BVTimePicker label={t("book.time")} value={time} onChange={setTime} lang={lang} half required />
+                  </div>
+                </div>
+                {schedErr && !date && (
+                  <div style={{ fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Icon name="alert-circle" size={14} color="var(--danger)" />
+                    {t("book.sched.err")}
+                  </div>
+                )}
+              </div>
+            )}
+            <Button
+              variant="solid"
+              full
+              size="lg"
+              iconRight="arrow-right"
+              onClick={() => {
+                if (when === "schedule" && !date) {
+                  setSchedErr(true);
+                  return;
+                }
+                setStep(1);
+              }}
+            >
               {t("book.review")}
             </Button>
           </div>
