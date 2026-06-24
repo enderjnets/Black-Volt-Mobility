@@ -77,6 +77,27 @@ def _service():
     return _service_cache
 
 
+def service_from_refresh_token(refresh_token: str):
+    """Build a (non-cached) Calendar v3 service from a team member's own stored
+    refresh token, using the Web OAuth client creds. Refreshes the access token
+    in place. Raises if OAuth is unconfigured or the token is rejected."""
+    settings = get_settings()
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+
+    creds = Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        client_id=settings.GOOGLE_OAUTH_CLIENT_ID,
+        client_secret=settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        token_uri="https://oauth2.googleapis.com/token",
+        scopes=_SCOPES,
+    )
+    creds.refresh(Request())
+    return build("calendar", "v3", credentials=creds, cache_discovery=False)
+
+
 def _event_body(
     *,
     summary: str,
@@ -116,14 +137,22 @@ def upsert_event(
     attendees: list[str] | None = None,
     reminders: list[dict] | None = None,
     event_id: str | None = None,
+    service=None,
+    calendar_id: str | None = None,
 ) -> str | None:
     """Create or update a house→house calendar event spanning [start, end].
+
+    `service`/`calendar_id` target a specific calendar (a team member's own,
+    per-user OAuth). When omitted they fall back to the global Black Volt service
+    + GOOGLE_CALENDAR_ID (the admin/default route).
+
     Returns the event id (or a simulated one). Returns the prior id and logs on
     failure — never raises to the caller."""
     settings = get_settings()
-    svc = _service()
+    svc = service or _service()
     if svc is None:
         return event_id or f"SIM-EVT-{uuid.uuid4().hex[:18]}"
+    cal = calendar_id or settings.GOOGLE_CALENDAR_ID
     body = _event_body(
         summary=summary,
         description=description,
@@ -135,37 +164,59 @@ def upsert_event(
         reminders=reminders,
     )
     try:
-        cal = settings.GOOGLE_CALENDAR_ID
         # sendUpdates="all" so attendees (dispatcher + driver) are notified; the
         # protocol notes that modifying attendees on an existing event can fail,
         # so the full attendee list is re-sent on every patch.
         if event_id:
-            ev = svc.events().patch(
-                calendarId=cal, eventId=event_id, body=body, sendUpdates="all"
-            ).execute()
+            try:
+                ev = svc.events().patch(
+                    calendarId=cal, eventId=event_id, body=body, sendUpdates="all"
+                ).execute()
+            except Exception as patch_err:
+                # The stored event id may live on a DIFFERENT calendar (e.g. a ride
+                # created before this tenant connected its own calendar). On a
+                # not-found/gone, recreate it on the correct calendar instead of
+                # losing the sync.
+                if _is_missing_event(patch_err):
+                    ev = svc.events().insert(
+                        calendarId=cal, body=body, sendUpdates="all"
+                    ).execute()
+                else:
+                    raise
         else:
             ev = svc.events().insert(calendarId=cal, body=body, sendUpdates="all").execute()
         return ev.get("id")
     except Exception as e:  # network / auth / API — best-effort
         logger.warning("calendar upsert failed: %s", e)
         # Drop the cached service so the next call rebuilds it — recovers after a
-        # rotated OAuth token (e.g. re-consent) without a process restart.
+        # rotated OAuth token (e.g. re-consent) without a process restart. Only
+        # the global cached service is affected; per-user services aren't cached.
         global _service_cache
         _service_cache = None
         return event_id
 
 
-def delete_event(event_id: str | None) -> None:
-    """Remove a calendar event (no-op when simulated). Best-effort."""
+def _is_missing_event(err: Exception) -> bool:
+    """True when a Google API error means the event/calendar entry is gone
+    (HTTP 404 or 410), so a patch should fall back to insert."""
+    status = getattr(getattr(err, "resp", None), "status", None)
+    if status in (404, 410):
+        return True
+    return "404" in str(err) or "410" in str(err)
+
+
+def delete_event(event_id: str | None, *, service=None, calendar_id: str | None = None) -> None:
+    """Remove a calendar event (no-op when simulated). Best-effort.
+
+    `service`/`calendar_id` target a specific calendar; omitted → global route."""
     if not event_id or event_id.startswith("SIM-EVT-"):
         return
-    svc = _service()
+    svc = service or _service()
     if svc is None:
         return
+    cal = calendar_id or get_settings().GOOGLE_CALENDAR_ID
     try:
-        svc.events().delete(
-            calendarId=get_settings().GOOGLE_CALENDAR_ID, eventId=event_id
-        ).execute()
+        svc.events().delete(calendarId=cal, eventId=event_id).execute()
     except Exception as e:
         logger.warning("calendar delete failed: %s", e)
 

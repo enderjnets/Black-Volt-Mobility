@@ -13,6 +13,7 @@ python-multipart==0.0.20
 google-auth==2.37.0
 google-auth-oauthlib==1.2.1
 google-api-python-client==2.156.0
+cryptography==44.0.0
 requests==2.32.3
 squareup==44.1.0.20260520
 pytest==8.3.4

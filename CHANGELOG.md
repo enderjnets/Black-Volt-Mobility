@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.40.0 — 2026-06-23 — Per-user Google Calendar sync (members connect their own calendar)
+
+**Fix:** a team member's saved/edited ride no longer lands on the admin's calendar (`blackvoltmobility@gmail.com`). Calendar sync was global — every ride was pushed to the single configured calendar regardless of which tenant owned it. Now each ride routes to the correct calendar by tenant, and non-admin members connect their own Google Calendar via OAuth (self-service). Four parts:
+
+- **A) Backend — per-tenant routing** (`app/services/booking.py`): `sync_ride_to_calendar` and ride deletes resolve the target calendar via `_calendar_route(db, ride)` — admin/default tenant → the shared Black Volt calendar (unchanged); a member who connected their own calendar → their calendar; an unconnected member → **skipped** (never the admin's). `app/services/calendar.py` `upsert_event`/`delete_event` accept an explicit `service`/`calendar_id`, gained `service_from_refresh_token`, and a patch→insert fallback for events that moved calendars.
+- **B) Backend — connect flow** (`app/api/v1/calendar_link.py`, migration `0023_calendar_credential`): `POST /api/v1/calendar/connect` (signed CSRF `state`), `GET /api/v1/calendar/callback` (code→token exchange), `GET /api/v1/calendar/connection`, `POST /api/v1/calendar/disconnect` (revokes at Google). Each member's refresh token is stored **encrypted at rest** (Fernet, `app/services/crypto.py`), keyed by tenant; scope is the minimum `calendar.events`.
+- **C) Frontend — Settings card** (`components/bv/dash/Settings.tsx`, `lib/calendar.ts`): "Connect Google Calendar" with connected/email/disconnect states; admins see "uses the Black Volt calendar". EN + ES strings added.
+- **Security / multi-tenant**: connect endpoints are staff-only; the tenant is always taken from the session token, never the request; `state` is HMAC-signed + time-boxed and re-checked against the session on callback; tokens are encrypted (fail-closed — never stored in plaintext) and never logged.
+
 ## v0.39.0 — 2026-06-23 — Client onboarding: profile gate right after Google sign-in
 
 **New riders complete the data Google can't give us (phone, names) before their first booking continues, and passengers can finally edit their own profile.** Three parts:

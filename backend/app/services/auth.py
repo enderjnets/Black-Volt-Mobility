@@ -99,6 +99,34 @@ def decode_token(token: str | None) -> dict | None:
     return payload
 
 
+# ─── Signed short-lived state (OAuth CSRF) ───────────────────────────────────
+def sign_state(data: dict, *, ttl_seconds: int = 600) -> str:
+    """Sign a short-lived state blob for the OAuth connect flow. Tamper-evident
+    (HMAC over the same secret as session tokens) and time-boxed via `exp`."""
+    payload = dict(data)
+    payload["exp"] = int(time.time()) + ttl_seconds
+    payload_b64 = _b64e(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    sig = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
+    return f"{payload_b64}.{sig}"
+
+
+def verify_state(token: str | None) -> dict | None:
+    """Return the verified state payload (signature + non-expired), else None."""
+    if not token or "." not in token:
+        return None
+    payload_b64, sig = token.rsplit(".", 1)
+    expected = _b64e(hmac.new(_secret(), payload_b64.encode("ascii"), hashlib.sha256).digest())
+    if not hmac.compare_digest(sig, expected):
+        return None
+    try:
+        payload = json.loads(_b64d(payload_b64))
+    except Exception:
+        return None
+    if int(payload.get("exp", 0)) <= int(time.time()):
+        return None
+    return payload
+
+
 # ─── Google Sign In ──────────────────────────────────────────────────────
 class GoogleAuthError(Exception):
     """Raised when Google ID token verification fails."""

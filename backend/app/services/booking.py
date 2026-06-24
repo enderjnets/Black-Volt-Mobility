@@ -248,16 +248,107 @@ async def _deadhead_window(ride: Ride) -> tuple[float, float]:
     return lead, ret + settings.CALENDAR_BLOCK_BUFFER_MIN
 
 
+async def _tenant_is_admin(db: AsyncSession, tenant_id: int) -> bool:
+    """True when a tenant's rides belong on the shared Black Volt calendar: the
+    default tenant, or a tenant owned by an active admin.
+
+    Deterministic by design — this decides which calendar a ride routes to, so it
+    must NOT depend on row ordering. A tenant is "admin/shared" iff ANY active
+    admin AllowedUser owns it; otherwise it routes to the member's own calendar."""
+    from app.models import AllowedUser
+    from app.models.allowed_user import ROLE_ADMIN
+    from app.services.tenancy import get_default_tenant
+
+    default = await get_default_tenant(db)
+    if tenant_id == default.id:
+        return True
+    admin_owner = (
+        await db.execute(
+            select(AllowedUser.id).where(
+                AllowedUser.tenant_id == tenant_id,
+                AllowedUser.role == ROLE_ADMIN,
+                AllowedUser.active.is_(True),
+            )
+        )
+    ).first()
+    return admin_owner is not None
+
+
+async def _calendar_route(db: AsyncSession, ride: Ride):
+    """Resolve which Google Calendar a ride's event belongs to, keyed by tenant.
+
+    Returns ``(service, calendar_id, attendees)`` or ``None`` to skip sync:
+      • Admin / default tenant → the shared Black Volt calendar (unchanged):
+        ``service=None`` (upsert uses the global service) + GOOGLE_CALENDAR_ID +
+        the configured invitees (only when OAuth can actually invite).
+      • A member who has connected their own calendar → their own service +
+        calendar id, no global invitees (the event lives on their calendar).
+      • A non-admin member who has NOT connected → ``None`` (do not sync; never
+        pollute the admin calendar).
+    """
+    settings = get_settings()
+
+    if await _tenant_is_admin(db, ride.tenant_id):
+        attendees = settings.calendar_invitees if settings.calendar_can_invite else None
+        return (None, settings.GOOGLE_CALENDAR_ID, attendees)
+
+    from app.models import CalendarCredential
+    from app.services import calendar, crypto
+
+    cred = (
+        await db.execute(
+            select(CalendarCredential).where(CalendarCredential.tenant_id == ride.tenant_id)
+        )
+    ).scalar_one_or_none()
+    if cred is None:
+        return None  # member hasn't connected their calendar → skip
+    if settings.CALENDAR_SIMULATED:
+        # Dev/tests: never call Google; let upsert simulate (service=None).
+        return (None, cred.calendar_id, None)
+    try:
+        token = crypto.decrypt(cred.refresh_token_enc)
+        svc = calendar.service_from_refresh_token(token)
+    except Exception as e:  # noqa: BLE001 — bad/rotated token → skip, don't crash
+        logger.warning("calendar creds unusable for tenant %s: %s", ride.tenant_id, e)
+        return None
+    return (svc, cred.calendar_id, None)
+
+
+async def remove_ride_from_calendar(db: AsyncSession, ride: Ride) -> None:
+    """Delete a ride's event from its correct (per-tenant) calendar and clear the
+    stored id. Best-effort — never raises. The caller commits."""
+    if not ride.google_event_id:
+        return
+    try:
+        from app.services import calendar
+
+        route = await _calendar_route(db, ride)
+        if route is not None:
+            svc, cal, _ = route
+            calendar.delete_event(ride.google_event_id, service=svc, calendar_id=cal)
+    except Exception as e:  # noqa: BLE001 — calendar must not block ride deletion
+        logger.warning("calendar delete failed for ride %s: %s", ride.id, e)
+    finally:
+        ride.google_event_id = None
+
+
 async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
-    """Push a scheduled, active ride to Google Calendar (create or update) and
-    store the event id. The event spans the house→house block per the pickup
-    protocol, carries the dispatcher+driver as attendees, and reminds 30/60 min
-    before. Best-effort — never raises (calendar must not block bookings)."""
+    """Push a scheduled, active ride to the correct Google Calendar (create or
+    update) and store the event id. The target calendar is resolved per tenant
+    (admin → shared Black Volt calendar; a member → their own connected calendar;
+    an unconnected member → skipped). The event spans the house→house block per
+    the pickup protocol and reminds 30/60 min before. Best-effort — never raises
+    (calendar must not block bookings)."""
     if ride.scheduled_at is None or ride.status in _INACTIVE:
         return
     try:
         from app.models import Client
         from app.services import calendar
+
+        route = await _calendar_route(db, ride)
+        if route is None:
+            return  # unconnected member — do not sync
+        svc, cal, attendees = route
 
         settings = get_settings()
         name = ride.passenger_name
@@ -293,10 +384,13 @@ async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
             start=start,
             end=end,
             tz=settings.CALENDAR_TIMEZONE,
-            # Only attach attendees when we can actually invite (OAuth). A service
-            # account 403s on attendees, which would drop the whole event.
-            attendees=settings.calendar_invitees if settings.calendar_can_invite else None,
+            # Attendees only on the shared calendar (and only when OAuth can
+            # invite — a service account 403s on attendees). A member's own
+            # calendar carries no global invitees.
+            attendees=attendees,
             event_id=ride.google_event_id,
+            service=svc,
+            calendar_id=cal,
         )
         if event_id and event_id != ride.google_event_id:
             ride.google_event_id = event_id
@@ -473,11 +567,7 @@ async def delete_ride(db: AsyncSession, *, ride: Ride) -> None:
     (cancelled/no-show) state. Any calendar event is removed, and payment rows are
     detached (ride_id → NULL) rather than deleted, preserving the financial audit
     trail even though the ride record goes away."""
-    if ride.google_event_id:
-        from app.services import calendar
-
-        calendar.delete_event(ride.google_event_id)
-        ride.google_event_id = None
+    await remove_ride_from_calendar(db, ride)
     from app.models import Payment
 
     await db.execute(
