@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.40.0";
+export const CURRENT_VERSION = "0.40.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.40.1",
+    date: "2026-06-24",
+    title: "Reliable date & time when adding a ride",
+    changes: [
+      "Adding a ride now uses proper date and time pickers, so the scheduled time is always saved correctly (in any language).",
+      "This fixes rides being created without a time — which silently kept them off your Google Calendar.",
+      "If a date or time is missing, the form now tells you instead of creating a ride with no schedule.",
+    ],
+  },
   {
     version: "0.40.0",
     date: "2026-06-23",

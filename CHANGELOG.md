@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.40.1 — 2026-06-24 — Reliable scheduled_at on Add Ride (native date/time pickers)
+
+**Fix:** the dashboard "Add ride" form could save a ride with `scheduled_at = null` — which silently kept it off Google Calendar (calendar sync, correctly, skips rides with no time). Root cause: the date field was free text parsed with `new Date(...)`, which fails on non-ISO/localized input (e.g. Spanish "24 jun") and returned `null` without warning.
+
+- `components/bv/dash/AddRide.tsx`: date/time fields now use native `type="date"` / `type="time"` inputs (always emit `YYYY-MM-DD` / `HH:MM`, language-independent) with `colorScheme: dark` for the dark theme. Added `normDate`/`normTime` to coerce AI-extracted values into those formats so Smart mode keeps working. Added a submit guard: if a valid date+time can't be built, the form shows an error (`errDateTime`, EN+ES) instead of creating a timeless ride.
+
 ## v0.40.0 — 2026-06-23 — Per-user Google Calendar sync (members connect their own calendar)
 
 **Fix:** a team member's saved/edited ride no longer lands on the admin's calendar (`blackvoltmobility@gmail.com`). Calendar sync was global — every ride was pushed to the single configured calendar regardless of which tenant owned it. Now each ride routes to the correct calendar by tenant, and non-admin members connect their own Google Calendar via OAuth (self-service). Four parts:

@@ -49,6 +49,7 @@ const BV_T: Record<string, any> = {
     squareNote: "Payment collected on card via Square.",
     needRequired: "Complete the required fields to continue.",
     createErr: "Couldn't create the reservation — check the fields and try again.",
+    errDateTime: "Please set a valid date and time for the ride.",
     dropTitle: "Drop, paste or upload screenshots",
     dropSub: "One or several SMS, WhatsApp, email or notes from the client — AI reads the details.",
     dropBtn: "Choose images", paste: "or press ⌘V / Ctrl+V to paste",
@@ -100,6 +101,7 @@ const BV_T: Record<string, any> = {
     squareNote: "El pago se cobra con tarjeta vía Square.",
     needRequired: "Completa los campos obligatorios para continuar.",
     createErr: "No se pudo crear la reserva — revisa los campos e intenta de nuevo.",
+    errDateTime: "Indica una fecha y hora válidas para el viaje.",
     dropTitle: "Arrastra, pega o sube capturas",
     dropSub: "Uno o varios SMS, WhatsApp, correos o notas del cliente — la IA lee los datos.",
     dropBtn: "Elegir imágenes", paste: "o pulsa ⌘V / Ctrl+V para pegar",
@@ -158,6 +160,55 @@ function bvSuggestFare(pickup: string, dropoff: string): number | null {
 /* Combine the human date + time fields into a scheduled_at ISO string (best
    effort). Parsed in the driver's local timezone → so the calendar shows the
    right local pickup time. Returns null if it can't be parsed. */
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+// Normalize a free-text/AI date to YYYY-MM-DD (what the native date input needs).
+// Returns "" when it can't be parsed — better an empty picker than a silently
+// wrong value. Handles ISO and English-style dates; Spanish month names that
+// JS can't parse fall through to "" so the driver picks the date.
+function normDate(s: string): string {
+  const d = (s || "").trim();
+  if (!d) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  // Append the current year first (deterministic across engines — a bare
+  // `new Date("Jun 24")` parses to wildly wrong years in some runtimes), and
+  // only if that already-has-a-year string fails, try the raw value.
+  const yr = new Date().getFullYear();
+  let dt = new Date(`${d} ${yr}`);
+  if (isNaN(dt.getTime())) dt = new Date(d);
+  if (isNaN(dt.getTime())) return "";
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+}
+
+// Normalize a free-text/AI time to 24h HH:MM (what the native time input needs).
+function normTime(s: string): string {
+  const x = (s || "").trim().toLowerCase();
+  if (!x) return "";
+  let m = x.match(/^(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)$/);
+  if (m) {
+    let h = Number(m[1]) % 12;
+    if (m[3].startsWith("p")) h += 12;
+    return `${pad2(h)}:${m[2]}`;
+  }
+  m = x.match(/^(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)$/);
+  if (m) {
+    let h = Number(m[1]) % 12;
+    if (m[2].startsWith("p")) h += 12;
+    return `${pad2(h)}:00`;
+  }
+  m = x.match(/^(\d{1,2}):(\d{2})$/);
+  if (m) return `${pad2(Number(m[1]))}:${m[2]}`;
+  m = x.match(/^(\d{3,4})$/);
+  if (m) {
+    const v = m[1].padStart(4, "0");
+    return `${v.slice(0, 2)}:${v.slice(2)}`;
+  }
+  return "";
+}
+
+// Combine the (native, already-normalized) date + time into an ISO timestamp.
+// Returns null only when the date is missing/invalid — callers must treat null
+// as "no scheduled time" and block, never silently save a timeless ride.
 function buildScheduledAt(date: string, time: string): string | null {
   const d = (date || "").trim();
   if (!d) return null;
@@ -289,6 +340,13 @@ export function AddRide() {
   // still advances to the success view (the confirmation SMS is the artifact).
   const submit = async () => {
     if (submitting) return;
+    // Never save a ride without a usable scheduled time — that's what kept rides
+    // off the calendar. Block early with a clear message instead of failing silently.
+    const scheduledAt = buildScheduledAt(form.date, form.time);
+    if (!scheduledAt) {
+      setSubmitErr(t.errDateTime);
+      return;
+    }
     setSubmitting(true);
     setSubmitErr(null);
     try {
@@ -296,7 +354,7 @@ export function AddRide() {
         pickup: form.pickup,
         dropoff: form.dropoff,
         pax: form.passengers ? Number(form.passengers) : null,
-        scheduled_at: buildScheduledAt(form.date, form.time),
+        scheduled_at: scheduledAt,
         flight_number: form.flight || null,
         lang: (form.lang || "EN").toUpperCase(),
         notes: form.notes || null,
@@ -369,6 +427,9 @@ export function AddRide() {
         ai[k] = true;
       }
     });
+    // Coerce extracted date/time into the formats the native pickers require.
+    next.date = normDate(next.date);
+    next.time = normTime(next.time);
     if (!next.lang) next.lang = "EN";
     if (!next.fare) {
       const s = bvSuggestFare(next.pickup, next.dropoff);
@@ -529,8 +590,8 @@ export function AddRide() {
                 </button>
               </div>
               <AutocompleteField id="dropoff" label={t.dropoff} icon="map-pin" ph={t.dropoffPh} value={form.dropoff} onChange={(v) => set("dropoff", v)} state={fieldState("dropoff", form, aiFields, mode, aiRan)} t={t} />
-              <RideField id="date" label={t.date} icon="calendar" ph={t.datePh} value={form.date} onChange={(v) => set("date", v)} state={fieldState("date", form, aiFields, mode, aiRan)} t={t} half />
-              <RideField id="time" label={t.time} icon="clock" ph={t.timePh} value={form.time} onChange={(v) => set("time", v)} state={fieldState("time", form, aiFields, mode, aiRan)} t={t} half />
+              <RideField id="date" label={t.date} icon="calendar" ph={t.datePh} type="date" value={form.date} onChange={(v) => set("date", v)} state={fieldState("date", form, aiFields, mode, aiRan)} t={t} half />
+              <RideField id="time" label={t.time} icon="clock" ph={t.timePh} type="time" value={form.time} onChange={(v) => set("time", v)} state={fieldState("time", form, aiFields, mode, aiRan)} t={t} half />
             </FormSection>
 
             <FormSection title={t.secExtra} icon="plane">
@@ -838,6 +899,7 @@ function RideField({
   half,
   textarea,
   prefix,
+  type,
   hint,
   hintValue,
   onHint,
@@ -854,6 +916,7 @@ function RideField({
   half?: boolean;
   textarea?: boolean;
   prefix?: string;
+  type?: string;
   hint?: string | null;
   hintValue?: number | null;
   onHint?: () => void;
@@ -909,7 +972,7 @@ function RideField({
         {textarea ? (
           <textarea id={id} value={value} placeholder={ph} rows={2} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} />
         ) : (
-          <input id={id} value={value} placeholder={ph} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)} style={inputStyle} />
+          <input id={id} type={type || "text"} value={value} placeholder={ph} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)} style={{ ...inputStyle, colorScheme: "dark" }} />
         )}
       </div>
       {hint && (
