@@ -59,17 +59,19 @@ export function AddressEditor({
         zIndex: 1000,
         background: "rgba(5,5,9,0.72)",
         display: "flex",
-        alignItems: "center",
         justifyContent: "center",
-        padding: 16,
+        // Scroll on the overlay (not the card) so the absolutely-positioned address
+        // autocomplete dropdown is never clipped by the card's overflow. margin:auto
+        // on the card keeps it centered when it fits.
+        overflowY: "auto",
+        padding: "24px 16px",
       }}
     >
       <div
         style={{
           width: "100%",
           maxWidth: 420,
-          maxHeight: "calc(100dvh - 32px)",
-          overflowY: "auto",
+          margin: "auto",
           background: "var(--obsidian)",
           border: "1px solid var(--line-strong)",
           borderRadius: "var(--radius-lg)",

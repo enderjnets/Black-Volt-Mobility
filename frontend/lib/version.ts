@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.42.0";
+export const CURRENT_VERSION = "0.42.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.42.1",
+    date: "2026-06-25",
+    title: "Account fixes: address autocomplete in dialogs + visible default address",
+    changes: [
+      "Fixed address autocomplete inside the “Add address” and “Complete your profile” dialogs — suggestions were being cut off by the dialog and are now fully visible and selectable.",
+      "Your default address now shows on your account, so updating it in “Complete your profile” is clearly reflected.",
+    ],
+  },
   {
     version: "0.42.0",
     date: "2026-06-24",

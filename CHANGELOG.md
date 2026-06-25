@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.42.1 — 2026-06-25 — Account fixes: dialog address autocomplete + visible default address
+
+**Two follow-up fixes to the v0.42.0 account page, both reproduced on production.** Frontend-only (no backend or schema change).
+
+- **Address autocomplete clipped in dialogs (fix):** the Google Places suggestion dropdown was being clipped by the modal card's `overflow-y: auto` in the "Add address" and "Complete your profile" dialogs — lower suggestions were cut off and the card gained a scrollbar (`/book` was unaffected since it isn't a modal). Fix: the dialogs now scroll on the overlay with `margin:auto` on the card, so the absolutely-positioned dropdown is never clipped. Applies to `components/bv/web/AddressEditor.tsx` and `components/bv/web/ProfileGate.tsx`.
+- **"Complete your profile" saved but showed no change (fix):** the gate persisted `home_address` correctly, but the account page never displayed it (and it's separate from the Saved-addresses book), so updating it looked like nothing happened. The profile card now shows the default address (`acct.defaultAddress`, EN+ES) under the phone. `components/bv/web/Account.tsx`.
+
 ## v0.42.0 — 2026-06-24 — Account page that actually works (saved addresses, honest payment, saved preferences)
 
 **The client `/account` page was mostly non-functional: "Saved addresses" and "Payment method" were hardcoded fakes, and the SMS/Email/language toggles reset on reload.** This wires every section to real, tenant- and client-scoped data.
