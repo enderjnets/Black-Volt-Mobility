@@ -207,6 +207,24 @@ export function Account() {
               {profile?.phone && (
                 <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 4 }}>{profile.phone}</div>
               )}
+              {profile?.home_address && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--fg3)",
+                    marginTop: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    minWidth: 0,
+                  }}
+                >
+                  <Icon name="map-pin" size={12} color="var(--fg3)" />
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {t("acct.defaultAddress")}: {profile.home_address}
+                  </span>
+                </div>
+              )}
             </div>
             <Button variant="ghost" size="sm" icon="settings" onClick={() => setEditing(true)}>
               {t("acct.edit")}
