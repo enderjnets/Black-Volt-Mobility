@@ -7,9 +7,16 @@
 import { useEffect, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
-import { getProfile, looksLikePhone, updateProfile } from "@/lib/profile";
+import {
+  defaultRidePreferences,
+  getProfile,
+  looksLikePhone,
+  updateProfile,
+  type RidePreferences,
+} from "@/lib/profile";
 import { Icon } from "../Icon";
 import { AddressField } from "./AddressField";
+import { RidePreferencesFields } from "./RidePreferences";
 
 function Field({
   label, icon, value, onChange, placeholder, type = "text", inputMode, required,
@@ -76,6 +83,8 @@ export function ProfileGate({ onSaved, onClose }: { onSaved: () => void; onClose
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [sms, setSms] = useState(false);
+  const [prefs, setPrefs] = useState<RidePreferences>(defaultRidePreferences());
+  const [showPrefs, setShowPrefs] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -87,6 +96,7 @@ export function ProfileGate({ onSaved, onClose }: { onSaved: () => void; onClose
         setPhone(p.phone || "");
         setAddress(p.home_address || "");
         setSms(p.sms_consent);
+        setPrefs(p.ride_preferences ?? defaultRidePreferences());
       })
       .catch(() => {})
       .finally(() => alive && setLoading(false));
@@ -109,6 +119,7 @@ export function ProfileGate({ onSaved, onClose }: { onSaved: () => void; onClose
         phone: phone.trim(),
         home_address: address.trim(),
         sms_consent: sms,
+        ride_preferences: prefs,
       });
       onSaved();
     } catch (e) {
@@ -203,6 +214,40 @@ export function ProfileGate({ onSaved, onClose }: { onSaved: () => void; onClose
               {t("gate.sms")}
             </span>
           </label>
+
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+            <button
+              type="button"
+              onClick={() => setShowPrefs((s) => !s)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                color: "var(--silver)",
+                fontFamily: "var(--font-sans)",
+                fontSize: 13,
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Icon name="settings" size={16} color="var(--silver)" />
+                {t("gate.prefs.toggle")}
+              </span>
+              <Icon name={showPrefs ? "chevron-up" : "chevron-down"} size={16} color="var(--silver)" />
+            </button>
+            {showPrefs && (
+              <div style={{ marginTop: 14 }}>
+                <RidePreferencesFields
+                  value={prefs}
+                  onChange={(patch) => setPrefs((cur) => ({ ...cur, ...patch }))}
+                />
+              </div>
+            )}
+          </div>
 
           {error && (
             <div style={{ fontSize: 13, color: "var(--danger)", fontFamily: "var(--font-sans)" }}>{error}</div>

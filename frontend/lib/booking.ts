@@ -1,4 +1,5 @@
 /* Client helpers for the Black Volt booking API (same-origin /api → backend). */
+import type { RidePreferences } from "./profile";
 
 export interface QuoteLine {
   label: string;
@@ -48,6 +49,7 @@ export interface RideInput {
   passenger_phone?: string | null;
   client_id?: number | null;
   fare_override?: number | null;
+  ride_preferences?: RidePreferences | null;
   confirm?: boolean;
 }
 
@@ -176,7 +178,16 @@ export interface RideDetail extends RideRow {
   notes: string | null;
   google_event_id: string | null;
   created_at: string | null;
-  client: { id: number; name: string | null; phone: string | null; email: string | null } | null;
+  client: {
+    id: number;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    preferences?: RidePreferences;
+  } | null;
+  // Per-ride preferences chosen at booking (snapshot). Null falls back to the
+  // client's standing preferences for display.
+  ride_preferences: RidePreferences | null;
   payment: {
     id: number;
     status: string;

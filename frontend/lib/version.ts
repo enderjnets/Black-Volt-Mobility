@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.42.2";
+export const CURRENT_VERSION = "0.43.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.43.0",
+    date: "2026-06-25",
+    title: "Ride preferences — tell your driver how you like to ride",
+    changes: [
+      "New “Ride preferences” panel in your account: set your defaults for conversation, temperature, music, luggage help, pets/service animals, and a note for your driver (e.g. allergies).",
+      "Set preferences right when you sign up, in an optional section of the profile form.",
+      "Adjust your preferences for any single ride at booking — change them for this trip or keep your defaults.",
+      "Your driver now sees your preferences on the ride so your arrival feels just right.",
+    ],
+  },
   {
     version: "0.42.2",
     date: "2026-06-25",

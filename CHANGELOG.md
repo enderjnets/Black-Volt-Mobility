@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.43.0 — 2026-06-25 — Ride preferences (account + onboarding + per-ride + driver view)
+
+Passengers can now set standing ride preferences and tune them per ride; drivers see them on the ride.
+
+- **Account → Ride preferences panel**: conversation (happy to chat / prefer quiet), temperature (cooler / warmer), music (none / soft / driver's choice), help with luggage, pet / service animal, and a free-text note (e.g. allergies). Each dimension defaults to "no preference". Saved optimistically.
+- **Onboarding gate**: optional, collapsible "Ride preferences" section so new riders can set them at sign-up without lengthening the required form.
+- **Per-ride**: the booking flow prefills the rider's standing preferences and lets them change them for that single ride or keep the defaults. The chosen values are snapshotted onto the ride.
+- **Driver ride detail**: shows the ride's effective preferences (per-ride snapshot, falling back to the client's standing preferences), hiding any neutral values.
+- Backend: `clients.ride_preferences` (JSONB) + `rides.ride_preferences` (JSON snapshot), validated by a `RidePreferences` schema (enum dimensions, notes ≤ 500 chars; notes treated as PII, never logged). Migrations `0025` + `0026`. Extends `PATCH /me/profile` and `POST /rides` (no new endpoints; `require_passenger`/scoping unchanged).
+- i18n EN + ES for all new strings; new icons (thermometer, briefcase, paw-print, chevron-up).
+
 ## v0.42.2 — 2026-06-25 — Driver accounts routed away from the customer portal (fix `passenger_only`)
 
 **Fix:** a driver/owner who signed into the customer site hit `passenger_only` when saving "Complete your profile" — the passenger-only `/me/*` endpoints reject non-passenger sessions, but the client account page and onboarding gate still rendered for them. Root cause surfaced while debugging margie240478, who was on the driver access list (so she authenticated as an owner with no `client_id`) despite being a customer.

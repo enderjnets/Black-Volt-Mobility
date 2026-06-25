@@ -1,6 +1,75 @@
 /* Passenger self-service profile (same-origin /api → backend). */
 import { fmtApiDetail } from "./booking";
 
+export type ConversationPref = "chat" | "quiet" | "no_pref";
+export type TemperaturePref = "cooler" | "warmer" | "no_pref";
+export type MusicPref = "none" | "soft" | "driver_choice" | "no_pref";
+
+/** Standing ride preferences. Mirrors the backend RidePreferences schema. */
+export interface RidePreferences {
+  conversation: ConversationPref;
+  temperature: TemperaturePref;
+  music: MusicPref;
+  luggage_help: boolean;
+  pet: boolean;
+  notes: string;
+}
+
+/** Max length of the free-text note — kept in sync with the backend (RIDE_NOTES_MAX). */
+export const RIDE_NOTES_MAX = 500;
+
+export function defaultRidePreferences(): RidePreferences {
+  return {
+    conversation: "no_pref",
+    temperature: "no_pref",
+    music: "no_pref",
+    luggage_help: false,
+    pet: false,
+    notes: "",
+  };
+}
+
+/** Single-select dimensions: field, icon, label key, and options (value → i18n key). */
+export const RIDE_PREF_CHOICES = [
+  {
+    field: "conversation",
+    icon: "message-circle",
+    label: "acct.ridePrefs.conversation",
+    options: [
+      { value: "chat", label: "acct.ridePrefs.conversation.chat" },
+      { value: "quiet", label: "acct.ridePrefs.conversation.quiet" },
+      { value: "no_pref", label: "acct.ridePrefs.noPref" },
+    ],
+  },
+  {
+    field: "temperature",
+    icon: "thermometer",
+    label: "acct.ridePrefs.temperature",
+    options: [
+      { value: "cooler", label: "acct.ridePrefs.temperature.cooler" },
+      { value: "warmer", label: "acct.ridePrefs.temperature.warmer" },
+      { value: "no_pref", label: "acct.ridePrefs.noPref" },
+    ],
+  },
+  {
+    field: "music",
+    icon: "music",
+    label: "acct.ridePrefs.music",
+    options: [
+      { value: "none", label: "acct.ridePrefs.music.none" },
+      { value: "soft", label: "acct.ridePrefs.music.soft" },
+      { value: "driver_choice", label: "acct.ridePrefs.music.driverChoice" },
+      { value: "no_pref", label: "acct.ridePrefs.noPref" },
+    ],
+  },
+] as const;
+
+/** Boolean amenity toggles. */
+export const RIDE_PREF_TOGGLES = [
+  { field: "luggage_help", icon: "briefcase", label: "acct.ridePrefs.luggage" },
+  { field: "pet", icon: "paw-print", label: "acct.ridePrefs.pet" },
+] as const;
+
 export interface Profile {
   first_name: string | null;
   last_name: string | null;
@@ -11,6 +80,7 @@ export interface Profile {
   sms_consent: boolean;
   email_consent: boolean;
   lang: string | null;
+  ride_preferences: RidePreferences;
   profile_complete: boolean;
 }
 
@@ -22,6 +92,8 @@ export type ProfilePatch = Partial<{
   sms_consent: boolean;
   email_consent: boolean;
   lang: string;
+  // Partial is allowed: the backend merges it onto the stored preferences.
+  ride_preferences: Partial<RidePreferences>;
 }>;
 
 export async function getProfile(): Promise<Profile> {

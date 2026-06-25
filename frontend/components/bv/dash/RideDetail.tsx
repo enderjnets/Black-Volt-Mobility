@@ -26,6 +26,7 @@ import { openMapsTo } from "@/lib/maps";
 import { capturePayment } from "@/lib/payments";
 import { StatusPill } from "./DashShell";
 import { fmtWhen, uiStatus } from "./status";
+import { RidePreferencesSummary } from "../web/RidePreferences";
 
 const METHODS: PaymentMethod[] = ["cash", "square", "venmo", "zelle", "other"];
 const SU_MAX_IMAGES = 5;
@@ -529,6 +530,12 @@ export function RideDetail({
         {(ride.client?.phone || ride.client_phone) && <Row icon="phone">{ride.client?.phone || ride.client_phone}</Row>}
         {ride.notes && <Row icon="message-circle">{ride.notes}</Row>}
       </div>
+
+      {(() => {
+        // Show the ride's per-ride preferences, falling back to the client's standing ones.
+        const prefs = ride.ride_preferences ?? ride.client?.preferences;
+        return prefs ? <RidePreferencesSummary value={prefs} /> : null;
+      })()}
 
       {/* Fare + payment */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: "var(--radius-md)", background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", marginBottom: 16 }}>

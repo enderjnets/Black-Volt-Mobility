@@ -101,6 +101,11 @@ class Ride(Base):
     passenger_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     passenger_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
+    # Per-ride preference snapshot (conversation/temperature/music/luggage/pet/notes).
+    # Set at booking from the client's standing prefs, but editable per ride. Null =
+    # none specified. Validated by RidePreferences in services/profile.py.
+    ride_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Square payment reference (Phase 3).
     payment_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
 

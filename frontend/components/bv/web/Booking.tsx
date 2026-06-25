@@ -6,10 +6,12 @@ import { Icon } from "../Icon";
 import { Button, Card, Field } from "../ui";
 import { AddressField } from "./AddressField";
 import { SquareCard } from "./SquareCard";
+import { RidePreferencesFields } from "./RidePreferences";
 import { BVDatePicker, BVTimePicker } from "../DateTimePicker";
 import { useI18n } from "@/lib/i18n";
 import { buildScheduledAt } from "@/lib/datetime";
 import { ApiError, createRide, getQuote, type Quote } from "@/lib/booking";
+import { defaultRidePreferences, getProfile, type RidePreferences } from "@/lib/profile";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
 import { track } from "@/lib/analytics";
 import { useWeb } from "./WebShell";
@@ -125,6 +127,9 @@ export function Booking() {
   const [payCfg, setPayCfg] = useState<PaymentsConfig | null>(null);
   const [paying, setPaying] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
+  // Per-ride preferences, prefilled from the rider's standing prefs (if signed in).
+  const [ridePrefs, setRidePrefs] = useState<RidePreferences>(defaultRidePreferences());
+  const [showPrefs, setShowPrefs] = useState(false);
 
   // Booking-funnel analytics: one event per step reached.
   useEffect(() => {
@@ -177,6 +182,13 @@ export function Booking() {
   useEffect(() => {
     getPaymentsConfig().then(setPayCfg).catch(() => setPayCfg(null));
   }, []);
+
+  // Prefill ride preferences from the rider's standing prefs (ignored if not signed in).
+  useEffect(() => {
+    getProfile()
+      .then((p) => setRidePrefs(p.ride_preferences ?? defaultRidePreferences()))
+      .catch(() => {});
+  }, [reload]);
   const squareReady = !!(payCfg && payCfg.application_id && payCfg.location_id);
 
   // Step 1 → 2: create the ride (QUOTED) so the payment can attach to it.
@@ -191,6 +203,7 @@ export function Booking() {
           dropoff: to.trim(),
           pax,
           scheduled_at: when === "schedule" && date ? buildScheduledAt(date, time) : null,
+          ride_preferences: ridePrefs,
           confirm: false,
         });
         setRideId(ride.id);
@@ -401,6 +414,44 @@ export function Booking() {
                   <Stat icon="clock" label={t("book.eta")} value={etaText} />
                   <Stat icon="dollar-sign" label={t("book.fare")} value={fareText} accent />
                 </div>
+
+                <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowPrefs((s) => !s)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      width: "100%",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
+                      color: "var(--silver)",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: 13.5,
+                    }}
+                  >
+                    <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--arctic)", fontWeight: 600 }}>
+                        <Icon name="settings" size={16} color="var(--silver)" />
+                        {t("book.prefs.title")}
+                      </span>
+                      <span style={{ fontSize: 11.5, color: "var(--fg3)" }}>{t("book.prefs.hint")}</span>
+                    </span>
+                    <Icon name={showPrefs ? "chevron-up" : "chevron-down"} size={16} color="var(--silver)" />
+                  </button>
+                  {showPrefs && (
+                    <div style={{ marginTop: 14 }}>
+                      <RidePreferencesFields
+                        value={ridePrefs}
+                        onChange={(patch) => setRidePrefs((cur) => ({ ...cur, ...patch }))}
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: "flex", gap: 10 }}>
                   <Button variant="plain" icon="arrow-left" onClick={() => setStep(0)}>
                     {t("common.back")}
