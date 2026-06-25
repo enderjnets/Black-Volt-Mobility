@@ -271,6 +271,15 @@ export function WebShell({ children }: { children: ReactNode }) {
               let me = null;
               if (mode === "google") {
                 me = await fetchMe();
+                // A driver/owner signed in on the customer portal. They have no
+                // passenger profile, so the client account/booking flow can't work
+                // for them (the /me/* endpoints are passenger-only). Send them to
+                // their dashboard instead of a broken passenger experience.
+                if (me.authenticated && me.role && me.role !== "passenger") {
+                  alert(t("auth.driverPortalNotice"));
+                  router.push("/dashboard");
+                  return;
+                }
                 const email = me.email || "";
                 setUser(
                   me.authenticated

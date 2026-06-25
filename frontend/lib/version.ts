@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.42.1";
+export const CURRENT_VERSION = "0.42.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.42.2",
+    date: "2026-06-25",
+    title: "Driver accounts no longer get stuck on the customer profile screen",
+    changes: [
+      "If you sign into the customer site with a driver account, we now take you straight to your dashboard instead of showing a customer profile form that couldn't be saved.",
+    ],
+  },
   {
     version: "0.42.1",
     date: "2026-06-25",
