@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.42.2 — 2026-06-25 — Driver accounts routed away from the customer portal (fix `passenger_only`)
+
+**Fix:** a driver/owner who signed into the customer site hit `passenger_only` when saving "Complete your profile" — the passenger-only `/me/*` endpoints reject non-passenger sessions, but the client account page and onboarding gate still rendered for them. Root cause surfaced while debugging margie240478, who was on the driver access list (so she authenticated as an owner with no `client_id`) despite being a customer.
+
+- **Frontend guard:** `components/bv/web/WebShell.tsx` now treats only `role === "passenger"` sessions as customers. A driver/owner who signs in on the customer site is sent to their dashboard with a notice (`auth.driverPortalNotice`, EN+ES) instead of a broken passenger profile form. Backend `require_passenger` is unchanged (access control intact).
+- **Data:** the specific account was re-classified as a customer (removed from the driver access list) so it signs in as a passenger and the account page works normally.
+
 ## v0.42.1 — 2026-06-25 — Account fixes: dialog address autocomplete + visible default address
 
 **Two follow-up fixes to the v0.42.0 account page, both reproduced on production.** Frontend-only (no backend or schema change).
