@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.41.0";
+export const CURRENT_VERSION = "0.42.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.42.0",
+    date: "2026-06-24",
+    title: "Your account, for real: saved addresses, honest payment, saved preferences",
+    changes: [
+      "Saved addresses now actually work — add, edit, delete and pick a default, with the same address autocomplete as the booking page.",
+      "Your language, SMS and email preferences now stick across visits instead of resetting.",
+      "The payment section now honestly explains how it works: you pay per ride at booking with Square — no card is stored on file.",
+      "Works the same on phone, tablet and computer.",
+    ],
+  },
   {
     version: "0.41.0",
     date: "2026-06-24",

@@ -9,6 +9,8 @@ export interface Profile {
   phone: string | null;
   home_address: string | null;
   sms_consent: boolean;
+  email_consent: boolean;
+  lang: string | null;
   profile_complete: boolean;
 }
 
@@ -18,6 +20,8 @@ export type ProfilePatch = Partial<{
   phone: string;
   home_address: string;
   sms_consent: boolean;
+  email_consent: boolean;
+  lang: string;
 }>;
 
 export async function getProfile(): Promise<Profile> {
