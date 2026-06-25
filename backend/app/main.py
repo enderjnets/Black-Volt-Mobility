@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.deps import require_admin
+from app.api.v1.addresses import router as addresses_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.calendar_link import router as calendar_link_router
@@ -109,6 +110,7 @@ app.add_middleware(
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(me_router, prefix="/api/v1")
+app.include_router(addresses_router, prefix="/api/v1")
 app.include_router(calendar_link_router, prefix="/api/v1")
 app.include_router(booking_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")

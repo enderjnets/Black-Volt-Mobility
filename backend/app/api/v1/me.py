@@ -27,6 +27,8 @@ class ProfilePatch(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     home_address: str | None = Field(default=None, max_length=400)
     sms_consent: bool | None = None
+    email_consent: bool | None = None
+    lang: str | None = Field(default=None, max_length=40)
 
 
 async def _load_own(db: AsyncSession, payload: dict) -> Client:
@@ -90,6 +92,12 @@ async def patch_profile(
 
     if "sms_consent" in changes:
         row.sms_consent = bool(changes["sms_consent"])
+
+    if "email_consent" in changes:
+        row.email_consent = bool(changes["email_consent"])
+
+    if "lang" in changes:
+        row.lang = profile_svc.normalize_lang(changes["lang"])
 
     if "first_name" in changes or "last_name" in changes:
         row.name = f"{row.first_name or ''} {row.last_name or ''}".strip() or None
