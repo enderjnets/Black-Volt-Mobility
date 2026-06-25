@@ -3,6 +3,7 @@ from app.models.allowed_user import AllowedUser
 from app.models.analytics import AnalyticsEvent
 from app.models.calendar_credential import CalendarCredential
 from app.models.client import Client
+from app.models.client_address import ClientAddress
 from app.models.driver_funnel import DriverFunnelLog, DriverGoal
 from app.models.payment import Payment, PaymentStatus
 from app.models.platform_stat import PlatformStat
@@ -20,6 +21,7 @@ from app.models.tenant import Tenant
 __all__ = [
     "Tenant",
     "Client",
+    "ClientAddress",
     "RateConfig",
     "Ride",
     "RideStatus",

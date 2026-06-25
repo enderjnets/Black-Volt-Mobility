@@ -187,3 +187,31 @@ def test_me_endpoint_reports_profile_complete():
     cid2, tid2 = _seed_passenger(first_name="C")  # no last name / phone
     body2 = _passenger_client(cid2, tid2).get("/api/v1/auth/me").json()
     assert body2.get("profile_complete") is False
+
+
+def test_get_profile_includes_email_consent_and_lang():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    c = _passenger_client(cid, tid)
+    body = c.get("/api/v1/me/profile").json()
+    assert "email_consent" in body and body["email_consent"] is False  # default
+    assert "lang" in body and body["lang"] is None                     # no preference yet
+
+
+def test_patch_email_consent_persists():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    c = _passenger_client(cid, tid)
+    r = c.patch("/api/v1/me/profile", json={"email_consent": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["email_consent"] is True
+    # survives a re-read
+    assert c.get("/api/v1/me/profile").json()["email_consent"] is True
+
+
+def test_patch_lang_persists_and_normalizes():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    c = _passenger_client(cid, tid)
+    assert c.patch("/api/v1/me/profile", json={"lang": "es"}).json()["lang"] == "es"
+    assert c.get("/api/v1/me/profile").json()["lang"] == "es"
+    # loose / AI-style input is coerced, never 422
+    assert c.patch("/api/v1/me/profile", json={"lang": "Spanish"}).json()["lang"] == "es"
+    assert c.patch("/api/v1/me/profile", json={"lang": "English"}).json()["lang"] == "en"

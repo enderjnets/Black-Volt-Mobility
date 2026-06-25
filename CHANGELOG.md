@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.42.0 — 2026-06-24 — Account page that actually works (saved addresses, honest payment, saved preferences)
+
+**The client `/account` page was mostly non-functional: "Saved addresses" and "Payment method" were hardcoded fakes, and the SMS/Email/language toggles reset on reload.** This wires every section to real, tenant- and client-scoped data.
+
+- **Saved address book** (new): passengers add, edit, delete and choose a default address — with the same Google Places autocomplete as `/book`. New `client_addresses` table (migration `0024`), service-enforced "exactly one default" invariant, and CRUD under `/api/v1/me/addresses` scoped to the session's own `client_id`+`tenant_id` (cross-client/cross-tenant access returns 404). New `app/models/client_address.py`, `app/services/addresses.py`, `app/api/v1/addresses.py`; frontend `lib/addresses.ts` + `components/bv/web/AddressEditor.tsx`.
+- **Honest payment section**: removed the fake "Visa ···· 4242" card. The panel now states plainly that payment is collected per ride at booking via Square, with no card stored on file.
+- **Persistent preferences**: SMS consent, a new **email consent** (`clients.email_consent`, migration `0024`) and **language** (`clients.lang`) now persist through `/me/profile` and survive reloads. `ProfilePatch`/`profile.serialize` extended with `email_consent` + `lang` (normalized to EN/ES, served lowercase for the i18n).
+- **Mobile-first**: address rows, action buttons and the editor modal work on phone, tablet and desktop (verified 390/820/1200).
+- **Tests**: new `tests/test_me_addresses.py` (12 cases — CRUD, default-uniqueness, delete-promotes-oldest, cross-client/cross-tenant isolation, auth) + 3 added to `tests/test_me_profile.py` (email_consent + lang persistence/normalization).
+
 ## v0.41.0 — 2026-06-24 — Branded date & time picker (dashboard + client booking)
 
 **Picking a date and pickup time is now fully tap-and-click on every device, and clients can finally schedule a ride for later.** Native inputs (v0.40.1) still felt like "typing segments" on desktop, and the public booking form's "Schedule" toggle was dead — it showed no fields and never sent `scheduled_at`, so a client could not book for later at all. The backend already accepts `scheduled_at` (`RideInput`), so this is a frontend change.

@@ -31,4 +31,5 @@ class Client(Base):
     # unset the route is inferred from the client's ride history.
     home_address: Mapped[str | None] = mapped_column(String(400), nullable=True)
     sms_consent: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    email_consent: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
