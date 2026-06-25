@@ -21,6 +21,7 @@ from app.models import (
     Tenant,
 )
 from app.services import analytics, booking
+from app.services import profile as profile_svc
 
 _CANCELLED = (RideStatus.CANCELLED, RideStatus.NO_SHOW)
 _OPEN = (RideStatus.REQUESTED, RideStatus.QUOTED, RideStatus.CONFIRMED, RideStatus.ASSIGNED)
@@ -503,7 +504,14 @@ async def ride_detail_extra(db: AsyncSession, *, tenant_id: int, ride: Ride) -> 
             await db.execute(select(Client).where(Client.id == ride.client_id))
         ).scalar_one_or_none()
         if c:
-            client = {"id": c.id, "name": c.name, "phone": c.phone, "email": c.email}
+            client = {
+                "id": c.id,
+                "name": c.name,
+                "phone": c.phone,
+                "email": c.email,
+                # Standing ride preferences (normalized) so the driver sees them inline.
+                "preferences": profile_svc.normalize_ride_preferences(c.ride_preferences),
+            }
     pay = await latest_payment(db, tenant_id=tenant_id, ride_id=ride.id)
     payment = (
         {

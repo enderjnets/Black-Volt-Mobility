@@ -9,9 +9,10 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import RateConfig, Ride, RideStatus
+from app.models import Client, RateConfig, Ride, RideStatus
 from app.models.rate_config import DEFAULT_RATES
 from app.services import maps, pricing
+from app.services import profile as profile_svc
 
 logger = logging.getLogger("blackvolt.booking")
 
@@ -122,6 +123,7 @@ async def create_ride(
     is_peak: bool | None = None,
     status: RideStatus = RideStatus.QUOTED,
     fare_override: float | None = None,
+    ride_preferences: dict | None = None,
 ) -> Ride:
     """Quote (maps + pricing) then persist the ride. `fare_override` lets the
     driver pin a negotiated fare while still snapshotting the computed route."""
@@ -146,10 +148,25 @@ async def create_ride(
         )
         if c is not None:
             client_id = c.id
+    # Per-ride preference snapshot: explicit overrides win; otherwise inherit the
+    # client's standing preferences so the driver sees them for this ride.
+    prefs_snapshot: dict | None = None
+    if ride_preferences is not None:
+        prefs_snapshot = profile_svc.normalize_ride_preferences(None, ride_preferences)
+    elif client_id is not None:
+        # Tenant-scoped lookup: never snapshot another tenant's client preferences.
+        existing = (
+            await db.execute(
+                select(Client).where(Client.id == client_id, Client.tenant_id == tenant_id)
+            )
+        ).scalar_one_or_none()
+        if existing is not None and existing.ride_preferences:
+            prefs_snapshot = profile_svc.normalize_ride_preferences(existing.ride_preferences)
     ride = Ride(
         tenant_id=tenant_id,
         client_id=client_id,
         status=status,
+        ride_preferences=prefs_snapshot,
         pickup_text=pickup,
         dropoff_text=dropoff,
         stops=[{"text": s} for s in stops] if stops else None,

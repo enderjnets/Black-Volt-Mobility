@@ -8,7 +8,7 @@ only ever touch their own record.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +29,7 @@ class ProfilePatch(BaseModel):
     sms_consent: bool | None = None
     email_consent: bool | None = None
     lang: str | None = Field(default=None, max_length=40)
+    ride_preferences: dict | None = None
 
 
 async def _load_own(db: AsyncSession, payload: dict) -> Client:
@@ -98,6 +99,19 @@ async def patch_profile(
 
     if "lang" in changes:
         row.lang = profile_svc.normalize_lang(changes["lang"])
+
+    if "ride_preferences" in changes:
+        try:
+            # Merge the partial patch onto the stored prefs (don't clobber unsent
+            # dimensions); validation rejects bad enums / overlong notes with 422.
+            row.ride_preferences = profile_svc.normalize_ride_preferences(
+                row.ride_preferences, changes["ride_preferences"]
+            )
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="invalid_ride_preferences",
+            ) from e
 
     if "first_name" in changes or "last_name" in changes:
         row.name = f"{row.first_name or ''} {row.last_name or ''}".strip() or None

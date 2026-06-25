@@ -4,11 +4,18 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 
 import { ProfileGate } from "./ProfileGate";
 import { AddressEditor } from "./AddressEditor";
+import { RidePreferencesFields } from "./RidePreferences";
 
 import { Icon } from "../Icon";
 import { Button, GoogleG, Pill, Toggle } from "../ui";
 import { useI18n } from "@/lib/i18n";
-import { getProfile, updateProfile, type Profile } from "@/lib/profile";
+import {
+  defaultRidePreferences,
+  getProfile,
+  updateProfile,
+  type Profile,
+  type RidePreferences,
+} from "@/lib/profile";
 import {
   deleteAddress,
   getAddresses,
@@ -119,6 +126,25 @@ export function Account() {
   function pickLang(v: "en" | "es") {
     setLang(v);
     savePref({ lang: v });
+  }
+
+  // Ride preferences: send only the changed keys (backend merges) and update local
+  // state functionally so rapid successive edits never clobber each other.
+  async function savePrefs(patch: Partial<RidePreferences>) {
+    setProfile((p) =>
+      p ? { ...p, ride_preferences: { ...p.ride_preferences, ...patch } } : p,
+    );
+    setBusy(true);
+    setErr(null);
+    try {
+      const updated = await updateProfile({ ride_preferences: patch });
+      setProfile(updated);
+    } catch (e) {
+      getProfile().then(setProfile).catch(() => {});
+      setErr(e instanceof Error ? e.message : "error");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onSetDefault(id: number) {
@@ -387,6 +413,16 @@ export function Account() {
             </PrefRow>
           </div>
         </Section>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Section title={t("acct.ridePrefs")} action={<span style={{ fontSize: 12, color: "var(--fg3)", fontFamily: "var(--font-sans)" }}>{t("acct.ridePrefs.hint")}</span>}>
+            <RidePreferencesFields
+              value={profile?.ride_preferences ?? defaultRidePreferences()}
+              busy={busy}
+              onChange={savePrefs}
+            />
+          </Section>
+        </div>
 
         <div style={{ gridColumn: "1 / -1" }}>
           <Button variant="ghost" full icon="log-out" onClick={signOut}>

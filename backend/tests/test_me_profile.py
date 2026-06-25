@@ -215,3 +215,138 @@ def test_patch_lang_persists_and_normalizes():
     # loose / AI-style input is coerced, never 422
     assert c.patch("/api/v1/me/profile", json={"lang": "Spanish"}).json()["lang"] == "es"
     assert c.patch("/api/v1/me/profile", json={"lang": "English"}).json()["lang"] == "en"
+
+
+# ─── ride preferences ────────────────────────────────────────────────────────
+_PREFS_DEFAULT = {
+    "conversation": "no_pref",
+    "temperature": "no_pref",
+    "music": "no_pref",
+    "luggage_help": False,
+    "pet": False,
+    "notes": "",
+}
+
+
+def test_ride_preferences_default_serialized():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    body = _passenger_client(cid, tid).get("/api/v1/me/profile").json()
+    assert body["ride_preferences"] == _PREFS_DEFAULT
+
+
+def test_patch_ride_preferences_persists():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    c = _passenger_client(cid, tid)
+    r = c.patch(
+        "/api/v1/me/profile",
+        json={
+            "ride_preferences": {
+                "conversation": "quiet",
+                "temperature": "cooler",
+                "music": "soft",
+                "luggage_help": True,
+                "pet": True,
+                "notes": "Allergic to perfume",
+            }
+        },
+    )
+    assert r.status_code == 200, r.text
+    prefs = r.json()["ride_preferences"]
+    assert prefs == {
+        "conversation": "quiet",
+        "temperature": "cooler",
+        "music": "soft",
+        "luggage_help": True,
+        "pet": True,
+        "notes": "Allergic to perfume",
+    }
+    # survives a re-read
+    assert c.get("/api/v1/me/profile").json()["ride_preferences"] == prefs
+
+
+def test_patch_ride_preferences_partial_merge():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    c = _passenger_client(cid, tid)
+    c.patch("/api/v1/me/profile", json={"ride_preferences": {"conversation": "chat"}})
+    c.patch("/api/v1/me/profile", json={"ride_preferences": {"music": "driver_choice"}})
+    prefs = c.get("/api/v1/me/profile").json()["ride_preferences"]
+    # the second patch must not clobber the first
+    assert prefs["conversation"] == "chat"
+    assert prefs["music"] == "driver_choice"
+
+
+def test_patch_ride_preferences_invalid_enum_422():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    c = _passenger_client(cid, tid)
+    r = c.patch("/api/v1/me/profile", json={"ride_preferences": {"conversation": "bogus"}})
+    assert r.status_code == 422, r.text
+
+
+def test_patch_ride_preferences_notes_trimmed_and_maxlen():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    c = _passenger_client(cid, tid)
+    out = c.patch("/api/v1/me/profile", json={"ride_preferences": {"notes": "  hi  "}})
+    assert out.json()["ride_preferences"]["notes"] == "hi"
+    over = c.patch("/api/v1/me/profile", json={"ride_preferences": {"notes": "x" * 501}})
+    assert over.status_code == 422, over.text
+
+
+def test_patch_ride_preferences_ignores_unknown_keys():
+    cid, tid = _seed_passenger(first_name="A", last_name="B")
+    c = _passenger_client(cid, tid)
+    r = c.patch(
+        "/api/v1/me/profile",
+        json={"ride_preferences": {"hacker": "x", "music": "none"}},
+    )
+    assert r.status_code == 200, r.text
+    prefs = r.json()["ride_preferences"]
+    assert "hacker" not in prefs
+    assert prefs["music"] == "none"
+
+
+def test_ride_detail_extra_includes_client_preferences():
+    """The driver's ride detail surfaces the client's standing ride preferences."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models import Client, Ride
+    from app.models.ride import RideStatus
+    from app.services import dashboard
+    from app.services.tenancy import create_tenant_for
+
+    async def go() -> dict:
+        eng = create_async_engine(os.environ["DATABASE_URL"])
+        try:
+            Sf = async_sessionmaker(eng, expire_on_commit=False)
+            async with Sf() as db:
+                tenant = await create_tenant_for(db, name=f"rdx-{os.urandom(4).hex()}")
+                client = Client(
+                    tenant_id=tenant.id,
+                    name="Prefs Pax",
+                    ride_preferences={"music": "soft", "pet": True},
+                )
+                db.add(client)
+                await db.commit()
+                await db.refresh(client)
+                ride = Ride(
+                    tenant_id=tenant.id,
+                    client_id=client.id,
+                    status=RideStatus.CONFIRMED,
+                    pickup_text="Aurora",
+                    dropoff_text="DEN",
+                    fare_total=50.0,
+                )
+                db.add(ride)
+                await db.commit()
+                await db.refresh(ride)
+                _CREATED.append((client.id, tenant.id))
+                return await dashboard.ride_detail_extra(db, tenant_id=tenant.id, ride=ride)
+        finally:
+            await eng.dispose()
+
+    extra = asyncio.run(go())
+    prefs = extra["client"]["preferences"]
+    assert prefs["music"] == "soft"
+    assert prefs["pet"] is True
+    assert prefs["conversation"] == "no_pref"  # unset dimensions fall back to defaults

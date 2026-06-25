@@ -15,7 +15,7 @@ from app.api.deps import current_payload, require_auth, require_staff, resolve_t
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import PaymentMethod, Ride, RideStatus
-from app.services import auth, booking, dashboard, maps, smart, subscriptions
+from app.services import auth, booking, dashboard, maps, profile, smart, subscriptions
 
 # Vision providers accept these; anything else is rejected before the model call.
 # The frontend normalizes images to PNG/JPEG first, so HEIC/HEIF rarely reach here
@@ -64,6 +64,8 @@ class RideCreate(QuoteRequest):
     notes: str | None = None
     vehicle: str | None = Field(default=None, max_length=120)
     fare_override: float | None = Field(default=None, ge=0)
+    # Optional per-ride preference overrides; validated/defaulted by the schema.
+    ride_preferences: profile.RidePreferences | None = None
     confirm: bool = False  # passenger booking → CONFIRMED, else QUOTED
 
     _norm_lang = field_validator("lang", mode="before")(_normalize_lang)
@@ -126,6 +128,7 @@ def _ride_out(r: Ride) -> dict:
         "flight_number": r.flight_number,
         "lang": r.lang,
         "notes": r.notes,
+        "ride_preferences": r.ride_preferences,
         "payment_method": (
             r.payment_method.value
             if isinstance(r.payment_method, PaymentMethod)
@@ -287,6 +290,7 @@ async def create_ride(
         is_peak=body.is_peak,
         status=ride_status,
         fare_override=body.fare_override,
+        ride_preferences=body.ride_preferences.model_dump() if body.ride_preferences else None,
     )
     return _ride_out(ride)
 
