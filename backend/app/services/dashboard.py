@@ -501,7 +501,12 @@ async def ride_detail_extra(db: AsyncSession, *, tenant_id: int, ride: Ride) -> 
     client = None
     if ride.client_id:
         c = (
-            await db.execute(select(Client).where(Client.id == ride.client_id))
+            await db.execute(
+                select(Client).where(
+                    Client.id == ride.client_id,
+                    Client.tenant_id == tenant_id,
+                )
+            )
         ).scalar_one_or_none()
         if c:
             client = {

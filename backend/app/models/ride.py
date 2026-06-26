@@ -106,6 +106,18 @@ class Ride(Base):
     # none specified. Validated by RidePreferences in services/profile.py.
     ride_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Discount applied at booking time.
+    discount_code_id: Mapped[int | None] = mapped_column(
+        ForeignKey("discount_codes.id", ondelete="SET NULL"), nullable=True
+    )
+    discount_amount: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+    # When a discount code hands the ride to a different driver tenant, this column
+    # records the code owner's tenant so they can see and service the ride while the
+    # ride's tenant_id (and client_id) remain with the booker for payment + history.
+    assigned_tenant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     # Square payment reference (Phase 3).
     payment_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
 

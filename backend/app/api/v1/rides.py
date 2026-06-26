@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.models import PaymentMethod, Ride, RideStatus
 from app.services import auth, booking, dashboard, maps, profile, smart, subscriptions
+from app.services.discounts import DiscountError
 
 # Vision providers accept these; anything else is rejected before the model call.
 # The frontend normalizes images to PNG/JPEG first, so HEIC/HEIF rarely reach here
@@ -53,6 +54,7 @@ class QuoteRequest(BaseModel):
     scheduled_at: datetime | None = None
     is_loyalty: bool = False
     is_peak: bool | None = None
+    discount_code: str | None = None
 
 
 class RideCreate(QuoteRequest):
@@ -172,17 +174,23 @@ async def post_quote(body: QuoteRequest, request: Request, db: AsyncSession = De
     if settings.REQUIRE_AUTH_TO_QUOTE and settings.AUTH_ENABLED and payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
     tenant_id = await resolve_tenant_id(db, payload)
-    return await booking.build_quote(
-        db,
-        tenant_id=tenant_id,
-        pickup=body.pickup,
-        dropoff=body.dropoff,
-        stops=body.stops,
-        pax=body.pax,
-        scheduled_at=body.scheduled_at,
-        is_loyalty=body.is_loyalty,
-        is_peak=body.is_peak,
-    )
+    try:
+        return await booking.build_quote(
+            db,
+            tenant_id=tenant_id,
+            pickup=body.pickup,
+            dropoff=body.dropoff,
+            stops=body.stops,
+            pax=body.pax,
+            scheduled_at=body.scheduled_at,
+            is_loyalty=body.is_loyalty,
+            is_peak=body.is_peak,
+            discount_code=body.discount_code,
+        )
+    except DiscountError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.reason
+        ) from e
 
 
 @router.get("/places/autocomplete")
@@ -271,27 +279,33 @@ async def create_ride(
     is_passenger = payload.get("role") == auth.ROLE_PASSENGER
     client_id = payload.get("cid") if is_passenger else body.client_id
     ride_status = RideStatus.CONFIRMED if (is_passenger or body.confirm) else RideStatus.QUOTED
-    ride = await booking.create_ride(
-        db,
-        tenant_id=tenant_id,
-        pickup=body.pickup,
-        dropoff=body.dropoff,
-        stops=body.stops,
-        client_id=client_id,
-        passenger_name=body.passenger_name,
-        passenger_phone=body.passenger_phone,
-        pax=body.pax,
-        scheduled_at=body.scheduled_at,
-        flight_number=body.flight_number,
-        lang=body.lang,
-        notes=body.notes,
-        vehicle=body.vehicle,
-        is_loyalty=body.is_loyalty,
-        is_peak=body.is_peak,
-        status=ride_status,
-        fare_override=body.fare_override,
-        ride_preferences=body.ride_preferences.model_dump() if body.ride_preferences else None,
-    )
+    try:
+        ride = await booking.create_ride(
+            db,
+            tenant_id=tenant_id,
+            pickup=body.pickup,
+            dropoff=body.dropoff,
+            stops=body.stops,
+            client_id=client_id,
+            passenger_name=body.passenger_name,
+            passenger_phone=body.passenger_phone,
+            pax=body.pax,
+            scheduled_at=body.scheduled_at,
+            flight_number=body.flight_number,
+            lang=body.lang,
+            notes=body.notes,
+            vehicle=body.vehicle,
+            is_loyalty=body.is_loyalty,
+            is_peak=body.is_peak,
+            status=ride_status,
+            fare_override=body.fare_override,
+            ride_preferences=body.ride_preferences.model_dump() if body.ride_preferences else None,
+            discount_code=body.discount_code,
+        )
+    except DiscountError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.reason
+        ) from e
     return _ride_out(ride)
 
 

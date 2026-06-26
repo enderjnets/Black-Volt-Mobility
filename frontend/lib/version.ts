@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.44.0";
+export const CURRENT_VERSION = "0.45.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.45.0",
+    date: "2026-06-25",
+    title: "Discount codes on booking, driver codes module & admin campaigns",
+    changes: [
+      "Passengers can now apply a discount code at booking — the fare is reduced in real time before payment.",
+      "Reservation-only booking: on-demand Now rides have been removed; all bookings are scheduled.",
+      "Drivers have a new Discount Codes panel in the dashboard to create, toggle and delete promo codes for their clients (capped at 50%).",
+      "Admins can now create multi-driver campaigns: one form generates a unique code per selected driver, with an All Drivers shortcut.",
+    ],
+  },
   {
     version: "0.44.0",
     date: "2026-06-25",

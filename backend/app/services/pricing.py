@@ -30,6 +30,7 @@ class RouteFacts:
     scheduled_at: datetime | None = None
     is_peak: bool | None = None  # explicit override; else derived from scheduled_at
     is_loyalty: bool = False
+    discount_pct: float | None = None
 
 
 def is_peak_time(dt: datetime | None) -> bool:
@@ -99,7 +100,11 @@ def quote(rates: RateConfig, facts: RouteFacts) -> dict:
         subtotal = bumped
 
     total = subtotal
-    if facts.is_loyalty and rates.loyalty_discount_pct > 0:
+    if facts.discount_pct and facts.discount_pct > 0:
+        discount = _round(subtotal * facts.discount_pct / 100.0)
+        lines.append({"label": "discount_code", "amount": -discount, "pct": facts.discount_pct})
+        total = _round(subtotal - discount)
+    elif facts.is_loyalty and rates.loyalty_discount_pct > 0:
         discount = _round(subtotal * rates.loyalty_discount_pct / 100.0)
         lines.append(
             {"label": "loyalty_discount", "amount": -discount, "pct": rates.loyalty_discount_pct}
