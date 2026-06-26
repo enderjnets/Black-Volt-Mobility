@@ -63,7 +63,7 @@ export function Discounts() {
       .catch((e) => setErr(errText(e)));
 
   useEffect(() => {
-    load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
