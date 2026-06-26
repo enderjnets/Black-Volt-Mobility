@@ -326,7 +326,7 @@ async def test_delete_code_cross_tenant_rejected(db):
 async def test_discount_handoff_ride_to_driver_tenant(db):
     """GREEN: a discount code owned by tenant 2 keeps the ride in the booker's
     tenant (1), sets assigned_tenant_id=2, preserves passenger contact, records
-    discount_amount > 0, and increments used_count exactly once."""
+    discount_amount > 0, and does NOT increment used_count (redeem deferred to payment)."""
     from app.models import Ride
     from app.models.discount import DiscountCode
     from app.services.booking import create_ride
@@ -370,9 +370,9 @@ async def test_discount_handoff_ride_to_driver_tenant(db):
         # Discount was applied.
         assert ride.discount_amount > 0, "expected discount_amount > 0"
         assert ride.discount_code_id == code.id
-        # used_count must have incremented to 1.
+        # used_count stays 0 — redeem happens at payment, not ride creation.
         await db.refresh(code)
-        assert code.used_count == 1, f"expected used_count=1, got {code.used_count}"
+        assert code.used_count == 0, f"expected used_count=0 after create_ride (no payment yet), got {code.used_count}"
     finally:
         # Clean up the ride so conftest TRUNCATE isn't needed for this row.
         await db.delete(ride)
@@ -780,4 +780,116 @@ async def test_ride_detail_extra_no_cross_tenant_pii(db):
     finally:
         await db.delete(ride)
         await db.delete(t1_client)
+        await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Follow-up 1: redeem on payment success, not ride creation
+# ---------------------------------------------------------------------------
+
+async def test_create_ride_with_code_does_not_redeem(db):
+    """Creating a ride with a discount code leaves used_count at 0."""
+    from app.services.booking import create_ride
+    code = await D.create_code(db, tenant_id=2, is_admin=True, code="NODELAY10",
+                               discount_pct=10, max_uses=3, expires_at=_future(),
+                               created_by_email="a@x.com")
+    ride = await create_ride(db, tenant_id=1,
+                             pickup="6000 S Fraser St, Aurora CO",
+                             dropoff="Denver International Airport (DEN)",
+                             discount_code="NODELAY10")
+    try:
+        await db.refresh(code)
+        assert code.used_count == 0, f"expected 0, got {code.used_count}"
+        assert ride.discount_code_id == code.id
+        assert not ride.discount_redeemed
+    finally:
+        await db.delete(ride)
+        await db.commit()
+
+
+async def test_payment_success_redeems_code(db):
+    """authorize_for_ride increments used_count to 1 and sets discount_redeemed=True."""
+    from app.services.booking import create_ride
+    from app.services.payments import authorize_for_ride
+    code = await D.create_code(db, tenant_id=2, is_admin=True, code="PAYREEDM10",
+                               discount_pct=10, max_uses=3, expires_at=_future(),
+                               created_by_email="a@x.com")
+    ride = await create_ride(db, tenant_id=1,
+                             pickup="6000 S Fraser St, Aurora CO",
+                             dropoff="Denver International Airport (DEN)",
+                             discount_code="PAYREEDM10")
+    try:
+        await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
+        await db.refresh(code)
+        await db.refresh(ride)
+        assert code.used_count == 1, f"expected 1, got {code.used_count}"
+        assert ride.discount_redeemed is True
+    finally:
+        await db.delete(ride)
+        await db.commit()
+
+
+async def test_payment_redeem_idempotent(db):
+    """If discount_redeemed is already True, a second authorize_for_ride call does
+    not double-increment used_count."""
+    from app.services.booking import create_ride
+    from app.services.payments import authorize_for_ride
+    code = await D.create_code(db, tenant_id=2, is_admin=True, code="IDMPTNT10",
+                               discount_pct=10, max_uses=5, expires_at=_future(),
+                               created_by_email="a@x.com")
+    ride = await create_ride(db, tenant_id=1,
+                             pickup="6000 S Fraser St, Aurora CO",
+                             dropoff="Denver International Airport (DEN)",
+                             discount_code="IDMPTNT10")
+    try:
+        # First payment call — should redeem once.
+        await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
+        await db.refresh(code)
+        assert code.used_count == 1
+        # Second call (retry scenario) — discount_redeemed is True, so skipped.
+        await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
+        await db.refresh(code)
+        assert code.used_count == 1, f"double-redeem: expected 1, got {code.used_count}"
+    finally:
+        await db.delete(ride)
+        await db.commit()
+
+
+async def test_payment_succeeds_when_code_exhausted(db):
+    """If the code is already exhausted at payment time, payment still succeeds
+    and discount_redeemed is set True (no double-billing the customer)."""
+    from app.services.booking import create_ride
+    from app.services.payments import authorize_for_ride
+    code = await D.create_code(db, tenant_id=2, is_admin=True, code="EXHAUST1",
+                               discount_pct=10, max_uses=1, expires_at=_future(),
+                               created_by_email="a@x.com")
+    # Exhaust the code externally (simulate another booking redeeming it first).
+    await D.redeem(db, code)
+    assert code.used_count == 1  # manually verify it's exhausted
+
+    # Now create a ride that has this code's id set (bypassing validate_code since it's exhausted).
+    from app.models import Ride, RideStatus
+    ride = Ride(
+        tenant_id=1, status=RideStatus.QUOTED,
+        pickup_text="6000 S Fraser St, Aurora CO",
+        dropoff_text="Denver International Airport (DEN)",
+        fare_total=50.0, currency="USD",
+        distance_miles=25.0, duration_minutes=40.0,
+        discount_code_id=code.id, discount_amount=5.0,
+        discount_redeemed=False,
+    )
+    db.add(ride)
+    await db.commit()
+    await db.refresh(ride)
+    try:
+        # Payment should succeed even though code is exhausted.
+        pay = await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
+        assert pay is not None
+        await db.refresh(ride)
+        assert ride.discount_redeemed is True
+        # used_count should NOT have gone above 1 (the exhausted guard held).
+        await db.refresh(code)
+        assert code.used_count == 1, f"used_count over-incremented: {code.used_count}"
+    finally:
+        await db.delete(ride)
         await db.commit()

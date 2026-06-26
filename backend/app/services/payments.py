@@ -2,6 +2,7 @@
 move the ride through its lifecycle. Tenant-scoped."""
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Payment, PaymentMethod, PaymentStatus, Ride, RideStatus
 from app.services import payments_square
+
+_logger = logging.getLogger("blackvolt.payments")
 
 
 async def get_payment(db: AsyncSession, *, tenant_id: int, payment_id: int) -> Payment | None:
@@ -50,6 +53,33 @@ async def authorize_for_ride(
         ride.status = RideStatus.CONFIRMED
     await db.commit()
     await db.refresh(pay)
+    # Idempotent discount redemption: only run if not already marked.
+    if ride.discount_code_id and not ride.discount_redeemed:
+        try:
+            from sqlalchemy import select as _select
+
+            from app.models.discount import DiscountCode
+            from app.services import discounts
+            code_row = (await db.execute(
+                _select(DiscountCode).where(DiscountCode.id == ride.discount_code_id)
+            )).scalar_one_or_none()
+            if code_row is not None:
+                try:
+                    await discounts.redeem(db, code_row)
+                except discounts.DiscountError as e:
+                    if e.reason == "exhausted":
+                        _logger.warning(
+                            "discount code %s exhausted at payment for ride %s; fare locked",
+                            ride.discount_code_id, ride.id,
+                        )
+                    else:
+                        _logger.warning(
+                            "discount redeem error for ride %s: %s", ride.id, e.reason
+                        )
+        except Exception:  # noqa: BLE001
+            _logger.exception("discount redemption failed for ride %s; ignoring", ride.id)
+        ride.discount_redeemed = True
+        await db.commit()
     return pay
 
 

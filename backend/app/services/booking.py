@@ -240,13 +240,7 @@ async def create_ride(
         discount_amount=discount_amount,
     )
     db.add(ride)
-    if code_row is not None:
-        # Flush so the ride row gets an id, then redeem (which commits) so the
-        # ride INSERT and the used_count increment land in a single commit.
-        await db.flush()
-        await discounts.redeem(db, code_row)
-    else:
-        await db.commit()
+    await db.commit()
     await db.refresh(ride)
     await sync_ride_to_calendar(db, ride)
     return ride
