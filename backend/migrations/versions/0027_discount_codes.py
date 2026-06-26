@@ -19,6 +19,12 @@ def upgrade() -> None:
     op.create_table(
         "discount_campaigns",
         sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Integer(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("name", sa.String(length=120), nullable=False),
         sa.Column("discount_pct", sa.Float(), nullable=False),
         sa.Column("max_uses", sa.Integer(), nullable=False),
@@ -31,6 +37,7 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
+    op.create_index("ix_discount_campaigns_tenant_id", "discount_campaigns", ["tenant_id"])
     op.create_table(
         "discount_codes",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -59,9 +66,9 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
+        sa.CheckConstraint("code = upper(code)", name="ck_discount_codes_code_upper"),
     )
     op.create_index("ix_discount_codes_tenant_id", "discount_codes", ["tenant_id"])
-    op.create_index("ix_discount_codes_code", "discount_codes", ["code"])
     op.create_unique_constraint("uq_discount_codes_code", "discount_codes", ["code"])
     op.add_column(
         "rides",
@@ -82,7 +89,8 @@ def downgrade() -> None:
     op.drop_column("rides", "discount_amount")
     op.drop_column("rides", "discount_code_id")
     op.drop_constraint("uq_discount_codes_code", "discount_codes", type_="unique")
-    op.drop_index("ix_discount_codes_code", table_name="discount_codes")
     op.drop_index("ix_discount_codes_tenant_id", table_name="discount_codes")
     op.drop_table("discount_codes")
+    # IF EXISTS: older DB states may not have this index (pre-tenant_id-on-campaigns)
+    op.execute("DROP INDEX IF EXISTS ix_discount_campaigns_tenant_id")
     op.drop_table("discount_campaigns")

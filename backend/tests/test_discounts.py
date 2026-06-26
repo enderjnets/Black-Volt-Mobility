@@ -30,12 +30,16 @@ async def test_can_persist_discount_code():
         db.add(row)
         await db.commit()
         await db.refresh(row)
-        assert row.id is not None
-        assert row.used_count == 0
-        assert row.active is True
-        # Clean up so the unique constraint on 'code' doesn't affect future runs.
-        await db.delete(row)
-        await db.commit()
+        try:
+            assert row.id is not None
+            assert row.used_count == 0
+            assert row.active is True
+            # Validator must uppercase code
+            assert row.code == "ENDER10"
+        finally:
+            # Clean up so the unique constraint on 'code' doesn't affect future runs.
+            await db.delete(row)
+            await db.commit()
 
     await dispose_engine()
 
@@ -45,6 +49,7 @@ async def test_can_persist_discount_campaign():
 
     async with get_session_factory()() as db:
         row = DiscountCampaign(
+            tenant_id=1,
             name="Summer 2026",
             discount_pct=15.0,
             max_uses=100,
@@ -54,9 +59,12 @@ async def test_can_persist_discount_campaign():
         db.add(row)
         await db.commit()
         await db.refresh(row)
-        assert row.id is not None
-        # Clean up.
-        await db.delete(row)
-        await db.commit()
+        try:
+            assert row.id is not None
+            assert row.tenant_id == 1
+        finally:
+            # Clean up.
+            await db.delete(row)
+            await db.commit()
 
     await dispose_engine()
