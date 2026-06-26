@@ -106,6 +106,12 @@ class Ride(Base):
     # none specified. Validated by RidePreferences in services/profile.py.
     ride_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Discount applied at booking time.
+    discount_code_id: Mapped[int | None] = mapped_column(
+        ForeignKey("discount_codes.id", ondelete="SET NULL"), nullable=True
+    )
+    discount_amount: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+
     # Square payment reference (Phase 3).
     payment_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
