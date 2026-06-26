@@ -9,7 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Payment, PaymentMethod, PaymentStatus, Ride, RideStatus
-from app.services import payments_square
+from app.models.discount import DiscountCode
+from app.services import discounts, payments_square
 
 _logger = logging.getLogger("blackvolt.payments")
 
@@ -56,12 +57,8 @@ async def authorize_for_ride(
     # Idempotent discount redemption: only run if not already marked.
     if ride.discount_code_id and not ride.discount_redeemed:
         try:
-            from sqlalchemy import select as _select
-
-            from app.models.discount import DiscountCode
-            from app.services import discounts
             code_row = (await db.execute(
-                _select(DiscountCode).where(DiscountCode.id == ride.discount_code_id)
+                select(DiscountCode).where(DiscountCode.id == ride.discount_code_id)
             )).scalar_one_or_none()
             if code_row is not None:
                 try:

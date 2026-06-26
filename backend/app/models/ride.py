@@ -113,7 +113,9 @@ class Ride(Base):
     discount_amount: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
     # Whether the discount code has been redeemed (used_count incremented) for
     # this ride. Set to True after a successful payment so retries don't double-count.
-    discount_redeemed: Mapped[bool] = mapped_column(default=False, server_default="false")
+    discount_redeemed: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
     # When a discount code hands the ride to a different driver tenant, this column
     # records the code owner's tenant so they can see and service the ride while the
     # ride's tenant_id (and client_id) remain with the booker for payment + history.
