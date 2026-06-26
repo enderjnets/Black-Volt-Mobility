@@ -68,6 +68,7 @@ const NAV: { seg: string; href: string; icon: string; key: string }[] = [
   { seg: "inbox", href: "/dashboard/inbox", icon: "message-circle", key: "dash.nav.inbox" },
   { seg: "analytics", href: "/dashboard/analytics", icon: "trending-up", key: "dash.nav.insights" },
   { seg: "rates", href: "/dashboard/rates", icon: "dollar-sign", key: "dash.nav.rates" },
+  { seg: "discounts", href: "/dashboard/discounts", icon: "tag", key: "dash.nav.discounts" },
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];
 
