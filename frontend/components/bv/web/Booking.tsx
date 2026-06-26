@@ -10,7 +10,7 @@ import { RidePreferencesFields } from "./RidePreferences";
 import { BVDatePicker, BVTimePicker } from "../DateTimePicker";
 import { useI18n } from "@/lib/i18n";
 import { buildScheduledAt } from "@/lib/datetime";
-import { ApiError, createRide, getQuote, validateDiscount, type Quote } from "@/lib/booking";
+import { ApiError, confirmRide, createRide, getQuote, validateDiscount, type Quote } from "@/lib/booking";
 import { defaultRidePreferences, getProfile, type RidePreferences } from "@/lib/profile";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
 import { track } from "@/lib/analytics";
@@ -126,6 +126,10 @@ export function Booking() {
   const [payCfg, setPayCfg] = useState<PaymentsConfig | null>(null);
   const [paying, setPaying] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
+  // Payment choice at the pay step: "now" (card via Square) or "later" (pay the
+  // driver at drop-off — no online charge). `payLater` drives the confirmation copy.
+  const [payMode, setPayMode] = useState<"now" | "later">("now");
+  const [payLater, setPayLater] = useState(false);
   // Per-ride preferences, prefilled from the rider's standing prefs (if signed in).
   const [ridePrefs, setRidePrefs] = useState<RidePreferences>(defaultRidePreferences());
   const [showPrefs, setShowPrefs] = useState(false);
@@ -239,6 +243,28 @@ export function Booking() {
         setRideId(ride.id);
       }
       setStep(2);
+    } catch {
+      setPayErr("ride");
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  // Pay-on-completion: confirm the ride without an online charge. The driver
+  // collects (cash or their own Square) at drop-off. Moves the ride to CONFIRMED
+  // and onto the driver's calendar.
+  const handlePayLater = async () => {
+    if (rideId == null) {
+      setPayErr("ride");
+      return;
+    }
+    if (paying) return;
+    setPaying(true);
+    setPayErr(null);
+    try {
+      await confirmRide(rideId);
+      setPayLater(true);
+      setStep(3);
     } catch {
       setPayErr("ride");
     } finally {
@@ -520,27 +546,98 @@ export function Booking() {
                 ${(quote ? quote.total : 74).toFixed(2)}
               </span>
             </div>
-            {squareReady ? (
-              <SquareCard
-                applicationId={payCfg!.application_id!}
-                locationId={payCfg!.location_id!}
-                env={payCfg!.env}
-                sandbox={!payCfg!.live}
-                amountLabel={`$${(quote ? quote.total : 74).toFixed(2)}`}
-                onToken={handleToken}
-              />
+            {/* Pay now (card) vs pay the driver at drop-off (cash, no online charge). */}
+            <div
+              role="tablist"
+              style={{
+                display: "flex",
+                gap: 6,
+                background: "var(--obsidian-3)",
+                border: "1px solid var(--line-strong)",
+                borderRadius: "var(--radius-md)",
+                padding: 4,
+              }}
+            >
+              {(["now", "later"] as const).map((m) => {
+                const active = payMode === m;
+                return (
+                  <button
+                    key={m}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      setPayMode(m);
+                      setPayErr(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      cursor: "pointer",
+                      border: "none",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "9px 8px",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      color: active ? "var(--obsidian)" : "var(--silver)",
+                      background: active ? "var(--volt)" : "transparent",
+                      transition: "all .15s ease-out",
+                    }}
+                  >
+                    {t(m === "now" ? "book.paynow" : "book.paylater")}
+                  </button>
+                );
+              })}
+            </div>
+
+            {payMode === "now" ? (
+              squareReady ? (
+                <SquareCard
+                  applicationId={payCfg!.application_id!}
+                  locationId={payCfg!.location_id!}
+                  env={payCfg!.env}
+                  sandbox={!payCfg!.live}
+                  amountLabel={`$${(quote ? quote.total : 74).toFixed(2)}`}
+                  onToken={handleToken}
+                />
+              ) : (
+                <>
+                  <Field icon="credit-card" label={t("pay.card")} value="•••• •••• •••• 4242" readOnly />
+                  <Button
+                    variant="solid"
+                    full
+                    size="lg"
+                    icon="zap"
+                    disabled={paying}
+                    onClick={() => handleToken("cnon:card-nonce-ok")}
+                  >
+                    {paying ? t("pay.processing") : t("book.paybtn")}
+                  </Button>
+                </>
+              )
             ) : (
               <>
-                <Field icon="credit-card" label={t("pay.card")} value="•••• •••• •••• 4242" readOnly />
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    fontSize: 13.5,
+                    color: "var(--silver)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <Icon name="dollar-sign" size={18} color="var(--volt)" />
+                  {t("book.paylater.note").replace("{amount}", `$${(quote ? quote.total : 74).toFixed(2)}`)}
+                </div>
                 <Button
                   variant="solid"
                   full
                   size="lg"
-                  icon="zap"
+                  icon="check"
                   disabled={paying}
-                  onClick={() => handleToken("cnon:card-nonce-ok")}
+                  onClick={handlePayLater}
                 >
-                  {paying ? t("pay.processing") : t("book.paybtn")}
+                  {paying ? t("pay.processing") : t("book.paylater.confirm")}
                 </Button>
               </>
             )}
@@ -613,6 +710,11 @@ export function Booking() {
               <Icon name="message-circle" size={14} color="var(--volt)" />
               <span style={{ fontSize: 12.5, color: "var(--volt)", fontWeight: 600, fontFamily: "var(--font-sans)" }}>{t("book.sms")}</span>
             </div>
+            {payLater && (
+              <p style={{ color: "var(--silver)", fontSize: 13, maxWidth: 320, margin: "0 auto 14px", lineHeight: 1.5 }}>
+                {t("book.confirmed.paylater").replace("{amount}", `$${(quote ? quote.total : 74).toFixed(2)}`)}
+              </p>
+            )}
             <div
               style={{
                 display: "flex",
@@ -639,7 +741,19 @@ export function Booking() {
               </div>
             </div>
             <div style={{ marginTop: 18 }}>
-              <Button variant="ghost" full onClick={() => setStep(0)}>
+              <Button
+                variant="ghost"
+                full
+                onClick={() => {
+                  // Fresh booking — don't reuse the just-paid ride or its payment state.
+                  setRideId(null);
+                  setQuote(null);
+                  setPayErr(null);
+                  setPayMode("now");
+                  setPayLater(false);
+                  setStep(0);
+                }}
+              >
                 {t("book.another")}
               </Button>
             </div>

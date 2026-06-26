@@ -273,12 +273,15 @@ async def create_ride(
     payload: dict = Depends(require_auth),
 ):
     """Create a ride. Passengers book for themselves (client_id pinned from the
-    session, status CONFIRMED); staff create manual rides (status QUOTED unless
-    confirm=true)."""
+    session); the ride starts QUOTED (a draft) and is only confirmed once the
+    rider completes the payment step — paying online (POST /payments) or
+    committing to pay-on-completion (POST /rides/{id}/confirm). This keeps
+    unpaid drafts off the driver's calendar. Staff create manual rides QUOTED
+    unless confirm=true."""
     tenant_id = await resolve_tenant_id(db, payload)
     is_passenger = payload.get("role") == auth.ROLE_PASSENGER
     client_id = payload.get("cid") if is_passenger else body.client_id
-    ride_status = RideStatus.CONFIRMED if (is_passenger or body.confirm) else RideStatus.QUOTED
+    ride_status = RideStatus.CONFIRMED if body.confirm else RideStatus.QUOTED
     try:
         ride = await booking.create_ride(
             db,
@@ -330,12 +333,19 @@ async def list_rides(
     names = await dashboard.client_names(
         db, tenant_id=tenant_id, ids=[r.client_id for r in rides]
     )
+    # Assigned-driver contact (name/phone/vehicle/rating) so a rider can call or
+    # text their driver from /trips. Only attached when a driver is assigned.
+    drivers = await dashboard.assigned_drivers(
+        db, ids=[r.assigned_tenant_id for r in rides]
+    )
     out = []
     for r in rides:
         d = _ride_out(r)
         nm, ph = names.get(r.client_id, (None, None)) if r.client_id else (None, None)
         d["client_name"] = nm or r.passenger_name
         d["client_phone"] = ph or r.passenger_phone
+        if r.assigned_tenant_id and r.assigned_tenant_id in drivers:
+            d["assigned_driver"] = drivers[r.assigned_tenant_id]
         out.append(d)
     return {"rides": out}
 
@@ -359,7 +369,39 @@ async def get_ride(
         await db.refresh(ride)
     out = _ride_out(ride)
     out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))
+    if ride.assigned_tenant_id:
+        drivers = await dashboard.assigned_drivers(db, ids=[ride.assigned_tenant_id])
+        if ride.assigned_tenant_id in drivers:
+            out["assigned_driver"] = drivers[ride.assigned_tenant_id]
     return out
+
+
+@router.post("/rides/{ride_id}/confirm")
+async def confirm_ride(
+    ride_id: int,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_auth),
+):
+    """Confirm a QUOTED ride the rider chose to pay on completion (cash / pay
+    the driver at drop-off). No online charge: the ride moves to CONFIRMED, is
+    left as CASH + unpaid, and is synced to the driver's calendar. Idempotent —
+    re-confirming an already-active ride is a no-op. Passengers may only confirm
+    their own ride."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
+    if ride is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+    if payload.get("role") == auth.ROLE_PASSENGER and ride.client_id != payload.get("cid"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    if ride.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
+        ride.status = RideStatus.CONFIRMED
+        # Pay-on-completion: keep the default CASH method; stays unpaid until the
+        # driver collects at drop-off and marks it paid.
+        ride.payment_method = PaymentMethod.CASH
+        await db.commit()
+        await db.refresh(ride)
+        await booking.sync_ride_to_calendar(db, ride)
+    return _ride_out(ride)
 
 
 @router.patch("/rides/{ride_id}")

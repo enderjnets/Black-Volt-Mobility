@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.46.0 — 2026-06-26 — Pay-at-drop-off booking + real My Trips with driver contact
+
+Two booking improvements and a real /trips page.
+
+- **Pay at drop-off**: the payment step now offers "Pay now" (card via Square) or "Pay at drop-off" — the latter confirms the ride as pay-on-completion (cash; the driver collects at the end) with no online charge. New passenger-scoped `POST /rides/{id}/confirm` (ownership-checked, idempotent) moves the ride to CONFIRMED with method `cash`, unpaid.
+- **Payment-gated confirmation (bug fix)**: a web booking now starts as a QUOTED draft and is only CONFIRMED — and only then synced to the driver's Google Calendar — once the rider completes the payment step (pays online or commits to pay-at-drop-off). Previously the ride was confirmed and placed on the calendar *before* payment, so an abandoned booking still landed on the driver's schedule. Calendar sync is now gated to active confirmed statuses (`_CALENDAR_VISIBLE`); Square authorization also triggers the sync.
+- **Real My Trips**: the /trips page now renders the rider's real upcoming and past rides from the API (no more mock data), split into Upcoming/Past with status, schedule, fare and flight number, with loading/empty/error states.
+- **Call/text your driver**: once a driver is assigned, a trip shows Call and Message buttons that open the phone's dialer (`tel:`) / SMS app (`sms:`). The assigned driver's contact (name, phone, vehicle, rating) is exposed only on the rider's own rides via `dashboard.assigned_drivers()`.
+- **Chore**: cleaned up pre-existing lint (unused imports, over-long lines, import order) in `test_discounts.py`, `test_pricing.py` and migration `0029`.
+
 ## v0.45.1 — 2026-06-26 — Discount codes: redeem on payment & owner-driver pricing
 
 Refinements to the discount-codes feature shipped in v0.45.0.

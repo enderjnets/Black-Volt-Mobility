@@ -1,252 +1,356 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Card } from "../ui";
 import { useI18n } from "@/lib/i18n";
-import { useWeb } from "./WebShell";
-import { MapPlaceholder } from "./Booking";
+import { listRides, type RideRow } from "@/lib/booking";
 
-function ActionBtn({ icon, label, onClick }: { icon: string; label: string; onClick?: () => void }) {
-  const [h, setH] = useState(false);
+// Statuses that count as a real, upcoming trip vs a finished one. QUOTED/REQUESTED
+// are unpaid drafts — they are not shown on /trips.
+const ACTIVE = ["confirmed", "assigned", "en_route"];
+const PAST = ["completed", "cancelled", "no_show"];
+
+function ActionBtn({
+  icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: string;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
-      onMouseEnter={() => setH(true)}
-      onMouseLeave={() => setH(false)}
+      disabled={disabled}
       style={{
         flex: 1,
         display: "flex",
-        flexDirection: "column",
         alignItems: "center",
-        gap: 5,
-        padding: "12px 0",
-        borderRadius: "var(--radius-md)",
-        cursor: "pointer",
-        fontFamily: "var(--font-sans)",
-        fontSize: 12,
-        fontWeight: 600,
-        background: h ? "var(--obsidian-2)" : "var(--obsidian-3)",
-        color: h ? "var(--arctic)" : "var(--silver)",
+        justifyContent: "center",
+        gap: 8,
+        padding: "10px 12px",
+        background: "var(--obsidian-3)",
         border: "1px solid var(--line-strong)",
-        transition: "all .14s",
+        borderRadius: "var(--radius-md)",
+        color: disabled ? "var(--fg3)" : "var(--arctic)",
+        fontFamily: "var(--font-sans)",
+        fontSize: 13.5,
+        fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+        transition: "all .15s ease-out",
       }}
     >
-      <Icon name={icon} size={18} color="var(--volt)" />
+      <Icon name={icon} size={18} color={disabled ? "var(--fg3)" : "var(--volt)"} />
       {label}
     </button>
   );
 }
 
-export function Trips() {
-  const { t } = useI18n();
-  const { openChat } = useWeb();
-  const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
-
+function StatusBadge({ status, label }: { status: string; label: string }) {
+  const active = ACTIVE.includes(status);
+  const danger = status === "cancelled" || status === "no_show";
+  const color = danger ? "var(--danger)" : active ? "var(--volt)" : "var(--silver)";
   return (
-    <div style={{ maxWidth: 520, margin: "0 auto", padding: "32px 0" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-        <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 28, color: "var(--arctic)", margin: 0 }}>
-          {t("trips.title")}
-        </h2>
-        <div style={{ display: "flex", gap: 6 }}>
-          {(
-            [
-              ["upcoming", t("trips.upcoming")],
-              ["past", t("trips.past")],
-            ] as const
-          ).map(([v, l]) => (
-            <button
-              key={v}
-              onClick={() => setTab(v)}
-              style={{
-                padding: "7px 14px",
-                borderRadius: "var(--radius-full)",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-                fontFamily: "var(--font-sans)",
-                background: tab === v ? "var(--volt-bg-20)" : "transparent",
-                color: tab === v ? "var(--volt)" : "var(--silver)",
-                border: `1px solid ${tab === v ? "var(--volt-border)" : "var(--line-strong)"}`,
-              }}
-            >
-              {l}
-            </button>
-          ))}
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        color,
+        fontFamily: "var(--font-display)",
+      }}
+    >
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />
+      {label}
+    </span>
+  );
+}
+
+function telHref(phone: string) {
+  return `tel:${phone.replace(/[^\d+]/g, "")}`;
+}
+function smsHref(phone: string) {
+  return `sms:${phone.replace(/[^\d+]/g, "")}`;
+}
+
+function fmtWhen(iso: string | null | undefined, lang: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d);
+}
+
+function money(r: RideRow): string {
+  const v = Math.round(r.fare_total ?? 0);
+  return `$${v}`;
+}
+
+function UpcomingCard({
+  ride,
+  t,
+  lang,
+}: {
+  ride: RideRow;
+  t: (k: string) => string;
+  lang: string;
+}) {
+  const driver = ride.assigned_driver;
+  const phone = driver?.phone || null;
+  return (
+    <Card glow pad={20}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <StatusBadge status={ride.status} label={t(`trips.st.${ride.status}`)} />
+          <span style={{ fontSize: 13, color: "var(--silver)" }}>{fmtWhen(ride.scheduled_at, lang)}</span>
         </div>
-      </div>
 
-      {tab === "upcoming" ? (
-        <Card glow pad={0} style={{ overflow: "hidden" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 12px" }}>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                fontFamily: "var(--font-sans)",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--volt)",
-              }}
-            >
-              <span
-                style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: "50%",
-                  background: "var(--volt)",
-                  boxShadow: "var(--shadow-volt-sm)",
-                }}
-              />
-              {t("trips.enroute")}
-            </span>
-            <span style={{ fontSize: 13, color: "var(--silver)" }}>
-              {t("trips.arriving")}{" "}
-              <b style={{ fontFamily: "var(--font-display)", color: "var(--arctic)", fontSize: 15 }}>6 min</b>
-            </span>
+        {/* Route */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "var(--silver)" }}>
+            <Icon name="circle-dot" size={16} color="var(--volt)" /> {ride.pickup}
           </div>
-
-          <div style={{ padding: "0 18px" }}>
-            <MapPlaceholder height={180} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "var(--silver)" }}>
+            <Icon name="map-pin" size={16} color="var(--volt)" /> {ride.dropoff}
           </div>
+        </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px" }}>
-            <div
-              style={{
-                width: 46,
-                height: 46,
-                borderRadius: "50%",
-                border: "2px solid var(--volt)",
-                background: "var(--obsidian-3)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <Icon name="user" size={22} color="var(--silver)" />
+        {/* Stats */}
+        <div style={{ display: "flex", gap: 16, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--fg3)", marginBottom: 4 }}>{t("trips.fare")}</div>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: "var(--volt)" }}>
+              {money(ride)}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--arctic)" }}>
-                Ender
-              </div>
-              <div style={{ fontSize: 12, color: "var(--silver)", display: "flex", alignItems: "center", gap: 6 }}>
-                <Icon name="star" size={12} color="var(--volt)" fill="var(--volt)" /> 4.98 · Black Kia EV9 · ENV-4827
+          </div>
+          {ride.flight_number && (
+            <div>
+              <div style={{ fontSize: 11, color: "var(--fg3)", marginBottom: 4 }}>{t("trips.flight")}</div>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: "var(--arctic)" }}>
+                {ride.flight_number}
               </div>
             </div>
-          </div>
+          )}
+        </div>
 
-          <div style={{ display: "flex", gap: 10, padding: "0 18px 16px" }}>
-            <ActionBtn icon="message-circle" label={t("trips.message")} onClick={openChat} />
-            <ActionBtn icon="phone" label={t("trips.call")} />
-          </div>
-
-          <div
-            style={{
-              margin: "0 18px 18px",
-              padding: 14,
-              borderRadius: "var(--radius-md)",
-              background: "var(--obsidian-2)",
-              border: "1px solid var(--line-strong)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "var(--arctic)" }}>
-                <Icon name="plane" size={16} color="var(--volt)" /> {t("trips.flight")} UA 2293
-              </span>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--success)",
-                  background: "rgba(43,212,160,0.12)",
-                  border: "1px solid rgba(43,212,160,0.4)",
-                  borderRadius: "var(--radius-full)",
-                  padding: "3px 10px",
-                }}
-              >
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} /> {t("trips.ontime")}
-              </span>
-            </div>
-            <div style={{ display: "flex", gap: 16 }}>
-              {(
-                [
-                  ["trips.gate", "B34"],
-                  ["trips.lands", "14:05"],
-                  ["trips.tracking", "Live"],
-                ] as const
-              ).map(([k, v], i) => (
-                <div key={i} style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: "var(--fg3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 3 }}>
-                    {t(k)}
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontWeight: 700,
-                      fontSize: 16,
-                      color: i === 2 ? "var(--volt)" : "var(--arctic)",
-                    }}
-                  >
-                    {v}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[
-            { to: "Denver Intl (DEN)", from: "Downtown Denver", date: "May 24", fare: 74 },
-            { to: "The Ritz-Carlton", from: "DEN", date: "May 18", fare: 82 },
-            { to: "Boulder", from: "DEN", date: "May 11", fare: 110 },
-          ].map((r, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                padding: "14px 16px",
-                background: "var(--obsidian)",
-                border: "1px solid var(--line-strong)",
-                borderRadius: "var(--radius-lg)",
-              }}
-            >
+        {/* Driver + contact */}
+        <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+          {driver ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
               <div
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  background: "var(--obsidian-3)",
-                  border: "1px solid var(--line-strong)",
+                  width: 38,
+                  height: 38,
+                  borderRadius: "50%",
+                  background: "var(--volt-bg)",
+                  border: "1px solid var(--volt-border)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  flexShrink: 0,
                 }}
               >
-                <Icon name="navigation" size={18} color="var(--volt)" />
+                <Icon name="user" size={18} color="var(--volt)" />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)", fontFamily: "var(--font-sans)" }}>
-                  {r.from} → {r.to}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--arctic)" }}>
+                  {driver.name || t("trips.driver")}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--fg3)" }}>{r.date}</div>
-              </div>
-              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--arctic)" }}>
-                ${r.fare}
+                <div style={{ fontSize: 12, color: "var(--fg3)" }}>
+                  {[driver.vehicle, driver.rating ? `★ ${driver.rating.toFixed(2)}` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </div>
               </div>
             </div>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--fg3)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="clock" size={15} color="var(--fg3)" /> {t("trips.driverPending")}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <ActionBtn
+              icon="phone"
+              label={t("trips.call")}
+              disabled={!phone}
+              onClick={phone ? () => { window.location.href = telHref(phone); } : undefined}
+            />
+            <ActionBtn
+              icon="message-circle"
+              label={t("trips.message")}
+              disabled={!phone}
+              onClick={phone ? () => { window.location.href = smsHref(phone); } : undefined}
+            />
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function PastRow({ ride, t, lang }: { ride: RideRow; t: (k: string) => string; lang: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "14px 0",
+        borderBottom: "1px solid var(--line)",
+        gap: 12,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <StatusBadge status={ride.status} label={t(`trips.st.${ride.status}`)} />
+          <span style={{ fontSize: 12, color: "var(--fg3)" }}>{fmtWhen(ride.scheduled_at, lang)}</span>
+        </div>
+        <div
+          style={{
+            fontSize: 13.5,
+            color: "var(--silver)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {ride.pickup} → {ride.dropoff}
+        </div>
+      </div>
+      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--arctic)" }}>
+        {money(ride)}
+      </div>
+    </div>
+  );
+}
+
+function Muted({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ textAlign: "center", padding: "48px 16px", color: "var(--fg3)", fontSize: 14 }}>{children}</div>
+  );
+}
+
+export function Trips() {
+  const { t, lang } = useI18n();
+  const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
+  const [rides, setRides] = useState<RideRow[] | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setError(false);
+    setRides(null);
+    listRides()
+      .then((rows) => {
+        if (alive) setRides(rows);
+      })
+      .catch(() => {
+        if (alive) setError(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const upcoming = (rides ?? [])
+    .filter((r) => ACTIVE.includes(r.status))
+    .sort((a, b) => (a.scheduled_at || "").localeCompare(b.scheduled_at || ""));
+  const past = (rides ?? [])
+    .filter((r) => PAST.includes(r.status))
+    .sort((a, b) => (b.scheduled_at || "").localeCompare(a.scheduled_at || ""));
+  const list = tab === "upcoming" ? upcoming : past;
+
+  return (
+    <div style={{ maxWidth: 480, margin: "0 auto", padding: "32px 0" }}>
+      <h2
+        style={{
+          fontFamily: "var(--font-display)",
+          fontWeight: 700,
+          fontSize: 28,
+          color: "var(--arctic)",
+          margin: "0 0 18px",
+        }}
+      >
+        {t("trips.title")}
+      </h2>
+
+      {/* Tabs */}
+      <div
+        role="tablist"
+        style={{
+          display: "flex",
+          gap: 6,
+          background: "var(--obsidian-3)",
+          border: "1px solid var(--line-strong)",
+          borderRadius: "var(--radius-md)",
+          padding: 4,
+          marginBottom: 18,
+        }}
+      >
+        {(["upcoming", "past"] as const).map((key) => {
+          const active = tab === key;
+          const count = key === "upcoming" ? upcoming.length : past.length;
+          return (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(key)}
+              style={{
+                flex: 1,
+                cursor: "pointer",
+                border: "none",
+                borderRadius: "var(--radius-sm)",
+                padding: "9px 8px",
+                fontFamily: "var(--font-sans)",
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: active ? "var(--obsidian)" : "var(--silver)",
+                background: active ? "var(--volt)" : "transparent",
+                transition: "all .15s ease-out",
+              }}
+            >
+              {t(key === "upcoming" ? "trips.upcoming" : "trips.past")}
+              {rides && count > 0 ? ` (${count})` : ""}
+            </button>
+          );
+        })}
+      </div>
+
+      {error ? (
+        <Muted>{t("trips.error")}</Muted>
+      ) : rides === null ? (
+        <Muted>{t("trips.loading")}</Muted>
+      ) : list.length === 0 ? (
+        <Muted>{tab === "upcoming" ? t("trips.empty") : t("trips.emptyPast")}</Muted>
+      ) : tab === "upcoming" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {list.map((r) => (
+            <UpcomingCard key={r.id} ride={r} t={t} lang={lang} />
           ))}
         </div>
+      ) : (
+        <Card pad={4}>
+          <div style={{ padding: "0 16px" }}>
+            {list.map((r) => (
+              <PastRow key={r.id} ride={r} t={t} lang={lang} />
+            ))}
+          </div>
+        </Card>
       )}
     </div>
   );

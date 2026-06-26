@@ -327,8 +327,6 @@ async def test_discount_handoff_ride_to_driver_tenant(db):
     """GREEN: a discount code owned by tenant 2 keeps the ride in the booker's
     tenant (1), sets assigned_tenant_id=2, preserves passenger contact, records
     discount_amount > 0, and does NOT increment used_count (redeem deferred to payment)."""
-    from app.models import Ride
-    from app.models.discount import DiscountCode
     from app.services.booking import create_ride
 
     # Create a code under the non-default tenant (tenant 2).
@@ -361,7 +359,9 @@ async def test_discount_handoff_ride_to_driver_tenant(db):
         # Ride stays in the booker's tenant — payment + history remain intact.
         assert ride.tenant_id == 1, f"expected tenant_id=1, got {ride.tenant_id}"
         # assigned_tenant_id marks the code-owning driver's tenant.
-        assert ride.assigned_tenant_id == 2, f"expected assigned_tenant_id=2, got {ride.assigned_tenant_id}"
+        assert ride.assigned_tenant_id == 2, (
+            f"expected assigned_tenant_id=2, got {ride.assigned_tenant_id}"
+        )
         # No client_id was passed → remains None (guest booking via discount code).
         assert ride.client_id is None
         # Passenger contact is preserved on the ride.
@@ -372,7 +372,9 @@ async def test_discount_handoff_ride_to_driver_tenant(db):
         assert ride.discount_code_id == code.id
         # used_count stays 0 — redeem happens at payment, not ride creation.
         await db.refresh(code)
-        assert code.used_count == 0, f"expected used_count=0 after create_ride (no payment yet), got {code.used_count}"
+        assert code.used_count == 0, (
+            f"expected used_count=0 after create_ride (no payment yet), got {code.used_count}"
+        )
     finally:
         # Clean up the ride so conftest TRUNCATE isn't needed for this row.
         await db.delete(ride)
@@ -385,7 +387,7 @@ async def test_discount_assigned_tenant_visible_in_list(db):
     assigned_tenant_id), so the driver who owns the code can see and service it."""
     from app.services.booking import create_ride, list_rides
 
-    code = await D.create_code(
+    await D.create_code(
         db,
         tenant_id=2,
         is_admin=True,
@@ -452,7 +454,9 @@ def _passenger_client() -> TestClient:
     c = TestClient(_app)
     c.cookies.set(
         _A.COOKIE_NAME,
-        _A.make_token(role=_A.ROLE_PASSENGER, tenant_id=999902, email="pax@disc.test", client_id=9990),
+        _A.make_token(
+            role=_A.ROLE_PASSENGER, tenant_id=999902, email="pax@disc.test", client_id=9990
+        ),
     )
     return c
 
@@ -724,7 +728,7 @@ async def test_ride_detail_extra_no_cross_tenant_pii(db):
     await db.flush()  # get id without committing
 
     # 2. Discount code owned by tenant 2.
-    code = await D.create_code(
+    await D.create_code(
         db,
         tenant_id=2,
         is_admin=True,
@@ -860,7 +864,6 @@ async def test_payment_redeem_idempotent(db):
 async def test_payment_succeeds_when_code_exhausted(db):
     """If the code is already exhausted at payment time, payment still succeeds
     and discount_redeemed is set True (no double-billing the customer)."""
-    from app.services.booking import create_ride
     from app.services.payments import authorize_for_ride
     code = await D.create_code(db, tenant_id=2, is_admin=True, code="EXHAUST1",
                                discount_pct=10, max_uses=1, expires_at=_future(),
@@ -919,7 +922,6 @@ async def test_discounted_ride_uses_owner_rate_config(db):
     """When a discount code is applied, the fare is computed using the CODE
     OWNER's RateConfig, not the booker's. The discount_pct is then applied
     on top of the owner's base fare."""
-    from app.models import RateConfig
     from app.services.booking import build_quote, get_or_create_rate_config
 
     # Seed two tenants with meaningfully different per_mile rates.
@@ -942,7 +944,7 @@ async def test_discounted_ride_uses_owner_rate_config(db):
     await db.commit()
 
     # Code owned by tenant B (11)
-    code = await D.create_code(db, tenant_id=11, is_admin=True, code="OWNRATE10",
+    await D.create_code(db, tenant_id=11, is_admin=True, code="OWNRATE10",
                                discount_pct=10, max_uses=5, expires_at=_future(),
                                created_by_email="b@x.com")
 

@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.45.1";
+export const CURRENT_VERSION = "0.46.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.46.0",
+    date: "2026-06-26",
+    title: "Pay your driver at drop-off + real trips with call & text",
+    changes: [
+      "At payment you can now choose 'Pay at drop-off': confirm your ride now and pay your driver (cash or card) when you arrive — no online charge.",
+      "Your ride is only confirmed once you finish the payment step, so an unfinished booking no longer lands on your driver's calendar.",
+      "My Trips now shows your real upcoming and past rides instead of sample data.",
+      "Call or text your assigned driver in one tap from a trip — it opens your phone's dialer or messages app.",
+    ],
+  },
   {
     version: "0.45.1",
     date: "2026-06-26",
