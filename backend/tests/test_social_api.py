@@ -63,7 +63,7 @@ def test_generate_creates_draft():
     assert b["status"] == "draft"
     assert b["source"] == "template"
     assert b["script"] and b["caption"] and b["hashtags"]
-    assert b["targets"] == ["instagram", "facebook"]
+    assert b["targets"] == ["instagram", "facebook", "tiktok"]
 
 
 def test_full_pipeline_render_approve_publish():
