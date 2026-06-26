@@ -7,6 +7,9 @@ os.environ["DATABASE_URL"] = (
 )
 os.environ.setdefault("MAPS_SIMULATED", "true")
 os.environ.setdefault("PAYMENTS_SIMULATED", "true")
+# Needed for API tests (auth tokens + login endpoint)
+os.environ["AUTH_ENABLED"] = "true"
+os.environ["AUTH_SECRET"] = "disc-api-test-secret"
 
 from app.config import get_settings  # noqa: E402
 
@@ -364,3 +367,276 @@ async def test_discount_handoff_ride_to_driver_tenant(db):
         # Clean up the ride so conftest TRUNCATE isn't needed for this row.
         await db.delete(ride)
         await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Task 5: /v1/discounts API tests
+# ---------------------------------------------------------------------------
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.main import app as _app  # noqa: E402
+from app.services import auth as _A  # noqa: E402
+
+_client = TestClient(_app)
+
+
+def _owner_client() -> TestClient:
+    """Authenticated admin (owner) session via the login endpoint."""
+    c = TestClient(_app)
+    r = c.post("/api/v1/auth/login", json={"password": "test-pw"})
+    assert r.status_code == 200, f"owner login failed: {r.text}"
+    return c
+
+
+def _staff_client(tenant_id: int = 1, email: str = "staffdriver@disc.test") -> TestClient:
+    """Non-admin driver session — a staff member but NOT a super-admin."""
+    c = TestClient(_app)
+    c.cookies.set(
+        _A.COOKIE_NAME,
+        _A.make_token(role=_A.ROLE_DRIVER, tenant_id=tenant_id, email=email),
+    )
+    return c
+
+
+def _passenger_client() -> TestClient:
+    """Passenger session (require_auth but not staff)."""
+    c = TestClient(_app)
+    c.cookies.set(
+        _A.COOKIE_NAME,
+        _A.make_token(role=_A.ROLE_PASSENGER, tenant_id=999902, email="pax@disc.test", client_id=9990),
+    )
+    return c
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_api_codes():
+    """Delete all discount codes + campaigns created by this module's API tests."""
+    yield
+    import asyncio
+
+    from sqlalchemy import delete as sa_del
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    async def _go():
+        eng = create_async_engine(os.environ["DATABASE_URL"])
+        try:
+            Sf = async_sessionmaker(eng, expire_on_commit=False)
+            async with Sf() as s:
+                from app.models.discount import DiscountCampaign, DiscountCode
+                await s.execute(sa_del(DiscountCode).where(
+                    DiscountCode.created_by_email.in_([
+                        "staffdriver@disc.test",
+                        "",  # owner session may have empty email in token
+                        "pax@disc.test",
+                    ])
+                ))
+                # Clean up any remaining codes from these tests by code prefix
+                await s.execute(sa_del(DiscountCode).where(
+                    DiscountCode.code.like("APITEST%")
+                ))
+                await s.execute(sa_del(DiscountCampaign).where(
+                    DiscountCampaign.name.like("ApiCamp%")
+                ))
+                await s.commit()
+        finally:
+            await eng.dispose()
+
+    asyncio.run(_go())
+
+
+# ── Helper to delete a code by id via API ────────────────────────────────────
+
+def _delete_code_api(owner: TestClient, code_id: int) -> None:
+    owner.delete(f"/api/v1/discounts/{code_id}")
+
+
+# ── Tests ────────────────────────────────────────────────────────────────────
+
+
+def test_api_staff_create_and_list():
+    """Staff can create a code (201) and it appears in the list."""
+    c = _staff_client()
+    body = {
+        "code": "APITEST01",
+        "discount_pct": 10.0,
+        "max_uses": 5,
+        "expires_at": "2030-06-01T00:00:00+00:00",
+    }
+    r = c.post("/api/v1/discounts", json=body)
+    assert r.status_code == 201, r.text
+    created = r.json()
+    assert created["code"] == "APITEST01"
+    assert created["discount_pct"] == 10.0
+    assert created["active"] is True
+
+    # List should contain it
+    listed = c.get("/api/v1/discounts").json()
+    codes = [x["code"] for x in listed]
+    assert "APITEST01" in codes
+
+    # Clean up
+    owner = _owner_client()
+    _delete_code_api(owner, created["id"])
+
+
+def test_api_staff_driver_over_cap_rejected():
+    """A non-admin driver creating a code with pct > 50 gets 422."""
+    c = _staff_client()
+    body = {
+        "code": "APITEST_BIG",
+        "discount_pct": 60.0,
+        "max_uses": 1,
+        "expires_at": "2030-06-01T00:00:00+00:00",
+    }
+    r = c.post("/api/v1/discounts", json=body)
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == "pct_too_high"
+
+
+def test_api_validate_valid_code():
+    """/validate returns {valid: true, discount_pct} for a live code."""
+    # Create the code as owner (admin, no cap)
+    owner = _owner_client()
+    body = {
+        "code": "APITEST_VAL",
+        "discount_pct": 20.0,
+        "max_uses": 10,
+        "expires_at": "2030-12-31T23:59:59+00:00",
+    }
+    r = owner.post("/api/v1/discounts", json=body)
+    assert r.status_code == 201, r.text
+    code_id = r.json()["id"]
+
+    # Validate as passenger (require_auth)
+    pax = _passenger_client()
+    vr = pax.post("/api/v1/discounts/validate", json={"code": "APITEST_VAL"})
+    assert vr.status_code == 200, vr.text
+    data = vr.json()
+    assert data["valid"] is True
+    assert data["discount_pct"] == 20.0
+
+    _delete_code_api(owner, code_id)
+
+
+def test_api_validate_expired_code():
+    """/validate returns 410 for an expired code."""
+    owner = _owner_client()
+    body = {
+        "code": "APITEST_EXP",
+        "discount_pct": 10.0,
+        "max_uses": 5,
+        "expires_at": "2000-01-01T00:00:00+00:00",
+    }
+    r = owner.post("/api/v1/discounts", json=body)
+    assert r.status_code == 201, r.text
+    code_id = r.json()["id"]
+
+    pax = _passenger_client()
+    vr = pax.post("/api/v1/discounts/validate", json={"code": "APITEST_EXP"})
+    assert vr.status_code == 410, vr.text
+    assert vr.json()["detail"] == "expired"
+
+    _delete_code_api(owner, code_id)
+
+
+def test_api_validate_unknown_code():
+    """/validate returns 404 for a code that does not exist."""
+    pax = _passenger_client()
+    vr = pax.post("/api/v1/discounts/validate", json={"code": "APITEST_NOPE_XYZ"})
+    assert vr.status_code == 404, vr.text
+    assert vr.json()["detail"] == "not_found"
+
+
+def test_api_validate_anon_rejected():
+    """/validate requires authentication — anonymous gets 401."""
+    r = _client.post("/api/v1/discounts/validate", json={"code": "WHATEVER"})
+    assert r.status_code == 401, r.text
+
+
+def test_api_campaigns_non_admin_rejected():
+    """A non-admin staff member cannot create a campaign — 403."""
+    c = _staff_client()
+    body = {
+        "name": "ApiCampBad",
+        "discount_pct": 10.0,
+        "max_uses": 5,
+        "expires_at": "2030-06-01T00:00:00+00:00",
+        "driver_tenant_ids": [1],
+    }
+    r = c.post("/api/v1/discounts/campaigns", json=body)
+    assert r.status_code in (401, 403), r.text
+
+
+def test_api_campaigns_admin_creates_codes():
+    """Admin POST /campaigns creates one code per driver_tenant_id."""
+    owner = _owner_client()
+    body = {
+        "name": "ApiCamp01",
+        "discount_pct": 15.0,
+        "max_uses": 3,
+        "expires_at": "2030-12-31T23:59:59+00:00",
+        "driver_tenant_ids": [1],
+    }
+    r = owner.post("/api/v1/discounts/campaigns", json=body)
+    assert r.status_code == 201, r.text
+    data = r.json()
+    assert "campaign" in data and "codes" in data
+    assert data["campaign"]["name"] == "ApiCamp01"
+    assert len(data["codes"]) == 1
+    assert data["codes"][0]["discount_pct"] == 15.0
+
+
+def test_api_drivers_admin_only():
+    """GET /drivers is admin-only; non-admin staff gets 403."""
+    c = _staff_client()
+    r = c.get("/api/v1/discounts/drivers")
+    assert r.status_code in (401, 403), r.text
+
+    # Admin can access it
+    owner = _owner_client()
+    r2 = owner.get("/api/v1/discounts/drivers")
+    assert r2.status_code == 200, r2.text
+    # Returns a list (may be empty if no drivers with tenant_id on this dev DB)
+    assert isinstance(r2.json(), list)
+
+
+def test_api_patch_active_and_delete():
+    """Staff can toggle active and delete their own codes."""
+    c = _staff_client()
+    body = {
+        "code": "APITEST_PATCH",
+        "discount_pct": 5.0,
+        "max_uses": 2,
+        "expires_at": "2030-01-01T00:00:00+00:00",
+    }
+    r = c.post("/api/v1/discounts", json=body)
+    assert r.status_code == 201, r.text
+    cid = r.json()["id"]
+
+    # Toggle inactive
+    pr = c.patch(f"/api/v1/discounts/{cid}", json={"active": False})
+    assert pr.status_code == 200, pr.text
+    assert pr.json()["active"] is False
+
+    # Toggle back
+    pr2 = c.patch(f"/api/v1/discounts/{cid}", json={"active": True})
+    assert pr2.status_code == 200
+    assert pr2.json()["active"] is True
+
+    # Delete
+    dr = c.delete(f"/api/v1/discounts/{cid}")
+    assert dr.status_code == 204, dr.text
+
+
+def test_api_delete_not_found():
+    """DELETE with a non-existent code_id returns 404."""
+    c = _staff_client()
+    r = c.delete("/api/v1/discounts/999999")
+    assert r.status_code == 404, r.text
+
+
+def test_api_unauthenticated_list_rejected():
+    """GET /discounts requires at least staff auth — 401 for anonymous."""
+    r = _client.get("/api/v1/discounts")
+    assert r.status_code == 401, r.text
