@@ -140,3 +140,114 @@ async def send_team_welcome(*, to: str, name: str | None, lang: str = "en") -> s
         log.warning("Welcome email to %s failed: %s", to, e)
         return "failed"
     return "simulated" if res.get("simulated") else "sent"
+
+
+async def _driver_recipient(db, *, tenant_id: int | None):
+    """Active dashboard user for a driver tenant (the ride's notification target).
+
+    Returns the AllowedUser row or None when the tenant has no active user."""
+    if not tenant_id:
+        return None
+    from sqlalchemy import select
+
+    from app.models import AllowedUser
+
+    return (
+        await db.execute(
+            select(AllowedUser)
+            .where(AllowedUser.tenant_id == tenant_id, AllowedUser.active.is_(True))
+            .order_by(AllowedUser.id.asc())
+        )
+    ).scalars().first()
+
+
+def _fmt_when(scheduled_at, lang: str) -> str:
+    if scheduled_at is None:
+        return "—"
+    return scheduled_at.strftime("%a %b %d, %Y · %I:%M %p")
+
+
+def _ride_lang(ride) -> str:
+    return "es" if str(getattr(ride, "lang", "") or "").lower().startswith("es") else "en"
+
+
+async def send_driver_new_ride(db, *, ride) -> str:
+    """Notify the driver that a new (confirmed) ride landed. Never raises.
+
+    Routed to the driver who owns the ride (`assigned_tenant_id` for a discount
+    handoff, else the booking tenant). Returns "sent"|"simulated"|"failed"|"skipped"."""
+    driver_tenant_id = getattr(ride, "assigned_tenant_id", None) or ride.tenant_id
+    user = await _driver_recipient(db, tenant_id=driver_tenant_id)
+    if user is None or not user.email:
+        return "skipped"
+    lang = _ride_lang(ride)
+    when = _fmt_when(ride.scheduled_at, lang)
+    route = f"{ride.pickup_text} → {ride.dropoff_text}"
+    pax_name = (ride.passenger_name or "").strip() or ("Pasajero" if lang == "es" else "Passenger")
+    fare = f"{ride.currency or 'USD'} {ride.fare_total:.2f}" if ride.fare_total else "—"
+    flight_label = "Vuelo" if lang == "es" else "Flight"
+    flight = f"\n{flight_label}: {ride.flight_number}" if ride.flight_number else ""
+    if lang == "es":
+        subject = f"Nuevo viaje: {route}"
+        text = (
+            f"Tienes un nuevo viaje confirmado.\n\n"
+            f"Pasajero: {pax_name}\nRecogida: {ride.pickup_text}\nDestino: {ride.dropoff_text}\n"
+            f"Cuándo: {when}\nTarifa: {fare}{flight}\n\n"
+            f"Revisa los detalles en tu panel.\n— Black Volt Mobility"
+        )
+    else:
+        subject = f"New ride: {route}"
+        text = (
+            f"You have a new confirmed ride.\n\n"
+            f"Passenger: {pax_name}\nPickup: {ride.pickup_text}\nDrop-off: {ride.dropoff_text}\n"
+            f"When: {when}\nFare: {fare}{flight}\n\n"
+            f"See the details in your dashboard.\n— Black Volt Mobility"
+        )
+    try:
+        res = await send_email(to=user.email, subject=subject, body_text=text)
+    except Exception as e:  # notification must never break the booking flow
+        log.warning("New-ride email to %s failed: %s", user.email, e)
+        return "failed"
+    return "simulated" if res.get("simulated") else "sent"
+
+
+async def send_driver_ride_cancelled(db, *, ride, refund_pending: bool = False) -> str:
+    """Notify the driver a ride was cancelled. Never raises. When refund_pending
+    (cancelled <24h with a live payment), prompts the driver to choose the refund."""
+    driver_tenant_id = getattr(ride, "assigned_tenant_id", None) or ride.tenant_id
+    user = await _driver_recipient(db, tenant_id=driver_tenant_id)
+    if user is None or not user.email:
+        return "skipped"
+    lang = _ride_lang(ride)
+    when = _fmt_when(ride.scheduled_at, lang)
+    route = f"{ride.pickup_text} → {ride.dropoff_text}"
+    if lang == "es":
+        subject = f"Viaje cancelado: {route}"
+        action = (
+            "\n\nEl cliente canceló con menos de 24h. Entra a tu panel para elegir el "
+            "reembolso (completo o con tarifa de cancelación)."
+            if refund_pending
+            else ""
+        )
+        text = (
+            f"Un viaje fue cancelado.\n\nRuta: {route}\nCuándo: {when}{action}"
+            "\n\n— Black Volt Mobility"
+        )
+    else:
+        subject = f"Ride cancelled: {route}"
+        action = (
+            "\n\nThe client cancelled within 24h. Open your dashboard to choose the "
+            "refund (full or with a cancellation fee)."
+            if refund_pending
+            else ""
+        )
+        text = (
+            f"A ride was cancelled.\n\nRoute: {route}\nWhen: {when}{action}"
+            "\n\n— Black Volt Mobility"
+        )
+    try:
+        res = await send_email(to=user.email, subject=subject, body_text=text)
+    except Exception as e:
+        log.warning("Cancellation email to %s failed: %s", user.email, e)
+        return "failed"
+    return "simulated" if res.get("simulated") else "sent"

@@ -134,6 +134,9 @@ class Ride(Base):
     )
     paid: Mapped[bool] = mapped_column(default=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the ride was cancelled (set on the cancel transition). Drives the
+    # <24h cancellation-fee rule and is the audit anchor for refund decisions.
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Google Calendar event id (when the scheduled ride is pushed to the calendar).
     google_event_id: Mapped[str | None] = mapped_column(String(200), nullable=True)

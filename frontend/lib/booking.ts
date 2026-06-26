@@ -162,6 +162,13 @@ export async function confirmRide(rideId: number): Promise<RideRow> {
   return jsend<RideRow>(`/v1/rides/${rideId}/confirm`, "POST");
 }
 
+// Cancel a ride the rider no longer needs. Allowed before the driver is en
+// route. Refund is automatic when cancelling 24h+ ahead; cancelling within 24h
+// may leave a cancellation fee to the driver's discretion.
+export async function cancelRide(rideId: number): Promise<RideRow> {
+  return jsend<RideRow>(`/v1/rides/${rideId}/cancel`, "POST");
+}
+
 // Driver contact attached to a ride once a driver is assigned — lets the rider
 // call/text their driver from /trips.
 export interface AssignedDriver {
@@ -217,6 +224,8 @@ export interface RideDetail extends RideRow {
   // Per-ride preferences chosen at booking (snapshot). Null falls back to the
   // client's standing preferences for display.
   ride_preferences: RidePreferences | null;
+  cancelled_at: string | null;
+  cancellation_fee_eligible: boolean;
   payment: {
     id: number;
     status: string;

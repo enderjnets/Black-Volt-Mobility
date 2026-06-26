@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Card } from "../ui";
 import { useI18n } from "@/lib/i18n";
-import { listRides, type RideRow } from "@/lib/booking";
+import { cancelRide, listRides, type RideRow } from "@/lib/booking";
 
 // Statuses that count as a real, upcoming trip vs a finished one. QUOTED/REQUESTED
 // are unpaid drafts — they are not shown on /trips.
@@ -105,10 +105,14 @@ function UpcomingCard({
   ride,
   t,
   lang,
+  onCancel,
+  cancelling,
 }: {
   ride: RideRow;
   t: (k: string) => string;
   lang: string;
+  onCancel: () => void;
+  cancelling: boolean;
 }) {
   const driver = ride.assigned_driver;
   const phone = driver?.phone || null;
@@ -197,6 +201,29 @@ function UpcomingCard({
             />
           </div>
         </div>
+
+        {(ride.status === "confirmed" || ride.status === "assigned") && (
+          <button
+            onClick={onCancel}
+            disabled={cancelling}
+            style={{
+              width: "100%",
+              padding: "11px 12px",
+              background: "transparent",
+              border: "1px solid var(--line-strong)",
+              borderRadius: "var(--radius-md)",
+              color: "var(--danger)",
+              fontFamily: "var(--font-sans)",
+              fontSize: 13.5,
+              fontWeight: 600,
+              cursor: cancelling ? "not-allowed" : "pointer",
+              opacity: cancelling ? 0.6 : 1,
+              transition: "all .15s ease-out",
+            }}
+          >
+            {cancelling ? t("trips.cancelling") : t("trips.cancel")}
+          </button>
+        )}
       </div>
     </Card>
   );
@@ -249,22 +276,36 @@ export function Trips() {
   const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
   const [rides, setRides] = useState<RideRow[] | null>(null);
   const [error, setError] = useState(false);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  const load = useCallback(() => {
+    setError(false);
+    return listRides()
+      .then((rows) => setRides(rows))
+      .catch(() => setError(true));
+  }, []);
 
   useEffect(() => {
-    let alive = true;
-    setError(false);
     setRides(null);
-    listRides()
-      .then((rows) => {
-        if (alive) setRides(rows);
-      })
-      .catch(() => {
-        if (alive) setError(true);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    load();
+  }, [load]);
+
+  const handleCancel = async (ride: RideRow) => {
+    const within24h =
+      !!ride.scheduled_at &&
+      new Date(ride.scheduled_at).getTime() - Date.now() < 24 * 3600 * 1000;
+    const msg = within24h ? t("trips.cancel.warn24h") : t("trips.cancel.confirm");
+    if (typeof window !== "undefined" && !window.confirm(msg)) return;
+    setCancellingId(ride.id);
+    try {
+      await cancelRide(ride.id);
+      await load();
+    } catch {
+      setError(true);
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const upcoming = (rides ?? [])
     .filter((r) => ACTIVE.includes(r.status))
@@ -340,7 +381,14 @@ export function Trips() {
       ) : tab === "upcoming" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {list.map((r) => (
-            <UpcomingCard key={r.id} ride={r} t={t} lang={lang} />
+            <UpcomingCard
+              key={r.id}
+              ride={r}
+              t={t}
+              lang={lang}
+              onCancel={() => handleCancel(r)}
+              cancelling={cancellingId === r.id}
+            />
           ))}
         </div>
       ) : (

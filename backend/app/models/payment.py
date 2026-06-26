@@ -44,6 +44,10 @@ class Payment(Base):
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     square_payment_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     square_refund_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Cents actually refunded (None = never refunded). Equals `amount` on a full
+    # refund; less than `amount` on a partial refund (e.g. a cancellation fee kept
+    # by the driver, where kept = amount - refunded_amount).
+    refunded_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     simulated: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
