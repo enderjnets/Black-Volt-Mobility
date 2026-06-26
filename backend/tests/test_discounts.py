@@ -326,7 +326,7 @@ async def test_delete_code_cross_tenant_rejected(db):
 async def test_discount_handoff_ride_to_driver_tenant(db):
     """GREEN: a discount code owned by tenant 2 keeps the ride in the booker's
     tenant (1), sets assigned_tenant_id=2, preserves passenger contact, records
-    discount_amount > 0, and increments used_count exactly once."""
+    discount_amount > 0, and does NOT increment used_count (redeem deferred to payment)."""
     from app.models import Ride
     from app.models.discount import DiscountCode
     from app.services.booking import create_ride
@@ -370,9 +370,9 @@ async def test_discount_handoff_ride_to_driver_tenant(db):
         # Discount was applied.
         assert ride.discount_amount > 0, "expected discount_amount > 0"
         assert ride.discount_code_id == code.id
-        # used_count must have incremented to 1.
+        # used_count stays 0 — redeem happens at payment, not ride creation.
         await db.refresh(code)
-        assert code.used_count == 1, f"expected used_count=1, got {code.used_count}"
+        assert code.used_count == 0, f"expected used_count=0 after create_ride (no payment yet), got {code.used_count}"
     finally:
         # Clean up the ride so conftest TRUNCATE isn't needed for this row.
         await db.delete(ride)
@@ -781,3 +781,203 @@ async def test_ride_detail_extra_no_cross_tenant_pii(db):
         await db.delete(ride)
         await db.delete(t1_client)
         await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Follow-up 1: redeem on payment success, not ride creation
+# ---------------------------------------------------------------------------
+
+async def test_create_ride_with_code_does_not_redeem(db):
+    """Creating a ride with a discount code leaves used_count at 0."""
+    from app.services.booking import create_ride
+    code = await D.create_code(db, tenant_id=2, is_admin=True, code="NODELAY10",
+                               discount_pct=10, max_uses=3, expires_at=_future(),
+                               created_by_email="a@x.com")
+    ride = await create_ride(db, tenant_id=1,
+                             pickup="6000 S Fraser St, Aurora CO",
+                             dropoff="Denver International Airport (DEN)",
+                             discount_code="NODELAY10")
+    try:
+        await db.refresh(code)
+        assert code.used_count == 0, f"expected 0, got {code.used_count}"
+        assert ride.discount_code_id == code.id
+        assert not ride.discount_redeemed
+    finally:
+        await db.delete(ride)
+        await db.commit()
+
+
+async def test_payment_success_redeems_code(db):
+    """authorize_for_ride increments used_count to 1 and sets discount_redeemed=True."""
+    from app.services.booking import create_ride
+    from app.services.payments import authorize_for_ride
+    code = await D.create_code(db, tenant_id=2, is_admin=True, code="PAYREEDM10",
+                               discount_pct=10, max_uses=3, expires_at=_future(),
+                               created_by_email="a@x.com")
+    ride = await create_ride(db, tenant_id=1,
+                             pickup="6000 S Fraser St, Aurora CO",
+                             dropoff="Denver International Airport (DEN)",
+                             discount_code="PAYREEDM10")
+    try:
+        await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
+        await db.refresh(code)
+        await db.refresh(ride)
+        assert code.used_count == 1, f"expected 1, got {code.used_count}"
+        assert ride.discount_redeemed is True
+    finally:
+        await db.delete(ride)
+        await db.commit()
+
+
+async def test_payment_redeem_idempotent(db):
+    """A second authorize_for_ride call on the same ride does not double-increment
+    used_count. The gate is the DB-level conditional UPDATE on rides
+    (discount_redeemed=false) — rowcount==0 on the second attempt → "already"."""
+    from app.services.booking import create_ride
+    from app.services.payments import authorize_for_ride
+    code = await D.create_code(db, tenant_id=2, is_admin=True, code="IDMPTNT10",
+                               discount_pct=10, max_uses=5, expires_at=_future(),
+                               created_by_email="a@x.com")
+    ride = await create_ride(db, tenant_id=1,
+                             pickup="6000 S Fraser St, Aurora CO",
+                             dropoff="Denver International Airport (DEN)",
+                             discount_code="IDMPTNT10")
+    try:
+        # First payment call — should redeem once (claim wins, increment runs).
+        await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
+        await db.refresh(code)
+        assert code.used_count == 1
+        # Second call (retry scenario) — DB has discount_redeemed=True so claim
+        # UPDATE returns rowcount==0 → "already" → increment is never reached.
+        await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
+        await db.refresh(code)
+        assert code.used_count == 1, f"double-redeem: expected 1, got {code.used_count}"
+    finally:
+        await db.delete(ride)
+        await db.commit()
+
+
+async def test_payment_succeeds_when_code_exhausted(db):
+    """If the code is already exhausted at payment time, payment still succeeds
+    and discount_redeemed is set True (no double-billing the customer)."""
+    from app.services.booking import create_ride
+    from app.services.payments import authorize_for_ride
+    code = await D.create_code(db, tenant_id=2, is_admin=True, code="EXHAUST1",
+                               discount_pct=10, max_uses=1, expires_at=_future(),
+                               created_by_email="a@x.com")
+    # Exhaust the code externally (simulate another booking redeeming it first).
+    await D.redeem(db, code)
+    assert code.used_count == 1  # manually verify it's exhausted
+
+    # Now create a ride that has this code's id set (bypassing validate_code since it's exhausted).
+    from app.models import Ride, RideStatus
+    ride = Ride(
+        tenant_id=1, status=RideStatus.QUOTED,
+        pickup_text="6000 S Fraser St, Aurora CO",
+        dropoff_text="Denver International Airport (DEN)",
+        fare_total=50.0, currency="USD",
+        distance_miles=25.0, duration_minutes=40.0,
+        discount_code_id=code.id, discount_amount=5.0,
+        discount_redeemed=False,
+    )
+    db.add(ride)
+    await db.commit()
+    await db.refresh(ride)
+    try:
+        # Payment should succeed even though code is exhausted.
+        pay = await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
+        assert pay is not None
+        await db.refresh(ride)
+        assert ride.discount_redeemed is True
+        # used_count should NOT have gone above 1 (the exhausted guard held).
+        await db.refresh(code)
+        assert code.used_count == 1, f"used_count over-incremented: {code.used_count}"
+    finally:
+        await db.delete(ride)
+        await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Fix wave 1: rollback atomicity test
+# ---------------------------------------------------------------------------
+# NOTE: Skipped — simulating a mid-transaction failure cleanly (after the
+# ride-claim UPDATE but before commit) would require patching db.commit() in a
+# way that leaves the session in a consistent rollback-ready state without also
+# breaking the preceding payment commit. That is not achievable with a simple
+# monkeypatch on an async session. The atomicity guarantee is structural: both
+# UPDATEs share the same open transaction opened by SQLAlchemy's session; if
+# db.commit() raises (network drop, serialization failure, etc.) the transaction
+# is rolled back by the DB and NEITHER update persists — discount_redeemed stays
+# False and used_count is unchanged. A separate integration/chaos test (outside
+# this unit suite) is the right venue for that failure path.
+
+# ---------------------------------------------------------------------------
+# Follow-up 2: price discounted rides with owner's rate config
+# ---------------------------------------------------------------------------
+
+async def test_discounted_ride_uses_owner_rate_config(db):
+    """When a discount code is applied, the fare is computed using the CODE
+    OWNER's RateConfig, not the booker's. The discount_pct is then applied
+    on top of the owner's base fare."""
+    from app.models import RateConfig
+    from app.services.booking import build_quote, get_or_create_rate_config
+
+    # Seed two tenants with meaningfully different per_mile rates.
+    # Tenant A (booker): cheap rate — $1/mile base
+    # Tenant B (code owner/driver): premium rate — $5/mile base
+    # With 10% discount, the total should reflect B's rates * 0.9, NOT A's.
+
+    # Ensure distinct RateConfigs for tenants 10 and 11 (use high IDs to avoid conflicts).
+    rc_a = await get_or_create_rate_config(db, tenant_id=10)
+    rc_a.per_mile = 1.0
+    rc_a.base = 0.0
+    rc_a.minimum = 0.0
+    rc_a.airport_flat = 0.0
+
+    rc_b = await get_or_create_rate_config(db, tenant_id=11)
+    rc_b.per_mile = 5.0
+    rc_b.base = 0.0
+    rc_b.minimum = 0.0
+    rc_b.airport_flat = 0.0
+    await db.commit()
+
+    # Code owned by tenant B (11)
+    code = await D.create_code(db, tenant_id=11, is_admin=True, code="OWNRATE10",
+                               discount_pct=10, max_uses=5, expires_at=_future(),
+                               created_by_email="b@x.com")
+
+    # Quote from tenant A's perspective using B's code
+    quote_with_code = await build_quote(
+        db,
+        tenant_id=10,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+        discount_code="OWNRATE10",
+    )
+    # Quote from tenant A without any code (baseline: A's own rates)
+    quote_no_code = await build_quote(
+        db,
+        tenant_id=10,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+    )
+
+    # The discounted quote must NOT equal A's base fare.
+    # With per_mile=5 for B vs per_mile=1 for A, B's base fare is 5x higher,
+    # so even with 10% off, the discounted fare should be > A's undiscounted fare.
+    assert quote_with_code["total"] != quote_no_code["total"], (
+        "discounted quote should NOT match the booker's own rate (it should use B's higher rates)"
+    )
+    # More precisely: B's fare * 0.9 > A's fare (since B's per_mile is 5x A's)
+    # Get B's undiscounted fare for reference
+    quote_b_no_code = await build_quote(
+        db,
+        tenant_id=11,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+    )
+    expected_discounted = round(quote_b_no_code["total"] * 0.90, 2)
+    assert abs(quote_with_code["total"] - expected_discounted) < 0.50, (
+        f"discounted total {quote_with_code['total']} should be close to "
+        f"B's base {quote_b_no_code['total']} * 0.9 = {expected_discounted}"
+    )

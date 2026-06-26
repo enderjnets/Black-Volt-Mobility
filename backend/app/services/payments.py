@@ -2,13 +2,16 @@
 move the ride through its lifecycle. Tenant-scoped."""
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Payment, PaymentMethod, PaymentStatus, Ride, RideStatus
-from app.services import payments_square
+from app.services import discounts, payments_square
+
+_logger = logging.getLogger("blackvolt.payments")
 
 
 async def get_payment(db: AsyncSession, *, tenant_id: int, payment_id: int) -> Payment | None:
@@ -50,6 +53,16 @@ async def authorize_for_ride(
         ride.status = RideStatus.CONFIRMED
     await db.commit()
     await db.refresh(pay)
+    # Atomic discount redemption: claim flag + increment in one transaction.
+    # Payment durability (commit above) is guaranteed before touching discount state.
+    # Uses DB-level conditional UPDATE as the idempotency gate — race- and crash-safe.
+    if ride.discount_code_id:
+        try:
+            status = await discounts.redeem_for_ride(db, ride.id, ride.discount_code_id)
+            if status == "already":
+                _logger.debug("discount already claimed for ride %s; skipping", ride.id)
+        except Exception:  # noqa: BLE001
+            _logger.exception("discount redemption failed for ride %s; ignoring", ride.id)
     return pay
 
 

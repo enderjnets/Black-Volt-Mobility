@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.discount import DiscountCampaign, DiscountCode
+from app.models.ride import Ride
 
 DRIVER_MAX_PCT = 50.0
 _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -132,6 +133,47 @@ async def redeem(db: AsyncSession, code_row: DiscountCode) -> None:
     if res.rowcount == 0:
         raise DiscountError("exhausted")
     await db.commit()
+
+
+async def redeem_for_ride(db: AsyncSession, ride_id: int, code_id: int) -> str:
+    """Atomically claim a discount for a ride in a single transaction.
+
+    Two conditional UPDATEs, one commit — both land together or roll back together.
+
+    Step 1 (idempotency gate): claim the ride flag via conditional UPDATE.
+    Step 2 (same open txn): increment the code's used_count if not exhausted.
+    Step 3: single commit.
+
+    Returns:
+        "redeemed"  — claim won; increment ran (or was an exhausted no-op).
+        "already"   — ride.discount_redeemed was already True; nothing done.
+    Raises:
+        Any DB exception — caller must catch to avoid crashing a successful payment.
+        Invariant: discount_redeemed=True is persisted ONLY if the commit that also
+        ran the increment (or exhausted no-op) succeeded.
+    """
+    claim = await db.execute(
+        update(Ride)
+        .where(Ride.id == ride_id, Ride.discount_redeemed == False)  # noqa: E712
+        .values(discount_redeemed=True)
+    )
+    if claim.rowcount == 0:
+        return "already"
+
+    # Same open transaction — do NOT commit between.
+    await db.execute(
+        update(DiscountCode)
+        .where(
+            DiscountCode.id == code_id,
+            DiscountCode.used_count < DiscountCode.max_uses,
+        )
+        .values(used_count=DiscountCode.used_count + 1)
+    )
+    # rowcount == 0 means code was exhausted between booking and payment;
+    # fare was already locked at booking time, so just proceed.
+
+    await db.commit()
+    return "redeemed"
 
 
 async def create_campaign(

@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.45.0";
+export const CURRENT_VERSION = "0.45.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.45.1",
+    date: "2026-06-26",
+    title: "Discount codes: redeem on payment & owner-driver pricing",
+    changes: [
+      "A discount code is now counted as used only when payment succeeds — abandoned bookings no longer waste a code's uses.",
+      "Rides booked with a driver's code are now priced using that driver's own rates.",
+    ],
+  },
   {
     version: "0.45.0",
     date: "2026-06-25",
