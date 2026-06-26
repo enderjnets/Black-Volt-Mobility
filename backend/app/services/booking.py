@@ -133,10 +133,11 @@ async def create_ride(
     """Quote (maps + pricing) then persist the ride. `fare_override` lets the
     driver pin a negotiated fare while still snapshotting the computed route.
 
-    When `discount_code` is given the ride is handed off to the code-owning
-    tenant (`code.tenant_id`), client_id is forced to None (the passenger's
-    name/phone are still snapshotted), and `used_count` is incremented
-    atomically after the ride row is flushed."""
+    When `discount_code` is given the ride stays in the booker's tenant
+    (`tenant_id`), `assigned_tenant_id` is set to the code-owning tenant so
+    that driver can see and service it, `client_id` is preserved as-is
+    (passenger contact is snapshotted on the ride), and `used_count` is
+    incremented atomically after the ride row is flushed."""
     # Validate the discount code first so we have the owning-tenant info and
     # the discount_pct before the quote is computed.
     code_row = None

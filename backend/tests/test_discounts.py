@@ -693,3 +693,91 @@ def test_api_unauthenticated_list_rejected():
     """GET /discounts requires at least staff auth — 401 for anonymous."""
     r = _client.get("/api/v1/discounts")
     assert r.status_code == 401, r.text
+
+
+# ---------------------------------------------------------------------------
+# Fix wave 2: cross-tenant PII guard in ride_detail_extra
+# ---------------------------------------------------------------------------
+
+
+async def test_ride_detail_extra_no_cross_tenant_pii(db):
+    """The assigned driver (tenant 2) must NOT see the booker tenant's client
+    email/preferences. The booker's tenant (1) still gets the full client record.
+
+    Scenario: tenant-1 client books via a tenant-2 discount code → ride has
+    client_id (tenant 1 CRM) + assigned_tenant_id=2.  The scoped client lookup
+    added by the fix must block the cross-tenant fetch.
+    """
+    from app.models.client import Client
+    from app.services.booking import create_ride, get_ride
+    from app.services.dashboard import ride_detail_extra
+
+    # 1. Seed a tenant-1 client with identifiable PII.
+    t1_client = Client(
+        tenant_id=1,
+        name="PII Test Passenger",
+        phone="+13035559999",
+        email="piileak@tenant1.test",
+        ride_preferences={"preferred_temp": "cool"},
+    )
+    db.add(t1_client)
+    await db.flush()  # get id without committing
+
+    # 2. Discount code owned by tenant 2.
+    code = await D.create_code(
+        db,
+        tenant_id=2,
+        is_admin=True,
+        code="PIIGUARD10",
+        discount_pct=10,
+        max_uses=5,
+        expires_at=_future(),
+        created_by_email="driver2@x.com",
+    )
+
+    # 3. Book a ride as tenant 1, explicitly passing the client_id so the ride
+    #    retains a reference to the tenant-1 CRM record.
+    ride = await create_ride(
+        db,
+        tenant_id=1,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+        passenger_name="PII Test Passenger",
+        passenger_phone="+13035559999",
+        pax=1,
+        client_id=t1_client.id,  # explicit — survives discount-code path
+        discount_code="PIIGUARD10",
+    )
+
+    try:
+        # Verify the ride is properly set up for the attack surface.
+        assert ride.tenant_id == 1
+        assert ride.assigned_tenant_id == 2
+        assert ride.client_id == t1_client.id
+
+        # 4. Assigned driver (tenant 2) opens the ride via get_ride — allowed.
+        ride_as_t2 = await get_ride(db, tenant_id=2, ride_id=ride.id)
+        assert ride_as_t2 is not None, "assigned driver must be able to fetch the ride"
+
+        # 5. ride_detail_extra as tenant 2 → client must be None (scoped out).
+        detail_t2 = await ride_detail_extra(db, tenant_id=2, ride=ride_as_t2)
+        assert detail_t2["client"] is None, (
+            f"Cross-tenant PII leak: tenant-2 driver got client={detail_t2['client']}"
+        )
+
+        # 6. Snapshot (passenger_name / passenger_phone) is still on the ride
+        #    itself — the assigned driver can still service the passenger.
+        assert ride_as_t2.passenger_name == "PII Test Passenger"
+        assert ride_as_t2.passenger_phone == "+13035559999"
+
+        # 7. Booker's own tenant (1) still gets full client detail.
+        ride_as_t1 = await get_ride(db, tenant_id=1, ride_id=ride.id)
+        detail_t1 = await ride_detail_extra(db, tenant_id=1, ride=ride_as_t1)
+        assert detail_t1["client"] is not None, "booker tenant should see full client"
+        assert detail_t1["client"]["email"] == "piileak@tenant1.test"
+        assert detail_t1["client"]["preferences"] is not None
+
+    finally:
+        await db.delete(ride)
+        await db.delete(t1_client)
+        await db.commit()
