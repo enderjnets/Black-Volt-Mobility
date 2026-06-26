@@ -10,7 +10,7 @@ import { RidePreferencesFields } from "./RidePreferences";
 import { BVDatePicker, BVTimePicker } from "../DateTimePicker";
 import { useI18n } from "@/lib/i18n";
 import { buildScheduledAt } from "@/lib/datetime";
-import { ApiError, createRide, getQuote, type Quote } from "@/lib/booking";
+import { ApiError, createRide, getQuote, validateDiscount, type Quote } from "@/lib/booking";
 import { defaultRidePreferences, getProfile, type RidePreferences } from "@/lib/profile";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
 import { track } from "@/lib/analytics";
@@ -129,6 +129,12 @@ export function Booking() {
   // Per-ride preferences, prefilled from the rider's standing prefs (if signed in).
   const [ridePrefs, setRidePrefs] = useState<RidePreferences>(defaultRidePreferences());
   const [showPrefs, setShowPrefs] = useState(false);
+  // Discount code
+  const [code, setCode] = useState("");
+  const [appliedCode, setAppliedCode] = useState("");
+  const [codePct, setCodePct] = useState(0);
+  const [codeErr, setCodeErr] = useState<string | null>(null);
+  const [codeApplying, setCodeApplying] = useState(false);
 
   // Booking-funnel analytics: one event per step reached.
   useEffect(() => {
@@ -147,7 +153,7 @@ export function Booking() {
     let alive = true;
     setQuoting(true);
     setAuthWall(false);
-    getQuote({ pickup, dropoff, pax })
+    getQuote({ pickup, dropoff, pax, ...(appliedCode ? { discount_code: appliedCode } : {}) })
       .then((q) => {
         if (alive) setQuote(q);
       })
@@ -170,7 +176,7 @@ export function Booking() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, from, to, pax, reload]);
+  }, [step, from, to, pax, reload, appliedCode]);
 
   // Display helpers — real quote when available, else the original mock values.
   const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : "$74";
@@ -190,6 +196,29 @@ export function Booking() {
   }, [reload]);
   const squareReady = !!(payCfg && payCfg.application_id && payCfg.location_id);
 
+  // Discount code validation and re-quote.
+  const handleApplyCode = async () => {
+    if (!code || codeApplying) return;
+    setCodeApplying(true);
+    setCodeErr(null);
+    try {
+      const res = await validateDiscount(code);
+      setCodePct(res.discount_pct);
+      setAppliedCode(code); // triggers re-quote via useEffect dep
+    } catch (e: unknown) {
+      setCodePct(0);
+      setAppliedCode("");
+      if (e instanceof ApiError) {
+        if (e.status === 410) setCodeErr(t("book.discount.expired"));
+        else setCodeErr(t("book.discount.invalid"));
+      } else {
+        setCodeErr(t("book.discount.invalid"));
+      }
+    } finally {
+      setCodeApplying(false);
+    }
+  };
+
   // Step 1 → 2: create the ride (QUOTED) so the payment can attach to it.
   const proceedToPay = async () => {
     if (paying) return;
@@ -203,6 +232,7 @@ export function Booking() {
           pax,
           scheduled_at: date ? buildScheduledAt(date, time) : null,
           ride_preferences: ridePrefs,
+          ...(appliedCode ? { discount_code: appliedCode } : {}),
           confirm: false,
         });
         setRideId(ride.id);
@@ -278,6 +308,7 @@ export function Booking() {
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t("book.when")}</div>
               <div style={{ display: "flex", gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <BVDatePicker
@@ -377,6 +408,50 @@ export function Booking() {
                   <Stat icon="navigation" label={t("book.distance")} value={distanceText} />
                   <Stat icon="clock" label={t("book.eta")} value={etaText} />
                   <Stat icon="dollar-sign" label={t("book.fare")} value={fareText} accent />
+                </div>
+
+                {/* Discount code */}
+                <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+                  <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>{t("book.discount.label")}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="text"
+                      value={code}
+                      onChange={(e) => { setCode(e.target.value.toUpperCase()); setCodeErr(null); }}
+                      placeholder="PROMO10"
+                      disabled={!!appliedCode || codeApplying}
+                      style={{
+                        flex: 1,
+                        background: "var(--obsidian-3)",
+                        border: "1px solid var(--line-strong)",
+                        borderRadius: "var(--radius-md)",
+                        color: "var(--arctic)",
+                        fontFamily: "var(--font-sans)",
+                        fontSize: 14,
+                        padding: "8px 10px",
+                        outline: "none",
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      disabled={!code || !!appliedCode || codeApplying}
+                      onClick={handleApplyCode}
+                    >
+                      {codeApplying ? "…" : t("book.discount.apply")}
+                    </Button>
+                  </div>
+                  {appliedCode && (
+                    <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--volt)", display: "flex", alignItems: "center", gap: 6 }}>
+                      <Icon name="check" size={14} color="var(--volt)" />
+                      {t("book.discount.applied").replace("{pct}", String(codePct))}
+                    </div>
+                  )}
+                  {codeErr && (
+                    <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
+                      <Icon name="alert-circle" size={14} color="var(--danger)" />
+                      {codeErr}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>

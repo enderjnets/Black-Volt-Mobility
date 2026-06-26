@@ -50,6 +50,7 @@ export interface RideInput {
   client_id?: number | null;
   fare_override?: number | null;
   ride_preferences?: RidePreferences | null;
+  discount_code?: string;
   confirm?: boolean;
 }
 
@@ -118,8 +119,19 @@ export async function getQuote(input: {
   scheduled_at?: string | null;
   is_loyalty?: boolean;
   is_peak?: boolean | null;
+  discount_code?: string;
 }): Promise<Quote> {
   return jsend<Quote>("/v1/quote", "POST", input);
+}
+
+export async function validateDiscount(
+  code: string,
+): Promise<{ valid: boolean; discount_pct: number }> {
+  return jsend<{ valid: boolean; discount_pct: number }>(
+    "/v1/discounts/validate",
+    "POST",
+    { code },
+  );
 }
 
 export async function placesAutocomplete(
