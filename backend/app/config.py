@@ -312,6 +312,11 @@ class Settings(BaseSettings):
     BUFFER_API_KEY: str = ""
     BUFFER_ORG_ID: str = ""
     SOCIAL_PUBLISH_VIA_BUFFER: bool = False
+    # The single Buffer account belongs to the owner (Black Volt). When set, only
+    # this tenant may sync channels or publish to Buffer — sub-tenant workspaces
+    # can never connect to or post through the owner's account. None disables the
+    # gate (single-tenant / test default).
+    OWNER_TENANT_ID: int | None = None
 
     @property
     def social_live(self) -> bool:

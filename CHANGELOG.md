@@ -6,6 +6,7 @@ Black Volt's generated social videos now publish to TikTok automatically, alongs
 
 - **TikTok added to default publish targets**: `_DEFAULT_TARGETS` now includes `tiktok`, so every owner-approved post is routed to the connected TikTok channel. `_do_publish` already skips any platform whose `SocialAccount` isn't connected, so tenants without TikTok are unaffected and Instagram/Facebook behaviour is unchanged.
 - No new endpoints or schema changes. Activation is config-only: the Black Volt Buffer account (org `6a36d65c…`) holds the TikTok + Instagram OAuth; the backend reads `BUFFER_API_KEY` / `BUFFER_ORG_ID` and posts via `social_buffer`. Connect/refresh the channel from Dashboard → Social → Accounts (Sync).
+- **Security (multi-tenant)**: the shared Buffer account is now gated to the owner tenant via `OWNER_TENANT_ID`. Sub-tenant workspaces can no longer sync the owner's channels or publish through the owner's account (`sync_buffer_channels` returns empty and `_do_publish` falls back to simulated for non-owner tenants). Closes a pre-existing path where another tenant's admin could attach Black Volt's IG/TikTok to their own workspace.
 
 ## v0.43.0 — 2026-06-25 — Ride preferences (account + onboarding + per-ride + driver view)
 
