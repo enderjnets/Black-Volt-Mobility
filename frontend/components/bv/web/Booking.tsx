@@ -111,7 +111,6 @@ export function Booking() {
   const [step, setStep] = useState(0);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("Denver Intl (DEN)");
-  const [when, setWhen] = useState("now");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [schedErr, setSchedErr] = useState(false);
@@ -202,7 +201,7 @@ export function Booking() {
           pickup: (from || "Downtown Denver").trim(),
           dropoff: to.trim(),
           pax,
-          scheduled_at: when === "schedule" && date ? buildScheduledAt(date, time) : null,
+          scheduled_at: date ? buildScheduledAt(date, time) : null,
           ride_preferences: ridePrefs,
           confirm: false,
         });
@@ -248,105 +247,70 @@ export function Booking() {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <AddressField icon="circle-dot" label={t("book.from")} value={from} placeholder={t("book.from.ph")} onChange={setFrom} />
             <AddressField icon="plane" label={t("book.to")} value={to} placeholder={t("book.to.ph")} onChange={setTo} />
-            <div style={{ display: "flex", gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>{t("book.when")}</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[
-                    ["now", t("book.now")],
-                    ["schedule", t("book.schedule")],
-                  ].map(([v, l]) => (
-                    <button
-                      key={v}
-                      onClick={() => {
-                        setWhen(v);
-                        if (v === "now") setSchedErr(false);
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: "11px 0",
-                        borderRadius: "var(--radius-md)",
-                        cursor: "pointer",
-                        fontFamily: "var(--font-sans)",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        background: when === v ? "var(--volt-bg-20)" : "var(--obsidian-3)",
-                        color: when === v ? "var(--volt)" : "var(--silver)",
-                        border: `1px solid ${when === v ? "var(--volt-border)" : "var(--line-strong)"}`,
-                      }}
-                    >
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ width: 120 }}>
-                <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>{t("book.pax")}</div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    background: "var(--obsidian-3)",
-                    border: "1px solid var(--line-strong)",
-                    borderRadius: "var(--radius-md)",
-                    padding: "6px 10px",
-                  }}
+            <div style={{ width: 120 }}>
+              <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>{t("book.pax")}</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  background: "var(--obsidian-3)",
+                  border: "1px solid var(--line-strong)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "6px 10px",
+                }}
+              >
+                <button
+                  onClick={() => setPax(Math.max(1, pax - 1))}
+                  style={{ background: "none", border: "none", color: "var(--volt)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
                 >
-                  <button
-                    onClick={() => setPax(Math.max(1, pax - 1))}
-                    style={{ background: "none", border: "none", color: "var(--volt)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
-                  >
-                    –
-                  </button>
-                  <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--arctic)", fontSize: 16 }}>
-                    {pax}
-                  </span>
-                  <button
-                    onClick={() => setPax(Math.min(6, pax + 1))}
-                    style={{ background: "none", border: "none", color: "var(--volt)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
-                  >
-                    +
-                  </button>
-                </div>
+                  –
+                </button>
+                <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--arctic)", fontSize: 16 }}>
+                  {pax}
+                </span>
+                <button
+                  onClick={() => setPax(Math.min(6, pax + 1))}
+                  style={{ background: "none", border: "none", color: "var(--volt)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
+                >
+                  +
+                </button>
               </div>
             </div>
-            {when === "schedule" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <BVDatePicker
-                      label={t("book.date")}
-                      value={date}
-                      onChange={(v) => {
-                        setDate(v);
-                        setSchedErr(false);
-                      }}
-                      lang={lang}
-                      state={schedErr && !date ? "missing" : "normal"}
-                      half
-                      required
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <BVTimePicker label={t("book.time")} value={time} onChange={setTime} lang={lang} half required />
-                  </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <BVDatePicker
+                    label={t("book.date")}
+                    value={date}
+                    onChange={(v) => {
+                      setDate(v);
+                      setSchedErr(false);
+                    }}
+                    lang={lang}
+                    state={schedErr && !date ? "missing" : "normal"}
+                    half
+                    required
+                  />
                 </div>
-                {schedErr && !date && (
-                  <div style={{ fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
-                    <Icon name="alert-circle" size={14} color="var(--danger)" />
-                    {t("book.sched.err")}
-                  </div>
-                )}
+                <div style={{ flex: 1 }}>
+                  <BVTimePicker label={t("book.time")} value={time} onChange={setTime} lang={lang} half required />
+                </div>
               </div>
-            )}
+              {schedErr && !date && (
+                <div style={{ fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <Icon name="alert-circle" size={14} color="var(--danger)" />
+                  {t("book.sched.err")}
+                </div>
+              )}
+            </div>
             <Button
               variant="solid"
               full
               size="lg"
               iconRight="arrow-right"
               onClick={() => {
-                if (when === "schedule" && !date) {
+                if (!date) {
                   setSchedErr(true);
                   return;
                 }
