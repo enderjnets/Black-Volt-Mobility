@@ -2,8 +2,13 @@
 import os
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
-os.environ["DATABASE_URL"] = (
-    "postgresql+asyncpg://blackvolt:blackvolt_local_pass@127.0.0.1:5435/blackvolt"
+# Only a *fallback* for running this file standalone against a local dev DB.
+# Must NOT override a DATABASE_URL provided by CI or the caller (a hard
+# assignment here clobbered the env for every test module imported afterwards,
+# pointing the whole run at a port that doesn't exist in CI).
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+asyncpg://blackvolt:blackvolt_local_pass@127.0.0.1:5435/blackvolt",
 )
 os.environ.setdefault("MAPS_SIMULATED", "true")
 os.environ.setdefault("PAYMENTS_SIMULATED", "true")
@@ -258,7 +263,7 @@ async def test_campaign_collision_safe_retries(db, monkeypatch):
     monkeypatch.setattr(D, "_gen_suffix", controlled_suffix)
 
     base = "SUMMER25"
-    await D.create_code(db, tenant_id=99, is_admin=True, code=f"{base}-AAAA",
+    await D.create_code(db, tenant_id=1, is_admin=True, code=f"{base}-AAAA",
                         discount_pct=10, max_uses=1, expires_at=_future(),
                         created_by_email="seed@x.com")
 
@@ -285,7 +290,7 @@ async def test_campaign_raises_discount_error_on_exhausted_retries(db, monkeypat
     monkeypatch.setattr(D, "_gen_suffix", lambda: "ZZZZ")
 
     base = "EXHAUST"
-    await D.create_code(db, tenant_id=99, is_admin=True, code=f"{base}-ZZZZ",
+    await D.create_code(db, tenant_id=1, is_admin=True, code=f"{base}-ZZZZ",
                         discount_pct=10, max_uses=1, expires_at=_future(),
                         created_by_email="seed@x.com")
 
