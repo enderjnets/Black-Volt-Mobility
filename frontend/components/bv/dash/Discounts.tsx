@@ -84,8 +84,10 @@ export function Discounts() {
       .catch((e) => setErr(errText(e)));
 
   useEffect(() => {
-    void load();
     let alive = true;
+    listDiscounts()
+      .then((data) => { if (alive) setRows(data); })
+      .catch((e) => { if (alive) setErr(errText(e)); });
     fetchMe()
       .then((m) => {
         if (!alive) return;
@@ -167,9 +169,15 @@ export function Discounts() {
   const selectAllDrivers = () =>
     setSelectedDriverIds(drivers.map((d) => d.tenant_id));
 
+  const campValid =
+    campName.trim().length > 0 &&
+    typeof campMaxUses === "number" && campMaxUses >= 1 &&
+    campExpiry.length > 0 &&
+    selectedDriverIds.length > 0;
+
   const submitCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!campName.trim() || campCreating || selectedDriverIds.length === 0) return;
+    if (!campValid || campCreating) return;
     setCampCreating(true);
     setCampErr(null);
     setCampResult(null);
@@ -178,8 +186,8 @@ export function Discounts() {
       const result = await createCampaign({
         name: campName.trim(),
         discount_pct: Number(campPct) || 0,
-        max_uses: campMaxUses !== "" ? Number(campMaxUses) : null,
-        expires_at: campExpiry ? new Date(campExpiry).toISOString() : null,
+        max_uses: Number(campMaxUses),
+        expires_at: new Date(campExpiry).toISOString(),
         driver_tenant_ids: selectedDriverIds,
       });
       setCampResult({ ...result, usedDrivers });
@@ -467,33 +475,47 @@ export function Discounts() {
             }}
           >
             {/* Campaign name */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                background: "var(--obsidian-3)",
-                borderRadius: "var(--radius-md)",
-                padding: "9px 11px",
-                border: "1px solid var(--line-strong)",
-              }}
-            >
-              <Icon name="megaphone" size={15} color="var(--silver)" />
-              <input
-                type="text"
-                value={campName}
-                placeholder={t("dash.discounts.campaign.namePh")}
-                onChange={(e) => setCampName(e.target.value)}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span
                 style={{
-                  flex: 1,
-                  background: "transparent",
-                  border: "none",
-                  outline: "none",
-                  color: "var(--arctic)",
-                  fontSize: 13.5,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--silver)",
                   fontFamily: "var(--font-sans)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
                 }}
-              />
+              >
+                {t("dash.discounts.campaign.name")}
+              </span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "var(--obsidian-3)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "9px 11px",
+                  border: "1px solid var(--line-strong)",
+                }}
+              >
+                <Icon name="megaphone" size={15} color="var(--silver)" />
+                <input
+                  type="text"
+                  value={campName}
+                  placeholder={t("dash.discounts.campaign.namePh")}
+                  onChange={(e) => setCampName(e.target.value)}
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    color: "var(--arctic)",
+                    fontSize: 13.5,
+                    fontFamily: "var(--font-sans)",
+                  }}
+                />
+              </div>
             </div>
 
             {/* Pct + max uses + expiry */}
@@ -637,7 +659,7 @@ export function Discounts() {
               <Button
                 variant="solid"
                 icon="zap"
-                disabled={campCreating || !campName.trim() || selectedDriverIds.length === 0}
+                disabled={campCreating || !campValid}
                 onClick={() => undefined}
               >
                 {campCreating ? t("dash.discounts.campaign.creating") : t("dash.discounts.campaign.create")}
@@ -645,6 +667,11 @@ export function Discounts() {
               {selectedDriverIds.length > 0 && (
                 <span style={{ fontSize: 12, color: "var(--fg3)" }}>
                   {selectedDriverIds.length} {t("dash.discounts.campaign.drivers").toLowerCase()}
+                </span>
+              )}
+              {!campValid && !campCreating && (
+                <span style={{ fontSize: 12, color: "var(--fg3)" }}>
+                  {t("dash.discounts.campaign.validationHint")}
                 </span>
               )}
             </div>
@@ -699,11 +726,8 @@ export function Discounts() {
                   {t("dash.discounts.campaign.generated")}
                 </span>
               </div>
-              {campResult.codes.map((c, i) => {
-                const driver =
-                  c.tenant_id != null
-                    ? campResult.usedDrivers.find((d) => d.tenant_id === c.tenant_id)
-                    : campResult.usedDrivers[i];
+              {campResult.codes.map((c) => {
+                const driver = campResult.usedDrivers.find((d) => d.tenant_id === c.tenant_id);
                 return (
                   <div
                     key={c.code}

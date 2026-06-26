@@ -839,6 +839,7 @@ const EN: Record<string, string> = {
   "dash.discounts.campaign.generated": "Generated codes",
   "dash.discounts.campaign.noDrivers": "No drivers found.",
   "dash.discounts.campaign.err.generic": "Campaign creation failed. Try again.",
+  "dash.discounts.campaign.validationHint": "Fill in name, max uses (≥ 1), expiry and at least one driver.",
   "dash.settings.title": "Brand & account settings",
   "dash.settings.body":
     "Edit your public profile, brand colors, QR card, payout account (Square), and notification channels (SMS / AI calls).",
@@ -1727,6 +1728,7 @@ const ES: Record<string, string> = {
   "dash.discounts.campaign.generated": "Códigos generados",
   "dash.discounts.campaign.noDrivers": "No se encontraron drivers.",
   "dash.discounts.campaign.err.generic": "No se pudo crear la campaña. Intenta de nuevo.",
+  "dash.discounts.campaign.validationHint": "Completa nombre, usos máx. (≥ 1), vencimiento y al menos un driver.",
   "dash.settings.title": "Ajustes de marca y cuenta",
   "dash.settings.body":
     "Edita tu perfil público, colores de marca, tarjeta QR, cuenta de cobro (Square) y canales de notificación (SMS / llamadas IA).",

@@ -80,19 +80,30 @@ export async function listDrivers(): Promise<DriverOption[]> {
 export interface CreateCampaignInput {
   name: string;
   discount_pct: number;
-  max_uses?: number | null;
-  expires_at?: string | null;
+  max_uses: number;
+  expires_at: string;
   driver_tenant_ids: number[];
 }
 
 export interface CampaignCode {
   code: string;
   discount_pct: number;
-  tenant_id?: number;
+  tenant_id: number;
+}
+
+export interface CampaignOut {
+  id: number;
+  tenant_id: number;
+  name: string;
+  discount_pct: number;
+  max_uses: number;
+  expires_at: string;
+  created_by_email: string;
+  created_at: string;
 }
 
 export interface CampaignResult {
-  campaign: Record<string, unknown>;
+  campaign: CampaignOut;
   codes: CampaignCode[];
 }
 
