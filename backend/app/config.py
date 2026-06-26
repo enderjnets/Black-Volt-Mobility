@@ -1,6 +1,7 @@
 """Settings — read from env vars. Never put secrets in code."""
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -317,6 +318,15 @@ class Settings(BaseSettings):
     # can never connect to or post through the owner's account. None disables the
     # gate (single-tenant / test default).
     OWNER_TENANT_ID: int | None = None
+
+    @field_validator("OWNER_TENANT_ID", mode="before")
+    @classmethod
+    def _blank_owner_tenant_to_none(cls, v):
+        # docker-compose passes "" when the var is unset; treat that as disabled
+        # rather than letting pydantic reject an empty string and crash boot.
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
 
     @property
     def social_live(self) -> bool:
