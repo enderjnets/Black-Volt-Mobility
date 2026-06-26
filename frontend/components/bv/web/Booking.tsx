@@ -203,6 +203,7 @@ export function Booking() {
     setCodeErr(null);
     try {
       const res = await validateDiscount(code);
+      if (!res.valid) { setCodeErr(t("book.discount.invalid")); return; }
       setCodePct(res.discount_pct);
       setAppliedCode(code); // triggers re-quote via useEffect dep
     } catch (e: unknown) {
@@ -212,7 +213,7 @@ export function Booking() {
         if (e.status === 410) setCodeErr(t("book.discount.expired"));
         else setCodeErr(t("book.discount.invalid"));
       } else {
-        setCodeErr(t("book.discount.invalid"));
+        setCodeErr(t("book.discount.neterr"));
       }
     } finally {
       setCodeApplying(false);
@@ -444,6 +445,13 @@ export function Booking() {
                     <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--volt)", display: "flex", alignItems: "center", gap: 6 }}>
                       <Icon name="check" size={14} color="var(--volt)" />
                       {t("book.discount.applied").replace("{pct}", String(codePct))}
+                      <button
+                        type="button"
+                        onClick={() => { setAppliedCode(""); setCode(""); setCodePct(0); setCodeErr(null); }}
+                        style={{ marginLeft: 4, background: "none", border: "none", cursor: "pointer", color: "var(--fg3)", fontSize: 12.5, padding: 0 }}
+                      >
+                        {t("book.discount.remove")}
+                      </button>
                     </div>
                   )}
                   {codeErr && (

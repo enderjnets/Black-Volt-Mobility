@@ -190,6 +190,8 @@ const EN: Record<string, string> = {
   "book.discount.applied": "Applied −{pct}%",
   "book.discount.invalid": "Code not found or not valid.",
   "book.discount.expired": "This code has expired or been used up.",
+  "book.discount.remove": "Remove",
+  "book.discount.neterr": "Couldn't reach the server, please try again",
   // profile
   "profile.verified": "Verified driver",
   "profile.yourDriver": "Your driver",
@@ -1045,6 +1047,8 @@ const ES: Record<string, string> = {
   "book.discount.applied": "Aplicado −{pct}%",
   "book.discount.invalid": "Código no encontrado o inválido.",
   "book.discount.expired": "Este código expiró o ya fue usado.",
+  "book.discount.remove": "Quitar",
+  "book.discount.neterr": "No se pudo conectar al servidor, intenta de nuevo",
   "profile.verified": "Chofer verificado",
   "profile.yourDriver": "Tu chofer",
   "profile.book": "Reservar un viaje",
