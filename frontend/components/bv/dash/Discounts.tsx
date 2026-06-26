@@ -2,19 +2,26 @@
 
 /* Discount-codes panel (all drivers). Create, toggle and delete promo codes
    that clients can apply at booking. Mirrors the dark dashboard card style of
-   Team/Rates. Backend: GET/POST /v1/discounts, PATCH/DELETE /v1/discounts/{id}. */
+   Team/Rates. Backend: GET/POST /v1/discounts, PATCH/DELETE /v1/discounts/{id}.
+   Admin-only campaign section: POST /v1/discounts/campaigns (multi-driver codes). */
 
 import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
 import { Button, Toggle } from "../ui";
 import { useI18n } from "@/lib/i18n";
+import { fetchMe, type Me } from "@/lib/auth";
 import {
   createDiscount,
+  createCampaign,
   deleteDiscount,
   listDiscounts,
+  listDrivers,
   patchDiscount,
+  type CampaignCode,
+  type CampaignResult,
   type DiscountCode,
+  type DriverOption,
 } from "@/lib/discounts";
 
 // 422 detail slugs the backend may return
@@ -52,6 +59,20 @@ export function Discounts() {
   const [expiresAt, setExpiresAt] = useState("");
   const [creating, setCreating] = useState(false);
 
+  // Admin identity gate (same pattern as DashShell)
+  const [me, setMe] = useState<Me | null>(null);
+
+  // Admin campaign state
+  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [campName, setCampName] = useState("");
+  const [campPct, setCampPct] = useState<number | "">(15);
+  const [campMaxUses, setCampMaxUses] = useState<number | "">("");
+  const [campExpiry, setCampExpiry] = useState("");
+  const [selectedDriverIds, setSelectedDriverIds] = useState<number[]>([]);
+  const [campCreating, setCampCreating] = useState(false);
+  const [campErr, setCampErr] = useState<string | null>(null);
+  const [campResult, setCampResult] = useState<(CampaignResult & { usedDrivers: DriverOption[] }) | null>(null);
+
   const errText = (e: unknown): string => {
     const c = e instanceof Error ? e.message : "";
     return t(KNOWN_ERRS.has(c) ? `dash.discounts.err.${c}` : "dash.discounts.err.generic");
@@ -64,6 +85,19 @@ export function Discounts() {
 
   useEffect(() => {
     void load();
+    let alive = true;
+    fetchMe()
+      .then((m) => {
+        if (!alive) return;
+        setMe(m);
+        if (m.is_admin) {
+          listDrivers().then((d) => alive && setDrivers(d)).catch(() => {});
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -122,6 +156,43 @@ export function Discounts() {
       setErr(errText(x));
     } finally {
       setBusy(null);
+    }
+  };
+
+  const toggleDriver = (id: number) =>
+    setSelectedDriverIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  const selectAllDrivers = () =>
+    setSelectedDriverIds(drivers.map((d) => d.tenant_id));
+
+  const submitCampaign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!campName.trim() || campCreating || selectedDriverIds.length === 0) return;
+    setCampCreating(true);
+    setCampErr(null);
+    setCampResult(null);
+    try {
+      const usedDrivers = drivers.filter((d) => selectedDriverIds.includes(d.tenant_id));
+      const result = await createCampaign({
+        name: campName.trim(),
+        discount_pct: Number(campPct) || 0,
+        max_uses: campMaxUses !== "" ? Number(campMaxUses) : null,
+        expires_at: campExpiry ? new Date(campExpiry).toISOString() : null,
+        driver_tenant_ids: selectedDriverIds,
+      });
+      setCampResult({ ...result, usedDrivers });
+      setCampName("");
+      setCampPct(15);
+      setCampMaxUses("");
+      setCampExpiry("");
+      setSelectedDriverIds([]);
+    } catch (x) {
+      const c = x instanceof Error ? x.message : "";
+      setCampErr(t(KNOWN_ERRS.has(c) ? `dash.discounts.err.${c}` : "dash.discounts.campaign.err.generic"));
+    } finally {
+      setCampCreating(false);
     }
   };
 
@@ -355,6 +426,330 @@ export function Discounts() {
           </>
         )}
       </div>
+
+      {/* Admin-only campaign section */}
+      {me?.is_admin && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 8 }}>
+          {/* Section divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                fontFamily: "var(--font-sans)",
+                color: "var(--volt)",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Icon name="shield-check" size={13} color="currentColor" />
+              {t("dash.discounts.campaign.title")}
+            </span>
+            <div style={{ flex: 1, height: 1, background: "var(--line-strong)" }} />
+          </div>
+
+          {/* Campaign form */}
+          <form
+            onSubmit={submitCampaign}
+            style={{
+              background: "var(--obsidian)",
+              border: "1px solid var(--line-strong)",
+              borderRadius: "var(--radius-lg)",
+              padding: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            {/* Campaign name */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                background: "var(--obsidian-3)",
+                borderRadius: "var(--radius-md)",
+                padding: "9px 11px",
+                border: "1px solid var(--line-strong)",
+              }}
+            >
+              <Icon name="megaphone" size={15} color="var(--silver)" />
+              <input
+                type="text"
+                value={campName}
+                placeholder={t("dash.discounts.campaign.namePh")}
+                onChange={(e) => setCampName(e.target.value)}
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: "var(--arctic)",
+                  fontSize: 13.5,
+                  fontFamily: "var(--font-sans)",
+                }}
+              />
+            </div>
+
+            {/* Pct + max uses + expiry */}
+            <div className="bv-discount-fields" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <DiscountField
+                icon="percent"
+                placeholder={t("dash.discounts.pctPh")}
+                value={campPct}
+                onChange={setCampPct}
+                min={1}
+                max={100}
+              />
+              <DiscountField
+                icon="hash"
+                placeholder={t("dash.discounts.maxUsesPh")}
+                value={campMaxUses}
+                onChange={setCampMaxUses}
+                min={1}
+              />
+              <div
+                style={{
+                  flex: "1 1 180px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "var(--obsidian-3)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "9px 11px",
+                  border: "1px solid var(--line-strong)",
+                  minWidth: 0,
+                }}
+              >
+                <Icon name="calendar" size={15} color="var(--silver)" />
+                <input
+                  type="datetime-local"
+                  value={campExpiry}
+                  onChange={(e) => setCampExpiry(e.target.value)}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    color: campExpiry ? "var(--arctic)" : "var(--fg3)",
+                    fontSize: 13.5,
+                    fontFamily: "var(--font-sans)",
+                    colorScheme: "dark",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Driver multi-select */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--silver)",
+                    fontFamily: "var(--font-sans)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.07em",
+                  }}
+                >
+                  {t("dash.discounts.campaign.drivers")}
+                </span>
+                <button
+                  type="button"
+                  onClick={selectAllDrivers}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    color: "var(--volt)",
+                    fontFamily: "var(--font-sans)",
+                    fontWeight: 600,
+                    padding: "2px 0",
+                  }}
+                >
+                  {t("dash.discounts.campaign.allDrivers")}
+                </button>
+              </div>
+              {drivers.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "var(--fg3)",
+                    padding: "10px 12px",
+                    background: "var(--obsidian-3)",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--line-strong)",
+                  }}
+                >
+                  {t("dash.discounts.campaign.noDrivers")}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: "var(--obsidian-3)",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--line-strong)",
+                    maxHeight: 160,
+                    overflowY: "auto",
+                  }}
+                >
+                  {drivers.map((d) => (
+                    <label
+                      key={d.tenant_id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "9px 12px",
+                        cursor: "pointer",
+                        borderBottom: "1px solid var(--line)",
+                        fontSize: 13.5,
+                        color: "var(--arctic)",
+                        fontFamily: "var(--font-sans)",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedDriverIds.includes(d.tenant_id)}
+                        onChange={() => toggleDriver(d.tenant_id)}
+                        style={{ accentColor: "var(--volt)", width: 14, height: 14, cursor: "pointer" }}
+                      />
+                      <Icon name="user" size={13} color="var(--silver)" />
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {d.email}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Submit */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Button
+                variant="solid"
+                icon="zap"
+                disabled={campCreating || !campName.trim() || selectedDriverIds.length === 0}
+                onClick={() => undefined}
+              >
+                {campCreating ? t("dash.discounts.campaign.creating") : t("dash.discounts.campaign.create")}
+              </Button>
+              {selectedDriverIds.length > 0 && (
+                <span style={{ fontSize: 12, color: "var(--fg3)" }}>
+                  {selectedDriverIds.length} {t("dash.discounts.campaign.drivers").toLowerCase()}
+                </span>
+              )}
+            </div>
+          </form>
+
+          {/* Campaign errors */}
+          {campErr && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                background: "rgba(255,92,110,0.08)",
+                border: "1px solid rgba(255,92,110,0.4)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 13px",
+              }}
+            >
+              <Icon name="alert-circle" size={15} color="var(--danger)" />
+              <span style={{ fontSize: 12.5, color: "var(--silver)" }}>{campErr}</span>
+            </div>
+          )}
+
+          {/* Generated codes result */}
+          {campResult && campResult.codes.length > 0 && (
+            <div
+              style={{
+                background: "var(--obsidian)",
+                border: "1px solid var(--line-strong)",
+                borderRadius: "var(--radius-lg)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  padding: "10px 16px",
+                  borderBottom: "1px solid var(--line)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <Icon name="circle-check" size={15} color="var(--success)" />
+                <span
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    color: "var(--silver)",
+                    fontFamily: "var(--font-sans)",
+                  }}
+                >
+                  {t("dash.discounts.campaign.generated")}
+                </span>
+              </div>
+              {campResult.codes.map((c, i) => {
+                const driver =
+                  c.tenant_id != null
+                    ? campResult.usedDrivers.find((d) => d.tenant_id === c.tenant_id)
+                    : campResult.usedDrivers[i];
+                return (
+                  <div
+                    key={c.code}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "10px 16px",
+                      borderBottom: "1px solid var(--line)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "var(--font-display)",
+                        fontWeight: 700,
+                        fontSize: 14,
+                        color: "var(--arctic)",
+                        letterSpacing: "0.05em",
+                        minWidth: 120,
+                      }}
+                    >
+                      {c.code}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "var(--volt)",
+                        fontFamily: "var(--font-display)",
+                        minWidth: 48,
+                      }}
+                    >
+                      {c.discount_pct}%
+                    </span>
+                    {driver && (
+                      <span style={{ fontSize: 12.5, color: "var(--fg3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <Icon name="user" size={12} color="var(--fg3)" /> {driver.email}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

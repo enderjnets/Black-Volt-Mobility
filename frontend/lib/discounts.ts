@@ -63,3 +63,44 @@ export async function deleteDiscount(id: number): Promise<void> {
     throw new Error(detailOf((d as { detail?: unknown }).detail, `discounts:${r.status}`));
   }
 }
+
+// ── Admin-only helpers ────────────────────────────────────────────────────────
+
+export interface DriverOption {
+  tenant_id: number;
+  email: string;
+}
+
+export async function listDrivers(): Promise<DriverOption[]> {
+  const r = await fetch("/api/v1/discounts/drivers", { credentials: "include", cache: "no-store" });
+  if (!r.ok) throw new Error(`drivers:${r.status}`);
+  return r.json();
+}
+
+export interface CreateCampaignInput {
+  name: string;
+  discount_pct: number;
+  max_uses?: number | null;
+  expires_at?: string | null;
+  driver_tenant_ids: number[];
+}
+
+export interface CampaignCode {
+  code: string;
+  discount_pct: number;
+  tenant_id?: number;
+}
+
+export interface CampaignResult {
+  campaign: Record<string, unknown>;
+  codes: CampaignCode[];
+}
+
+export async function createCampaign(input: CreateCampaignInput): Promise<CampaignResult> {
+  const r = await send("/v1/discounts/campaigns", "POST", input);
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(detailOf((d as { detail?: unknown }).detail, `campaigns:${r.status}`));
+  }
+  return r.json();
+}

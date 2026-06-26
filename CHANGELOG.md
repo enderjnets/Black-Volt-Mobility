@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.45.0 — 2026-06-25 — Discount codes on booking, driver codes module & admin campaigns
+
+Passengers can now apply discount codes at booking. Drivers manage their own promo codes from the dashboard. Admins can create multi-driver campaigns that generate a unique code per selected driver in one step.
+
+- **Discount codes at booking**: the booking flow now has a code field — clients enter a promo code and the fare is reduced in real time before payment. Codes are validated against the backend and error states (expired, not found) surface clearly.
+- **Reservation-only booking**: on-demand "Now" rides have been removed. All bookings are scheduled — passengers always pick a date and time.
+- **Driver discount-codes panel**: new Discounts section in the driver dashboard. Drivers can create promo codes (capped at 50%), toggle codes active/inactive, and delete them. Codes are shown with uses, expiry and active status.
+- **Admin campaign creator**: admin users see an additional Campaign section on the same page. One form lets the admin name the campaign, set discount % (1–100, uncapped), max uses, expiry, and pick one or more drivers from a checklist (with "All drivers" shortcut). The backend generates one unique code per selected driver and the UI shows the code alongside its driver email.
+
 ## v0.44.0 — 2026-06-25 — Social posts cross-post to TikTok
 
 Black Volt's generated social videos now publish to TikTok automatically, alongside Instagram and Facebook, via the owner's connected Buffer account.
