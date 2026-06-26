@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.43.0";
+export const CURRENT_VERSION = "0.44.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.44.0",
+    date: "2026-06-25",
+    title: "Social posts now cross-post to TikTok",
+    changes: [
+      "Your generated social videos now publish to TikTok automatically alongside Instagram and Facebook, through your connected Buffer account.",
+      "TikTok is skipped safely when its channel isn’t connected, so nothing breaks for accounts without it.",
+    ],
+  },
   {
     version: "0.43.0",
     date: "2026-06-25",

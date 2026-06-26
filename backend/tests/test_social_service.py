@@ -44,9 +44,18 @@ def test_clean_targets_allowlists_and_dedupes():
     assert S._clean_targets(["instagram", "instagram", "evil", "tiktok"]) == [
         "instagram", "tiktok",
     ]
-    # Unknown-only or empty → the default Meta pair.
+    # Unknown-only or empty → the default target set.
     assert S._clean_targets(["nope"]) == S._DEFAULT_TARGETS
     assert S._clean_targets(None) == S._DEFAULT_TARGETS
+
+
+def test_default_targets_include_tiktok():
+    """Posts cross-post to TikTok by default so a connected TikTok channel receives
+    them without per-post selection. _do_publish skips any platform whose
+    SocialAccount isn't connected, so this stays safe for tenants without TikTok."""
+    assert "tiktok" in S._DEFAULT_TARGETS
+    # A post created with no explicit targets inherits the default → includes TikTok.
+    assert "tiktok" in S._clean_targets(None)
 
 
 def test_sanitize_topic_collapses_and_caps():

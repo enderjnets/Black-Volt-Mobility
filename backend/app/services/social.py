@@ -40,7 +40,7 @@ logger = logging.getLogger("blackvolt.social")
 
 _LOCALES = {"en", "es"}
 _LANG_NAME = {"en": "English", "es": "Spanish"}
-_DEFAULT_TARGETS = ["instagram", "facebook"]
+_DEFAULT_TARGETS = ["instagram", "facebook", "tiktok"]
 _MAX_TOPIC = 200
 
 

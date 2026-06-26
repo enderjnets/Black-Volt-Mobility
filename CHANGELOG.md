@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.44.0 — 2026-06-25 — Social posts cross-post to TikTok
+
+Black Volt's generated social videos now publish to TikTok automatically, alongside Instagram and Facebook, via the owner's connected Buffer account.
+
+- **TikTok added to default publish targets**: `_DEFAULT_TARGETS` now includes `tiktok`, so every owner-approved post is routed to the connected TikTok channel. `_do_publish` already skips any platform whose `SocialAccount` isn't connected, so tenants without TikTok are unaffected and Instagram/Facebook behaviour is unchanged.
+- No new endpoints or schema changes. Activation is config-only: the Black Volt Buffer account (org `6a36d65c…`) holds the TikTok + Instagram OAuth; the backend reads `BUFFER_API_KEY` / `BUFFER_ORG_ID` and posts via `social_buffer`. Connect/refresh the channel from Dashboard → Social → Accounts (Sync).
+
 ## v0.43.0 — 2026-06-25 — Ride preferences (account + onboarding + per-ride + driver view)
 
 Passengers can now set standing ride preferences and tune them per ride; drivers see them on the ride.
