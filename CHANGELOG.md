@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.47.0 — 2026-06-26 — Rider cancellation + driver refund decision, driver contact fix & new-ride emails
+
+Riders can self-cancel; the driver chooses the refund when a late cancellation warrants a fee. Plus the /trips driver-contact fix and driver email notifications.
+
+- **Rider cancellation**: new passenger-scoped `POST /rides/{id}/cancel` (auth + ownership-checked, idempotent). Riders may cancel a `QUOTED`/`CONFIRMED`/`ASSIGNED` ride; once the driver is `EN_ROUTE` it's rejected (409). Cancelling sets `cancelled_at` and removes the Google Calendar event.
+- **24h refund policy**: cancelling **≥24h** before pickup (or with no scheduled time) auto-refunds in full — an `AUTHORIZED` hold is voided, a `CAPTURED` charge refunded. Cancelling **<24h** before pickup leaves the payment pending the driver's decision.
+- **Driver refund decision**: new staff-scoped `POST /rides/{id}/refund-decision` with `fee_pct ∈ {0,20,30}` — full refund, or keep a 20%/30% cancellation fee and refund the rest. Fee eligibility (<24h) is enforced server-side; an uncaptured hold is captured in full then partially refunded. `payments.refund_payment` now supports a bounded partial `amount`; new `payments.settle_cancellation` orchestrates void/refund/fee. New `payments.refunded_amount` (cents) records the refunded portion. Payment lookup is scoped to the ride's owning tenant so discount-handoff rides settle correctly.
+- **Driver contact on /trips (bug fix)**: `GET /rides` / `GET /rides/{id}` now resolve the assigned driver from `assigned_tenant_id` **or** the ride's owning `tenant_id` (gated on a phone being present), so a normally-booked ride surfaces the owner-driver's name/phone/vehicle — fixing "Driver to be assigned" with disabled call/text buttons on the rider's own confirmed ride.
+- **Driver email notifications**: the driver is emailed (via Resend; best-effort, never blocks the flow) when a ride is confirmed (`authorize_for_ride` + `confirm_ride`) and when a ride is cancelled (with a "review the refund" prompt for within-24h cancellations). Recipient resolved from the driver tenant's `AllowedUser`.
+- **Frontend**: My Trips gains a "Cancel ride" action with a 24h cancellation-fee warning; the driver dashboard ride detail shows a refund-decision panel (Full refund / Keep 20% / Keep 30% with computed amounts) on within-24h cancelled rides. New `cancelRide` / `refundDecision` API clients; bilingual i18n keys added.
+- **Migration**: `0030_cancellation_fields` adds `rides.cancelled_at` and `payments.refunded_amount` (both nullable, reversible).
+
 ## v0.46.0 — 2026-06-26 — Pay-at-drop-off booking + real My Trips with driver contact
 
 Two booking improvements and a real /trips page.

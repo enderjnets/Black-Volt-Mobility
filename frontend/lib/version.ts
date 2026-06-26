@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.46.0";
+export const CURRENT_VERSION = "0.47.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.47.0",
+    date: "2026-06-26",
+    title: "Cancel a ride from the app + driver refund choice",
+    changes: [
+      "You can now cancel an upcoming ride yourself from My Trips, any time before your driver is on the way.",
+      "Cancel 24+ hours ahead and you're refunded in full, automatically.",
+      "Cancel within 24 hours and your driver decides: a full refund or a 20% / 30% cancellation fee.",
+      "Your assigned driver's name and contact now appear on every confirmed trip, so Call and Text always work.",
+      "Drivers are emailed when a new ride is booked and when a ride is cancelled.",
+    ],
+  },
   {
     version: "0.46.0",
     date: "2026-06-26",

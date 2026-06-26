@@ -52,3 +52,19 @@ export async function capturePayment(paymentId: number): Promise<PaymentResult> 
   }
   return r.json();
 }
+
+// Driver/staff decision on a cancelled ride's refund. feePct: 0 = full refund;
+// 20/30 = cancellation fee the driver keeps (the rest is refunded). A fee is
+// only accepted by the backend when the rider cancelled <24h before pickup.
+export async function refundDecision(rideId: number, feePct: number): Promise<void> {
+  const r = await fetch(`/api/v1/rides/${rideId}/refund-decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ fee_pct: feePct }),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(typeof d.detail === "string" ? d.detail : `refund:${r.status}`);
+  }
+}

@@ -23,7 +23,7 @@ import {
 } from "@/lib/booking";
 import { extractReservation, hasAnyField, SmartError } from "@/lib/smart";
 import { openMapsTo } from "@/lib/maps";
-import { capturePayment } from "@/lib/payments";
+import { capturePayment, refundDecision } from "@/lib/payments";
 import { StatusPill } from "./DashShell";
 import { fmtWhen, uiStatus } from "./status";
 import { RidePreferencesSummary } from "../web/RidePreferences";
@@ -202,6 +202,21 @@ export function RideDetail({
       onChanged?.();
     } catch {
       setErr("capture");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const refund = async (feePct: number) => {
+    if (!ride?.payment) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await refundDecision(ride.id, feePct);
+      await load();
+      onChanged?.();
+    } catch {
+      setErr("refund");
     } finally {
       setBusy(false);
     }
@@ -586,6 +601,37 @@ export function RideDetail({
           {t(`dash.ride.err.${err}`)}
         </div>
       )}
+
+      {/* Refund decision (cancelled <24h, card still authorized/captured) */}
+      {ride.status === "cancelled" &&
+        ride.cancellation_fee_eligible &&
+        pay &&
+        (pay.status === "authorized" || pay.status === "captured") &&
+        (() => {
+          const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+          const keep20 = pay.amount * 0.2;
+          const keep30 = pay.amount * 0.3;
+          return (
+            <div style={{ background: "rgba(255,194,75,0.08)", border: "1px solid rgba(255,194,75,0.4)", borderRadius: "var(--radius-md)", padding: "12px 14px", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 13, color: "var(--warning)", marginBottom: 6 }}>
+                <Icon name="alert-circle" size={15} color="var(--warning)" />
+                {t("dash.ride.refund.title")}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--silver)", marginBottom: 10 }}>{t("dash.ride.refund.note")}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <Button variant="ghost" icon="rotate-ccw" disabled={busy} onClick={() => refund(0)}>
+                  {t("dash.ride.refund.full")}
+                </Button>
+                <Button variant="solid" icon="dollar-sign" disabled={busy} onClick={() => refund(20)}>
+                  {`${t("dash.ride.refund.fee20")} · ${money(keep20)}`}
+                </Button>
+                <Button variant="solid" icon="dollar-sign" disabled={busy} onClick={() => refund(30)}>
+                  {`${t("dash.ride.refund.fee30")} · ${money(keep30)}`}
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
 
       {/* Actions */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

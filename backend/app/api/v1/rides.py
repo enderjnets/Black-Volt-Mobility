@@ -5,7 +5,7 @@ are open (they back a public price calculator); writes and the rides list requir
 a session (passengers see only their own rides; staff see all)."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
@@ -15,7 +15,18 @@ from app.api.deps import current_payload, require_auth, require_staff, resolve_t
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import PaymentMethod, Ride, RideStatus
-from app.services import auth, booking, dashboard, maps, profile, smart, subscriptions
+from app.services import (
+    auth,
+    booking,
+    dashboard,
+    email,
+    maps,
+    payments,
+    payments_square,
+    profile,
+    smart,
+    subscriptions,
+)
 from app.services.discounts import DiscountError
 
 # Vision providers accept these; anything else is rejected before the model call.
@@ -109,6 +120,20 @@ class RateConfigBody(BaseModel):
     loyalty_discount_pct: float | None = Field(default=None, ge=0, le=90)
 
 
+# Statuses a passenger may self-cancel from (before the driver is en route).
+_CANCELLABLE_BY_RIDER = (RideStatus.QUOTED, RideStatus.CONFIRMED, RideStatus.ASSIGNED)
+# A cancellation fee may be charged only when the rider cancels <24h before pickup.
+_CANCELLATION_FEE_WINDOW = timedelta(hours=24)
+
+
+def _cancellation_fee_eligible(r: Ride) -> bool:
+    """True when a cancellation fee is on the table: the ride is cancelled and
+    the rider cancelled less than 24h before the scheduled pickup."""
+    if r.status != RideStatus.CANCELLED or r.cancelled_at is None or r.scheduled_at is None:
+        return False
+    return (r.scheduled_at - r.cancelled_at) < _CANCELLATION_FEE_WINDOW
+
+
 def _ride_out(r: Ride) -> dict:
     return {
         "id": r.id,
@@ -138,6 +163,8 @@ def _ride_out(r: Ride) -> dict:
         ),
         "paid": r.paid,
         "paid_at": r.paid_at.isoformat() if r.paid_at else None,
+        "cancelled_at": r.cancelled_at.isoformat() if r.cancelled_at else None,
+        "cancellation_fee_eligible": _cancellation_fee_eligible(r),
         "google_event_id": r.google_event_id,
         "overdue": booking.is_overdue(r),
         "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -336,7 +363,7 @@ async def list_rides(
     # Assigned-driver contact (name/phone/vehicle/rating) so a rider can call or
     # text their driver from /trips. Only attached when a driver is assigned.
     drivers = await dashboard.assigned_drivers(
-        db, ids=[r.assigned_tenant_id for r in rides]
+        db, ids=[(r.assigned_tenant_id or r.tenant_id) for r in rides]
     )
     out = []
     for r in rides:
@@ -344,8 +371,14 @@ async def list_rides(
         nm, ph = names.get(r.client_id, (None, None)) if r.client_id else (None, None)
         d["client_name"] = nm or r.passenger_name
         d["client_phone"] = ph or r.passenger_phone
-        if r.assigned_tenant_id and r.assigned_tenant_id in drivers:
-            d["assigned_driver"] = drivers[r.assigned_tenant_id]
+        # Driver shown to the rider: the discount-handoff tenant if set, else the
+        # ride's owning tenant (the driver who will service a normal booking).
+        # Only surface a driver that has a phone — that's a configured driver and
+        # the contact the rider can act on (call/text); contactless tenants stay
+        # "driver pending".
+        did = r.assigned_tenant_id or r.tenant_id
+        if did and drivers.get(did) and drivers[did].get("phone"):
+            d["assigned_driver"] = drivers[did]
         out.append(d)
     return {"rides": out}
 
@@ -369,10 +402,11 @@ async def get_ride(
         await db.refresh(ride)
     out = _ride_out(ride)
     out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))
-    if ride.assigned_tenant_id:
-        drivers = await dashboard.assigned_drivers(db, ids=[ride.assigned_tenant_id])
-        if ride.assigned_tenant_id in drivers:
-            out["assigned_driver"] = drivers[ride.assigned_tenant_id]
+    did = ride.assigned_tenant_id or ride.tenant_id
+    if did:
+        drivers = await dashboard.assigned_drivers(db, ids=[did])
+        if drivers.get(did) and drivers[did].get("phone"):
+            out["assigned_driver"] = drivers[did]
     return out
 
 
@@ -401,6 +435,7 @@ async def confirm_ride(
         await db.commit()
         await db.refresh(ride)
         await booking.sync_ride_to_calendar(db, ride)
+        await email.send_driver_new_ride(db, ride=ride)
     return _ride_out(ride)
 
 
@@ -530,3 +565,92 @@ async def preview_ride_update(
         },
         "conflicts": conflicts,
     }
+
+
+class RefundDecisionBody(BaseModel):
+    # 0 = full refund; 20/30 = cancellation fee the driver keeps (rest refunded).
+    fee_pct: int = Field(..., description="0, 20, or 30")
+
+    @field_validator("fee_pct")
+    @classmethod
+    def _valid_pct(cls, v: int) -> int:
+        if v not in (0, 20, 30):
+            raise ValueError("fee_pct must be 0, 20, or 30")
+        return v
+
+
+@router.post("/rides/{ride_id}/cancel")
+async def cancel_ride(
+    ride_id: int,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_auth),
+):
+    """Cancel a ride. Accessible to the rider (own ride) and to staff.
+
+    Riders may cancel before the driver is en route. Refund handling:
+    - >=24h before pickup (or no scheduled time): the rider is refunded in full
+      automatically (the hold is voided or the charge refunded).
+    - <24h before pickup: a cancellation fee may apply, so the payment is left
+      pending the driver's refund decision (POST /rides/{id}/refund-decision).
+    Cash / pay-on-completion rides simply cancel (nothing to refund)."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
+    if ride is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+    if payload.get("role") == auth.ROLE_PASSENGER and ride.client_id != payload.get("cid"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    if ride.status == RideStatus.CANCELLED:
+        return _ride_out(ride)  # idempotent
+    if ride.status not in _CANCELLABLE_BY_RIDER:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_cancellable")
+
+    now = datetime.now(UTC)
+    ride.status = RideStatus.CANCELLED
+    ride.cancelled_at = now
+    if ride.google_event_id:
+        await booking.remove_ride_from_calendar(db, ride)
+    fee_eligible = (
+        ride.scheduled_at is not None and (ride.scheduled_at - now) < _CANCELLATION_FEE_WINDOW
+    )
+    refund_pending = False
+    if not fee_eligible:
+        # No fee can apply -> make the rider whole right away.
+        await payments.settle_cancellation(db, tenant_id=tenant_id, ride=ride, fee_pct=0)
+    else:
+        pay = await payments.active_payment_for_ride(
+            db, tenant_id=ride.tenant_id, ride_id=ride.id
+        )
+        refund_pending = pay is not None
+    await db.commit()
+    await db.refresh(ride)
+    await email.send_driver_ride_cancelled(db, ride=ride, refund_pending=refund_pending)
+    return _ride_out(ride)
+
+
+@router.post("/rides/{ride_id}/refund-decision")
+async def refund_decision(
+    ride_id: int,
+    body: RefundDecisionBody,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Driver/staff decision on a cancelled ride's refund: full refund
+    (fee_pct=0) or keep a 20%/30% cancellation fee. A fee is allowed only when
+    the ride was cancelled <24h before pickup."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
+    if ride is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+    if ride.status != RideStatus.CANCELLED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ride_not_cancelled")
+    if body.fee_pct > 0 and not _cancellation_fee_eligible(ride):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="fee_not_eligible")
+    try:
+        await payments.settle_cancellation(db, tenant_id=tenant_id, ride=ride, fee_pct=body.fee_pct)
+    except payments_square.PaymentError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    await db.commit()
+    await db.refresh(ride)
+    out = _ride_out(ride)
+    out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))
+    return out
