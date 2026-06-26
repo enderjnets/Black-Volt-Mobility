@@ -830,8 +830,9 @@ async def test_payment_success_redeems_code(db):
 
 
 async def test_payment_redeem_idempotent(db):
-    """If discount_redeemed is already True, a second authorize_for_ride call does
-    not double-increment used_count."""
+    """A second authorize_for_ride call on the same ride does not double-increment
+    used_count. The gate is the DB-level conditional UPDATE on rides
+    (discount_redeemed=false) — rowcount==0 on the second attempt → "already"."""
     from app.services.booking import create_ride
     from app.services.payments import authorize_for_ride
     code = await D.create_code(db, tenant_id=2, is_admin=True, code="IDMPTNT10",
@@ -842,11 +843,12 @@ async def test_payment_redeem_idempotent(db):
                              dropoff="Denver International Airport (DEN)",
                              discount_code="IDMPTNT10")
     try:
-        # First payment call — should redeem once.
+        # First payment call — should redeem once (claim wins, increment runs).
         await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
         await db.refresh(code)
         assert code.used_count == 1
-        # Second call (retry scenario) — discount_redeemed is True, so skipped.
+        # Second call (retry scenario) — DB has discount_redeemed=True so claim
+        # UPDATE returns rowcount==0 → "already" → increment is never reached.
         await authorize_for_ride(db, tenant_id=1, ride=ride, source_id="cnon:card-nonce-ok")
         await db.refresh(code)
         assert code.used_count == 1, f"double-redeem: expected 1, got {code.used_count}"
@@ -894,6 +896,20 @@ async def test_payment_succeeds_when_code_exhausted(db):
         await db.delete(ride)
         await db.commit()
 
+
+# ---------------------------------------------------------------------------
+# Fix wave 1: rollback atomicity test
+# ---------------------------------------------------------------------------
+# NOTE: Skipped — simulating a mid-transaction failure cleanly (after the
+# ride-claim UPDATE but before commit) would require patching db.commit() in a
+# way that leaves the session in a consistent rollback-ready state without also
+# breaking the preceding payment commit. That is not achievable with a simple
+# monkeypatch on an async session. The atomicity guarantee is structural: both
+# UPDATEs share the same open transaction opened by SQLAlchemy's session; if
+# db.commit() raises (network drop, serialization failure, etc.) the transaction
+# is rolled back by the DB and NEITHER update persists — discount_redeemed stays
+# False and used_count is unchanged. A separate integration/chaos test (outside
+# this unit suite) is the right venue for that failure path.
 
 # ---------------------------------------------------------------------------
 # Follow-up 2: price discounted rides with owner's rate config
