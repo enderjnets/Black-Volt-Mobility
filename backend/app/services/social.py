@@ -759,11 +759,20 @@ def _public_media_url(media_path: str | None) -> str | None:
     return f"{base}/media/{rel}"
 
 
+def _buffer_owner_ok(tenant_id: int) -> bool:
+    """The single Buffer account belongs to the owner (Black Volt). When
+    OWNER_TENANT_ID is configured, only that tenant may sync channels or publish
+    to Buffer — sub-tenant workspaces are blocked from the shared account so their
+    posts can never leak onto the owner's IG/TikTok. None disables the gate."""
+    owner = get_settings().OWNER_TENANT_ID
+    return owner is None or tenant_id == owner
+
+
 async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
     """Publish a post. When Buffer is live, push each connected target's video to
     Buffer (IG as a Reel) and store the Buffer post id; otherwise simulate."""
     targets = row.targets or list(_DEFAULT_TARGETS)
-    if social_buffer.is_live():
+    if social_buffer.is_live() and _buffer_owner_ok(row.tenant_id):
         accounts = {
             r.platform: r
             for r in (
@@ -1127,6 +1136,11 @@ async def sync_buffer_channels(db: AsyncSession, *, tenant_id: int) -> list[dict
     """Pull the owner's Buffer channels and upsert a SocialAccount per channel
     whose service we target (IG/FB/TikTok). Buffer holds the OAuth tokens, so we
     only store its channel id + handle + connection state — never a token."""
+    # The Buffer account is the owner's. Refuse to attach its channels to any
+    # sub-tenant — without this a sub-tenant admin could connect (and then post
+    # to) the owner's IG/TikTok via the shared account.
+    if not _buffer_owner_ok(tenant_id):
+        return []
     channels = await social_buffer.list_channels()
     existing = {
         r.platform: r

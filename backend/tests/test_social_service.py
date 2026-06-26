@@ -426,3 +426,56 @@ async def test_do_publish_transient_buffer_error_keeps_status(db, monkeypatch, _
     # Transient failure must NOT mark the post failed — it stays publishable.
     assert out["status"] != "failed"
     assert out["external_ids"] == {}
+
+
+@pytest.mark.asyncio
+async def test_sync_buffer_channels_skips_non_owner_tenant(db, monkeypatch):
+    """The single Buffer account is the owner's. When OWNER_TENANT_ID is set, a
+    sub-tenant cannot sync the owner's channels — no SocialAccount rows appear."""
+    from app.services import social_buffer
+
+    async def fake_list():
+        return [{"id": "ch-ig", "service": "instagram", "name": "bv",
+                 "display_name": "bv", "connected": True}]
+
+    monkeypatch.setattr(social_buffer, "list_channels", fake_list)
+    t = Tenant(slug=f"t-{uuid.uuid4().hex[:8]}", name="Sub Tenant")
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    # The owner is a DIFFERENT tenant, so this one is a sub-tenant → must skip.
+    monkeypatch.setattr(S.get_settings(), "OWNER_TENANT_ID", t.id + 1000)
+    out = await S.sync_buffer_channels(db, tenant_id=t.id)
+    assert out == []
+    rows = (await db.execute(
+        S.select(S.SocialAccount).where(S.SocialAccount.tenant_id == t.id)
+    )).scalars().all()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_do_publish_skips_buffer_for_non_owner_tenant(db, monkeypatch, _approved_ig_post):
+    """Even with a (stale) connected account and Buffer live, a sub-tenant never
+    publishes through the owner's Buffer — it falls back to the simulated path."""
+    from app.services import social_buffer
+    tid, pid = _approved_ig_post
+    db.add(S.SocialAccount(
+        tenant_id=tid, platform="instagram", external_account_id="ch-ig",
+        display_name="bv", status="connected",
+    ))
+    await db.commit()
+    calls = []
+
+    async def fake_create(**kw):
+        calls.append(kw)
+        return {"id": "buf-x", "status": "queued", "due_at": None}
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", fake_create)
+    # Owner is a different tenant → the Buffer branch must be bypassed entirely.
+    monkeypatch.setattr(S.get_settings(), "OWNER_TENANT_ID", tid + 1000)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert out["status"] == "published"
+    assert calls == []  # Buffer create_post must NOT be called for a sub-tenant.
+    assert out["external_ids"]["instagram"].startswith("sim_")
