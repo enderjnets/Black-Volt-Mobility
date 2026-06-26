@@ -222,6 +222,26 @@ async def client_names(
     return {r[0]: (r[1], r[2]) for r in rows}
 
 
+async def assigned_drivers(db: AsyncSession, *, ids: list[int | None]) -> dict[int, dict]:
+    """Map of assigned_tenant_id → driver contact card (name, phone, vehicle,
+    rating). Drivers are top-level tenants, so this is not tenant-scoped. The
+    phone is included because callers only attach this to a ride the viewer owns
+    or manages (a signed-in passenger seeing their own ride, or staff)."""
+    real = [i for i in ids if i]
+    if not real:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                Tenant.id, Tenant.name, Tenant.phone, Tenant.vehicle, Tenant.rating
+            ).where(Tenant.id.in_(real))
+        )
+    ).all()
+    return {
+        r[0]: {"name": r[1], "phone": r[2], "vehicle": r[3], "rating": r[4]} for r in rows
+    }
+
+
 async def list_clients(db: AsyncSession, *, tenant_id: int) -> list[dict]:
     clients = (
         await db.execute(

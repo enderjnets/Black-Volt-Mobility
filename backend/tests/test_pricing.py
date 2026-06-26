@@ -110,7 +110,9 @@ def test_discount_code_overrides_loyalty():
     rc = make_rates()  # loyalty_discount_pct=10.0
     q = pricing.quote(
         rc,
-        pricing.RouteFacts(distance_miles=18.4, duration_minutes=28, is_loyalty=True, discount_pct=15.0),
+        pricing.RouteFacts(
+            distance_miles=18.4, duration_minutes=28, is_loyalty=True, discount_pct=15.0
+        ),
     )
     # subtotal=71.56; code discount=71.56*15/100=10.73; total=60.83
     labels = [line["label"] for line in q["lines"]]
@@ -138,7 +140,9 @@ def test_discount_code_zero_falls_through_to_loyalty():
     rc = make_rates()
     q = pricing.quote(
         rc,
-        pricing.RouteFacts(distance_miles=18.4, duration_minutes=28, is_loyalty=True, discount_pct=0.0),
+        pricing.RouteFacts(
+            distance_miles=18.4, duration_minutes=28, is_loyalty=True, discount_pct=0.0
+        ),
     )
     labels = [line["label"] for line in q["lines"]]
     assert "loyalty_discount" in labels

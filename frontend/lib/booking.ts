@@ -155,6 +155,22 @@ export async function createRide(input: RideInput): Promise<{ id: number; fare_t
   return jsend("/v1/rides", "POST", input);
 }
 
+// Confirm a QUOTED ride the rider chose to pay on completion (cash / pay the
+// driver at drop-off). No online charge — moves the ride to CONFIRMED and onto
+// the driver's calendar. Idempotent.
+export async function confirmRide(rideId: number): Promise<RideRow> {
+  return jsend<RideRow>(`/v1/rides/${rideId}/confirm`, "POST");
+}
+
+// Driver contact attached to a ride once a driver is assigned — lets the rider
+// call/text their driver from /trips.
+export interface AssignedDriver {
+  name: string | null;
+  phone: string | null;
+  vehicle: string | null;
+  rating: number | null;
+}
+
 export interface RideRow {
   id: number;
   status: string;
@@ -172,6 +188,7 @@ export interface RideRow {
   paid?: boolean;
   paid_at?: string | null;
   overdue?: boolean;
+  assigned_driver?: AssignedDriver;
 }
 
 export type PaymentMethod = "cash" | "square" | "venmo" | "zelle" | "other";

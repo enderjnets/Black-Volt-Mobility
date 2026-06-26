@@ -249,8 +249,15 @@ async def create_ride(
     return ride
 
 
-# Statuses that should NOT appear on the calendar.
+# Terminal/inactive statuses: no overdue, excluded from active-ride queries.
 _INACTIVE = (RideStatus.CANCELLED, RideStatus.NO_SHOW, RideStatus.COMPLETED)
+
+# Statuses a ride must hold to appear on a driver's calendar. A QUOTED/REQUESTED
+# ride is only a draft awaiting the rider's payment decision — it must NOT be
+# pushed to the calendar until it is actually confirmed (paid online or
+# committed to pay-on-completion). This is the guard that keeps unpaid drafts
+# off the driver's schedule.
+_CALENDAR_VISIBLE = (RideStatus.CONFIRMED, RideStatus.ASSIGNED, RideStatus.EN_ROUTE)
 
 
 def is_overdue(ride: Ride, now: datetime | None = None) -> bool:
@@ -414,7 +421,7 @@ async def sync_ride_to_calendar(db: AsyncSession, ride: Ride) -> None:
     an unconnected member → skipped). The event spans the house→house block per
     the pickup protocol and reminds 30/60 min before. Best-effort — never raises
     (calendar must not block bookings)."""
-    if ride.scheduled_at is None or ride.status in _INACTIVE:
+    if ride.scheduled_at is None or ride.status not in _CALENDAR_VISIBLE:
         return
     try:
         from app.models import Client

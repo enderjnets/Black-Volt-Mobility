@@ -63,6 +63,12 @@ async def authorize_for_ride(
                 _logger.debug("discount already claimed for ride %s; skipping", ride.id)
         except Exception:  # noqa: BLE001
             _logger.exception("discount redemption failed for ride %s; ignoring", ride.id)
+    # The ride is now CONFIRMED (the card authorized) — push it to the driver's
+    # calendar. Unpaid QUOTED drafts never reach this point, so the calendar event
+    # is only created once payment succeeds. Best-effort (never raises).
+    from app.services import booking
+
+    await booking.sync_ride_to_calendar(db, ride)
     return pay
 
 
