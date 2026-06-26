@@ -22,6 +22,10 @@ def _gen_code() -> str:
     return "BV-" + "".join(secrets.choice(_ALPHABET) for _ in range(6))
 
 
+def _gen_suffix() -> str:
+    return "".join(secrets.choice(_ALPHABET) for _ in range(4))
+
+
 def _now() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
 
@@ -38,7 +42,7 @@ async def create_code(
     created_by_email: str,
     campaign_id: int | None = None,
 ) -> DiscountCode:
-    if discount_pct <= 0 or discount_pct > 100:
+    if discount_pct < 1 or discount_pct > 100:
         raise DiscountError("pct_out_of_range")
     if not is_admin and discount_pct > DRIVER_MAX_PCT:
         raise DiscountError("pct_too_high")
@@ -141,7 +145,7 @@ async def create_campaign(
     created_by_tenant_id: int,
     driver_tenant_ids: list[int],
 ) -> tuple[DiscountCampaign, list[DiscountCode]]:
-    if discount_pct <= 0 or discount_pct > 100:
+    if discount_pct < 1 or discount_pct > 100:
         raise DiscountError("pct_out_of_range")
     if not driver_tenant_ids:
         raise DiscountError("no_drivers")
@@ -157,11 +161,25 @@ async def create_campaign(
     await db.flush()
     base = "".join(ch for ch in name.strip().upper() if ch.isalnum())[:12] or "PROMO"
     codes: list[DiscountCode] = []
+    chosen: set[str] = set()
     for tid in driver_tenant_ids:
-        suffix = "".join(secrets.choice(_ALPHABET) for _ in range(4))
+        candidate: str | None = None
+        for _ in range(10):
+            suffix = _gen_suffix()
+            code_str = f"{base}-{suffix}"
+            if code_str in chosen:
+                continue
+            exists = await db.scalar(select(DiscountCode).where(DiscountCode.code == code_str))
+            if exists is None:
+                candidate = code_str
+                chosen.add(candidate)
+                break
+        if candidate is None:
+            await db.rollback()
+            raise DiscountError("duplicate")
         row = DiscountCode(
             tenant_id=tid,
-            code=f"{base}-{suffix}",
+            code=candidate,
             discount_pct=float(discount_pct),
             max_uses=max_uses,
             expires_at=expires_at,

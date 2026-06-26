@@ -195,8 +195,13 @@ async def test_list_codes_returns_for_tenant(db):
     await D.create_code(db, tenant_id=1, is_admin=False, code="LIST1",
                         discount_pct=10, max_uses=5, expires_at=_future(),
                         created_by_email="e@x.com")
+    await D.create_code(db, tenant_id=2, is_admin=False, code="LIST2",
+                        discount_pct=10, max_uses=5, expires_at=_future(),
+                        created_by_email="e@x.com")
     codes = await D.list_codes(db, 1)
-    assert any(c.code == "LIST1" for c in codes)
+    code_strs = {c.code for c in codes}
+    assert "LIST1" in code_strs
+    assert "LIST2" not in code_strs
 
 
 async def test_set_active_toggles_inactive(db):
@@ -217,4 +222,83 @@ async def test_delete_code_removes_it(db):
     await D.delete_code(db, 1, c.id)
     with pytest.raises(DiscountError) as ei:
         await D.validate_code(db, "GONE")
+    assert ei.value.reason == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# FIX 2: percentage lower bound (< 1 raises pct_out_of_range)
+# ---------------------------------------------------------------------------
+
+async def test_pct_fractional_rejected(db):
+    with pytest.raises(DiscountError) as ei:
+        await D.create_code(db, tenant_id=1, is_admin=True, code="HALF",
+                            discount_pct=0.5, max_uses=1, expires_at=_future(),
+                            created_by_email="a@x.com")
+    assert ei.value.reason == "pct_out_of_range"
+
+
+# ---------------------------------------------------------------------------
+# FIX 1: collision-safe campaign code generation
+# ---------------------------------------------------------------------------
+
+async def test_campaign_collision_safe_retries(db, monkeypatch):
+    """Suffix collision against an existing DB row triggers a retry; no IntegrityError."""
+    call_count = 0
+
+    def controlled_suffix():
+        nonlocal call_count
+        call_count += 1
+        return "AAAA" if call_count == 1 else "BBBB"
+
+    monkeypatch.setattr(D, "_gen_suffix", controlled_suffix)
+
+    base = "SUMMER25"
+    await D.create_code(db, tenant_id=99, is_admin=True, code=f"{base}-AAAA",
+                        discount_pct=10, max_uses=1, expires_at=_future(),
+                        created_by_email="seed@x.com")
+
+    camp, codes = await D.create_campaign(
+        db, name="SUMMER25", discount_pct=15, max_uses=10, expires_at=_future(),
+        created_by_email="a@x.com", created_by_tenant_id=1, driver_tenant_ids=[1],
+    )
+    assert len(codes) == 1
+    assert codes[0].code == f"{base}-BBBB"
+
+
+async def test_campaign_raises_discount_error_on_exhausted_retries(db, monkeypatch):
+    """All 10 retries collide → DiscountError('duplicate'), never IntegrityError."""
+    monkeypatch.setattr(D, "_gen_suffix", lambda: "ZZZZ")
+
+    base = "EXHAUST"
+    await D.create_code(db, tenant_id=99, is_admin=True, code=f"{base}-ZZZZ",
+                        discount_pct=10, max_uses=1, expires_at=_future(),
+                        created_by_email="seed@x.com")
+
+    with pytest.raises(DiscountError) as ei:
+        await D.create_campaign(
+            db, name="EXHAUST", discount_pct=15, max_uses=10, expires_at=_future(),
+            created_by_email="a@x.com", created_by_tenant_id=1, driver_tenant_ids=[1],
+        )
+    assert ei.value.reason == "duplicate"
+
+
+# ---------------------------------------------------------------------------
+# FIX 3: cross-tenant isolation for set_active and delete_code
+# ---------------------------------------------------------------------------
+
+async def test_set_active_cross_tenant_rejected(db):
+    c = await D.create_code(db, tenant_id=1, is_admin=False, code="T1TOGGLE",
+                            discount_pct=10, max_uses=5, expires_at=_future(),
+                            created_by_email="e@x.com")
+    with pytest.raises(DiscountError) as ei:
+        await D.set_active(db, tenant_id=2, code_id=c.id, active=False)
+    assert ei.value.reason == "not_found"
+
+
+async def test_delete_code_cross_tenant_rejected(db):
+    c = await D.create_code(db, tenant_id=1, is_admin=False, code="T1DEL",
+                            discount_pct=10, max_uses=5, expires_at=_future(),
+                            created_by_email="e@x.com")
+    with pytest.raises(DiscountError) as ei:
+        await D.delete_code(db, tenant_id=2, code_id=c.id)
     assert ei.value.reason == "not_found"
