@@ -5,6 +5,8 @@ os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 os.environ["DATABASE_URL"] = (
     "postgresql+asyncpg://blackvolt:blackvolt_local_pass@127.0.0.1:5435/blackvolt"
 )
+os.environ.setdefault("MAPS_SIMULATED", "true")
+os.environ.setdefault("PAYMENTS_SIMULATED", "true")
 
 from app.config import get_settings  # noqa: E402
 
@@ -302,3 +304,63 @@ async def test_delete_code_cross_tenant_rejected(db):
     with pytest.raises(DiscountError) as ei:
         await D.delete_code(db, tenant_id=2, code_id=c.id)
     assert ei.value.reason == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: discount handoff — ride is assigned to the code-owning driver tenant
+# ---------------------------------------------------------------------------
+
+async def test_discount_handoff_ride_to_driver_tenant(db):
+    """RED→GREEN: a discount code owned by tenant 2 causes create_ride to
+    hand the ride off to tenant 2, clear client_id, record discount_amount > 0,
+    and increment used_count exactly once."""
+    from sqlalchemy import delete as sa_delete
+
+    from app.models import Ride
+    from app.models.discount import DiscountCode
+    from app.services.booking import create_ride
+
+    # Create a code under the non-default tenant (tenant 2).
+    code = await D.create_code(
+        db,
+        tenant_id=2,
+        is_admin=True,
+        code="HANDOFF10",
+        discount_pct=10,
+        max_uses=5,
+        expires_at=_future(),
+        created_by_email="driver@x.com",
+    )
+    assert code.tenant_id == 2
+
+    # Call create_ride as if it came from tenant 1's booking flow.
+    # No scheduled_at → calendar sync is skipped (best-effort guard).
+    ride = await create_ride(
+        db,
+        tenant_id=1,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+        passenger_name="Test Passenger",
+        passenger_phone="+13035551234",
+        pax=2,
+        discount_code="HANDOFF10",
+    )
+
+    try:
+        # Handoff: ride must belong to tenant 2 (the code owner).
+        assert ride.tenant_id == 2, f"expected tenant 2, got {ride.tenant_id}"
+        # No CRM client link — passenger travels as guest on the driver's calendar.
+        assert ride.client_id is None
+        # Passenger contact must still be snapshotted on the ride.
+        assert ride.passenger_name == "Test Passenger"
+        assert ride.passenger_phone == "+13035551234"
+        # Discount was applied.
+        assert ride.discount_amount > 0, "expected discount_amount > 0"
+        assert ride.discount_code_id == code.id
+        # used_count must have incremented to 1.
+        await db.refresh(code)
+        assert code.used_count == 1, f"expected used_count=1, got {code.used_count}"
+    finally:
+        # Clean up the ride so conftest TRUNCATE isn't needed for this row.
+        await db.delete(ride)
+        await db.commit()

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import Client, RateConfig, Ride, RideStatus
 from app.models.rate_config import DEFAULT_RATES
-from app.services import maps, pricing
+from app.services import discounts, maps, pricing
 from app.services import profile as profile_svc
 
 logger = logging.getLogger("blackvolt.booking")
@@ -82,6 +82,7 @@ async def build_quote(
     scheduled_at: datetime | None = None,
     is_loyalty: bool = False,
     is_peak: bool | None = None,
+    discount_code: str | None = None,
 ) -> dict:
     """Compute a fare for a candidate trip without persisting it. Returns the
     route facts + the pricing breakdown."""
@@ -98,6 +99,9 @@ async def build_quote(
         is_peak=is_peak,
         is_loyalty=is_loyalty,
     )
+    if discount_code:
+        code_row = await discounts.validate_code(db, discount_code)
+        facts.discount_pct = code_row.discount_pct
     breakdown = pricing.quote(rc, facts)
     breakdown["route_simulated"] = rr.simulated
     return breakdown
@@ -124,9 +128,21 @@ async def create_ride(
     status: RideStatus = RideStatus.QUOTED,
     fare_override: float | None = None,
     ride_preferences: dict | None = None,
+    discount_code: str | None = None,
 ) -> Ride:
     """Quote (maps + pricing) then persist the ride. `fare_override` lets the
-    driver pin a negotiated fare while still snapshotting the computed route."""
+    driver pin a negotiated fare while still snapshotting the computed route.
+
+    When `discount_code` is given the ride is handed off to the code-owning
+    tenant (`code.tenant_id`), client_id is forced to None (the passenger's
+    name/phone are still snapshotted), and `used_count` is incremented
+    atomically after the ride row is flushed."""
+    # Validate the discount code first so we have the owning-tenant info and
+    # the discount_pct before the quote is computed.
+    code_row = None
+    if discount_code:
+        code_row = await discounts.validate_code(db, discount_code)
+
     breakdown = await build_quote(
         db,
         tenant_id=tenant_id,
@@ -137,10 +153,14 @@ async def create_ride(
         scheduled_at=scheduled_at,
         is_loyalty=is_loyalty,
         is_peak=is_peak,
+        discount_code=discount_code,
     )
+
     # Persist a driver-entered passenger as a real Client (CRM + autocomplete);
     # the ad-hoc name/phone stay on the ride as a snapshot for history.
-    if client_id is None and (passenger_name or passenger_phone):
+    # When a discount code hands the ride to a different tenant, skip client
+    # creation — the client belongs to the originating tenant, not the driver.
+    if code_row is None and client_id is None and (passenger_name or passenger_phone):
         from app.services.tenancy import find_or_create_client_by_contact
 
         c = await find_or_create_client_by_contact(
@@ -148,6 +168,7 @@ async def create_ride(
         )
         if c is not None:
             client_id = c.id
+
     # Per-ride preference snapshot: explicit overrides win; otherwise inherit the
     # client's standing preferences so the driver sees them for this ride.
     prefs_snapshot: dict | None = None
@@ -162,9 +183,24 @@ async def create_ride(
         ).scalar_one_or_none()
         if existing is not None and existing.ride_preferences:
             prefs_snapshot = profile_svc.normalize_ride_preferences(existing.ride_preferences)
+
+    # Discount amount is the absolute value of the "discount_code" line in the
+    # breakdown (0.0 when no code was applied).
+    discount_amount = 0.0
+    if code_row is not None:
+        for line in breakdown.get("lines", []):
+            if line.get("label") == "discount_code":
+                discount_amount = abs(line["amount"])
+                break
+
+    # When a code is present the ride is owned by the code's tenant (handoff)
+    # and carries no CRM client link — only the passenger name/phone snapshot.
+    ride_tenant_id = code_row.tenant_id if code_row is not None else tenant_id
+    ride_client_id = None if code_row is not None else client_id
+
     ride = Ride(
-        tenant_id=tenant_id,
-        client_id=client_id,
+        tenant_id=ride_tenant_id,
+        client_id=ride_client_id,
         status=status,
         ride_preferences=prefs_snapshot,
         pickup_text=pickup,
@@ -183,9 +219,17 @@ async def create_ride(
         notes=notes,
         passenger_name=passenger_name,
         passenger_phone=passenger_phone,
+        discount_code_id=code_row.id if code_row is not None else None,
+        discount_amount=discount_amount,
     )
     db.add(ride)
-    await db.commit()
+    if code_row is not None:
+        # Flush so the ride row gets an id, then redeem (which commits) so the
+        # ride INSERT and the used_count increment land in a single commit.
+        await db.flush()
+        await discounts.redeem(db, code_row)
+    else:
+        await db.commit()
     await db.refresh(ride)
     await sync_ride_to_calendar(db, ride)
     return ride
