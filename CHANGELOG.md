@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.45.1 — 2026-06-26 — Discount codes: redeem on payment & owner-driver pricing
+
+Refinements to the discount-codes feature shipped in v0.45.0.
+
+- **Redeem on payment success**: a code's use is now counted only when the payment is authorized, not when the ride is created. Abandoned or failed bookings no longer waste a code's available uses. The redemption is atomic (claim + increment in a single transaction), so retries and concurrent payments can't double-consume a code, and payment is never blocked if a code runs out between booking and paying.
+- **Owner-driver pricing**: when a ride is booked with a driver's discount code, the base fare is now computed from that driver's own rate config (not the booking site's), with the discount applied on top — so the quote shown matches the amount charged.
+
 ## v0.45.0 — 2026-06-25 — Discount codes on booking, driver codes module & admin campaigns
 
 Passengers can now apply discount codes at booking. Drivers manage their own promo codes from the dashboard. Admins can create multi-driver campaigns that generate a unique code per selected driver in one step.
