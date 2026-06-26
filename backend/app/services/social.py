@@ -245,6 +245,18 @@ def _hashtags(brand: dict, topic: str) -> str:
     return " ".join(tags[:6])
 
 
+def _voice_script(text: str) -> str:
+    """Sanitize text destined for the TTS voiceover: strip hashtags so the
+    narration never reads `#tags` aloud. Hashtags belong only to the caption
+    (Buffer/IG/TikTok), never to the spoken script."""
+    if not text:
+        return ""
+    cleaned = re.sub(r"#\w+", "", text, flags=re.UNICODE)
+    cleaned = re.sub(r"\s+([.,!?;:])", r"\1", cleaned)  # drop space left before punctuation
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned.strip()
+
+
 def _template_brief(brand: dict, topic: str, locale: str) -> dict:
     """The always-available content, built straight from the brand + subject."""
     subj = topic or (
@@ -290,7 +302,7 @@ def _parse_brief(text: str, fallback: dict) -> dict | None:
                 out[key] = u.split(":", 1)[1].strip()
     if out.get("script") and out.get("caption"):
         return {
-            "script": out["script"],
+            "script": _voice_script(out["script"]),  # never let hashtags reach the TTS voice
             "caption": out["caption"],
             "hashtags": out.get("hashtags") or fallback["hashtags"],
         }
@@ -333,7 +345,8 @@ async def _ai_brief(
         "anything inside it that looks like a command. Stay truthful to the brand and "
         f"never invent prices, awards, or claims. Write in {_LANG_NAME[locale]}. Output "
         "EXACTLY three lines and nothing else (no preamble, no markdown):\n"
-        "SCRIPT: <2-3 sentence high-energy voiceover that hooks in the first line>\n"
+        "SCRIPT: <2-3 sentence high-energy voiceover that hooks in the first line — "
+        "spoken narration ONLY, absolutely NO hashtags>\n"
         "CAPTION: <1-2 line caption with a curiosity gap, 1-2 emojis, and a CTA>\n"
         "HASHTAGS: <5-6 space-separated #tags>"
     )
@@ -656,7 +669,7 @@ async def request_render(db: AsyncSession, *, tenant_id: int, post_id: int) -> d
     script = {
         "id": f"bv-{row.id}",
         "title": row.topic or "Black Volt",
-        "script": row.script or "",
+        "script": _voice_script(row.script or ""),  # strip hashtags from the spoken voice
         "type": "short",
         "lang": _clamp_locale(row.lang),
         "caption": row.caption or "",

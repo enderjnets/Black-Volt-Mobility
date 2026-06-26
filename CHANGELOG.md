@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.47.1 — 2026-06-26 — Social video voice no longer reads hashtags
+
+Bug fix: the generated social video's voiceover was reading the hashtags aloud.
+
+- **Root cause**: the AI brief asks for three fields (`SCRIPT`/`CAPTION`/`HASHTAGS`), but the prompt didn't forbid hashtags inside `SCRIPT`, and `_parse_brief` stored whatever followed `SCRIPT:` verbatim — so `#tags` leaked into `SocialPost.script`, which is the exact text sent to the TTS render worker.
+- **Fix**: new `social._voice_script()` strips `#tag` tokens (and the resulting stray spaces before punctuation) from any text destined for the spoken voice. Applied in `_parse_brief` (new posts) **and** in `request_render` (so drafts already in the queue render cleanly without regenerating). The LLM `SCRIPT` instruction now explicitly says "spoken narration ONLY, NO hashtags". The `caption`/`hashtags` fields are untouched — hashtags still appear in the published post text.
+- Tests: `test_voice_script_strips_hashtags`, `test_parse_brief_strips_hashtags_from_script_only` (28/28 in `test_social_service.py`).
+
 ## v0.47.0 — 2026-06-26 — Rider cancellation + driver refund decision, driver contact fix & new-ride emails
 
 Riders can self-cancel; the driver chooses the refund when a late cancellation warrants a fee. Plus the /trips driver-contact fix and driver email notifications.

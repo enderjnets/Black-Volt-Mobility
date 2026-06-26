@@ -91,6 +91,24 @@ def test_parse_brief_requires_script_and_caption():
     assert out2["hashtags"] == "#f"
 
 
+def test_voice_script_strips_hashtags():
+    # Hashtags must never reach the spoken TTS voice; no dangling space before punctuation.
+    assert S._voice_script("Llega premium. #BlackVolt #EV") == "Llega premium."
+    assert S._voice_script("Arrive #Denver in silence #EV9 today") == "Arrive in silence today"
+    # Text without hashtags is untouched.
+    assert S._voice_script("Silent power, premium arrival.") == "Silent power, premium arrival."
+    assert S._voice_script("") == ""
+
+
+def test_parse_brief_strips_hashtags_from_script_only():
+    # LLM leaks hashtags into SCRIPT → stripped from the voice, but caption/hashtags kept.
+    raw = "SCRIPT: Hook line. #BlackVolt #EV\nCAPTION: Book now! 🚗 #Eco\nHASHTAGS: #A #B"
+    out = S._parse_brief(raw, {"hashtags": "#fallback"})
+    assert out["script"] == "Hook line."
+    assert out["caption"] == "Book now! 🚗 #Eco"  # caption hashtags are legitimate
+    assert out["hashtags"] == "#A #B"
+
+
 # ── async, DB-backed ──────────────────────────────────────────────────────────
 async def test_generate_brief_template_path(db):
     tid = (await get_default_tenant(db)).id

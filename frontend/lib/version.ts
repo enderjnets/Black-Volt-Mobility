@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.47.0";
+export const CURRENT_VERSION = "0.47.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.47.1",
+    date: "2026-06-26",
+    title: "Social video voice no longer reads hashtags",
+    changes: [
+      "Fixed: the generated social video voiceover was reading hashtags aloud. Hashtags are now stripped from the spoken script (kept only in the post caption).",
+    ],
+  },
   {
     version: "0.47.0",
     date: "2026-06-26",
