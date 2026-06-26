@@ -5,7 +5,7 @@ export interface DiscountCode {
   code: string;
   discount_pct: number;
   max_uses: number | null;
-  uses: number;
+  used_count: number;
   expires_at: string | null;
   active: boolean;
   created_at: string;

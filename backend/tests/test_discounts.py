@@ -324,11 +324,9 @@ async def test_delete_code_cross_tenant_rejected(db):
 # ---------------------------------------------------------------------------
 
 async def test_discount_handoff_ride_to_driver_tenant(db):
-    """RED→GREEN: a discount code owned by tenant 2 causes create_ride to
-    hand the ride off to tenant 2, clear client_id, record discount_amount > 0,
-    and increment used_count exactly once."""
-    from sqlalchemy import delete as sa_delete
-
+    """GREEN: a discount code owned by tenant 2 keeps the ride in the booker's
+    tenant (1), sets assigned_tenant_id=2, preserves passenger contact, records
+    discount_amount > 0, and increments used_count exactly once."""
     from app.models import Ride
     from app.models.discount import DiscountCode
     from app.services.booking import create_ride
@@ -360,11 +358,13 @@ async def test_discount_handoff_ride_to_driver_tenant(db):
     )
 
     try:
-        # Handoff: ride must belong to tenant 2 (the code owner).
-        assert ride.tenant_id == 2, f"expected tenant 2, got {ride.tenant_id}"
-        # No CRM client link — passenger travels as guest on the driver's calendar.
+        # Ride stays in the booker's tenant — payment + history remain intact.
+        assert ride.tenant_id == 1, f"expected tenant_id=1, got {ride.tenant_id}"
+        # assigned_tenant_id marks the code-owning driver's tenant.
+        assert ride.assigned_tenant_id == 2, f"expected assigned_tenant_id=2, got {ride.assigned_tenant_id}"
+        # No client_id was passed → remains None (guest booking via discount code).
         assert ride.client_id is None
-        # Passenger contact must still be snapshotted on the ride.
+        # Passenger contact is preserved on the ride.
         assert ride.passenger_name == "Test Passenger"
         assert ride.passenger_phone == "+13035551234"
         # Discount was applied.
@@ -375,6 +375,44 @@ async def test_discount_handoff_ride_to_driver_tenant(db):
         assert code.used_count == 1, f"expected used_count=1, got {code.used_count}"
     finally:
         # Clean up the ride so conftest TRUNCATE isn't needed for this row.
+        await db.delete(ride)
+        await db.commit()
+
+
+async def test_discount_assigned_tenant_visible_in_list(db):
+    """A ride booked via a cross-tenant discount code appears in list_rides for
+    both the booker's tenant (via tenant_id) and the code-owner's tenant (via
+    assigned_tenant_id), so the driver who owns the code can see and service it."""
+    from app.services.booking import create_ride, list_rides
+
+    code = await D.create_code(
+        db,
+        tenant_id=2,
+        is_admin=True,
+        code="LISTVIS10",
+        discount_pct=10,
+        max_uses=5,
+        expires_at=_future(),
+        created_by_email="driver@x.com",
+    )
+
+    ride = await create_ride(
+        db,
+        tenant_id=1,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+        passenger_name="Visibility Test",
+        pax=1,
+        discount_code="LISTVIS10",
+    )
+
+    try:
+        booker_rides = await list_rides(db, tenant_id=1)
+        assert any(r.id == ride.id for r in booker_rides), "ride not in booker tenant list"
+
+        assigned_rides = await list_rides(db, tenant_id=2)
+        assert any(r.id == ride.id for r in assigned_rides), "ride not in assigned tenant list"
+    finally:
         await db.delete(ride)
         await db.commit()
 

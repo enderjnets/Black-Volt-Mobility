@@ -193,14 +193,29 @@ async def create_ride(
                 discount_amount = abs(line["amount"])
                 break
 
-    # When a code is present the ride is owned by the code's tenant (handoff)
-    # and carries no CRM client link — only the passenger name/phone snapshot.
-    ride_tenant_id = code_row.tenant_id if code_row is not None else tenant_id
-    ride_client_id = None if code_row is not None else client_id
+    # When a discount code is present: ride stays in the booker's tenant and
+    # retains the original client_id so payment and history continue to work.
+    # assigned_tenant_id marks the code-owning driver who will service the ride.
+    assigned_tenant_id = code_row.tenant_id if code_row is not None else None
+
+    # Passenger contact snapshot: if the ride is handed off and no explicit
+    # passenger_name was supplied but a client_id is available, copy the client's
+    # contact info so the receiving driver can reach the passenger.
+    if assigned_tenant_id is not None and client_id is not None:
+        snap = (
+            await db.execute(
+                select(Client).where(Client.id == client_id, Client.tenant_id == tenant_id)
+            )
+        ).scalar_one_or_none()
+        if snap is not None:
+            if not passenger_name:
+                passenger_name = snap.name
+            if not passenger_phone:
+                passenger_phone = snap.phone
 
     ride = Ride(
-        tenant_id=ride_tenant_id,
-        client_id=ride_client_id,
+        tenant_id=tenant_id,
+        client_id=client_id,
         status=status,
         ride_preferences=prefs_snapshot,
         pickup_text=pickup,
@@ -219,6 +234,7 @@ async def create_ride(
         notes=notes,
         passenger_name=passenger_name,
         passenger_phone=passenger_phone,
+        assigned_tenant_id=assigned_tenant_id,
         discount_code_id=code_row.id if code_row is not None else None,
         discount_amount=discount_amount,
     )
@@ -594,7 +610,7 @@ async def apply_ride_update(
 async def list_rides(
     db: AsyncSession, *, tenant_id: int, status: RideStatus | None = None, limit: int = 100
 ) -> list[Ride]:
-    q = select(Ride).where(Ride.tenant_id == tenant_id)
+    q = select(Ride).where(or_(Ride.tenant_id == tenant_id, Ride.assigned_tenant_id == tenant_id))
     if status is not None:
         q = q.where(Ride.status == status)
     q = q.order_by(
@@ -606,7 +622,10 @@ async def list_rides(
 async def get_ride(db: AsyncSession, *, tenant_id: int, ride_id: int) -> Ride | None:
     return (
         await db.execute(
-            select(Ride).where(Ride.tenant_id == tenant_id, Ride.id == ride_id)
+            select(Ride).where(
+                or_(Ride.tenant_id == tenant_id, Ride.assigned_tenant_id == tenant_id),
+                Ride.id == ride_id,
+            )
         )
     ).scalar_one_or_none()
 

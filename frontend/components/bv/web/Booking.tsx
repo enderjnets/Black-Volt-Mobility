@@ -153,7 +153,7 @@ export function Booking() {
     let alive = true;
     setQuoting(true);
     setAuthWall(false);
-    getQuote({ pickup, dropoff, pax, ...(appliedCode ? { discount_code: appliedCode } : {}) })
+    getQuote({ pickup, dropoff, pax, scheduled_at: date ? buildScheduledAt(date, time) : null, ...(appliedCode ? { discount_code: appliedCode } : {}) })
       .then((q) => {
         if (alive) setQuote(q);
       })

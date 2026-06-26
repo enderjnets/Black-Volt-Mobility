@@ -24,11 +24,16 @@ import {
   type DriverOption,
 } from "@/lib/discounts";
 
-// 422 detail slugs the backend may return
+// 422 detail slugs the backend may return — must match DiscountError.reason values
 const KNOWN_ERRS = new Set([
-  "discount_pct_exceeds_driver_cap",
-  "code_already_exists",
-  "invalid_code",
+  "pct_too_high",
+  "pct_out_of_range",
+  "duplicate",
+  "max_uses_invalid",
+  "not_found",
+  "expired",
+  "exhausted",
+  "inactive",
 ]);
 
 function fmtDate(iso: string | null): string | null {
@@ -844,7 +849,7 @@ function CodeRow({
   const { t } = useI18n();
   const expiry = fmtDate(row.expires_at);
   const isExpired = row.expires_at ? new Date(row.expires_at) < new Date() : false;
-  const maxed = row.max_uses !== null && row.uses >= row.max_uses;
+  const maxed = row.max_uses !== null && row.used_count >= row.max_uses;
 
   return (
     <div
@@ -891,7 +896,7 @@ function CodeRow({
           fontVariantNumeric: "tabular-nums",
         }}
       >
-        {row.uses}
+        {row.used_count}
         {row.max_uses !== null ? `/${row.max_uses}` : ""}
       </span>
       <span style={{ fontSize: 12, color: isExpired ? "var(--danger)" : "var(--fg3)", whiteSpace: "nowrap" }}>
