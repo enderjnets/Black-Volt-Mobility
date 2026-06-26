@@ -124,6 +124,7 @@ services:
       BUFFER_API_KEY: ${BUFFER_API_KEY:-}
       BUFFER_ORG_ID: ${BUFFER_ORG_ID:-}
       SOCIAL_PUBLISH_VIA_BUFFER: ${SOCIAL_PUBLISH_VIA_BUFFER:-false}
+      OWNER_TENANT_ID: ${OWNER_TENANT_ID:-}
     volumes:
       # Service-account JSON for Google Calendar (gitignored; absent in dev).
       - ./secrets:/secrets:ro

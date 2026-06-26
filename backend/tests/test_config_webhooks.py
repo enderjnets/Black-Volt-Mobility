@@ -28,3 +28,11 @@ def test_webhooks_live_true_with_key_and_url():
 def test_driver_origin_in_default_cors():
     s = Settings()
     assert "https://driver.blackvoltmobility.com" in s.cors_origins_list
+
+
+def test_owner_tenant_id_blank_coerces_to_none():
+    # docker-compose passes "" when OWNER_TENANT_ID is unset — must disable the
+    # gate (None), not crash boot; a real value parses to int.
+    assert Settings(OWNER_TENANT_ID="").OWNER_TENANT_ID is None
+    assert Settings(OWNER_TENANT_ID="  ").OWNER_TENANT_ID is None
+    assert Settings(OWNER_TENANT_ID="1").OWNER_TENANT_ID == 1
