@@ -893,3 +893,75 @@ async def test_payment_succeeds_when_code_exhausted(db):
     finally:
         await db.delete(ride)
         await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Follow-up 2: price discounted rides with owner's rate config
+# ---------------------------------------------------------------------------
+
+async def test_discounted_ride_uses_owner_rate_config(db):
+    """When a discount code is applied, the fare is computed using the CODE
+    OWNER's RateConfig, not the booker's. The discount_pct is then applied
+    on top of the owner's base fare."""
+    from app.models import RateConfig
+    from app.services.booking import build_quote, get_or_create_rate_config
+
+    # Seed two tenants with meaningfully different per_mile rates.
+    # Tenant A (booker): cheap rate — $1/mile base
+    # Tenant B (code owner/driver): premium rate — $5/mile base
+    # With 10% discount, the total should reflect B's rates * 0.9, NOT A's.
+
+    # Ensure distinct RateConfigs for tenants 10 and 11 (use high IDs to avoid conflicts).
+    rc_a = await get_or_create_rate_config(db, tenant_id=10)
+    rc_a.per_mile = 1.0
+    rc_a.base = 0.0
+    rc_a.minimum = 0.0
+    rc_a.airport_flat = 0.0
+
+    rc_b = await get_or_create_rate_config(db, tenant_id=11)
+    rc_b.per_mile = 5.0
+    rc_b.base = 0.0
+    rc_b.minimum = 0.0
+    rc_b.airport_flat = 0.0
+    await db.commit()
+
+    # Code owned by tenant B (11)
+    code = await D.create_code(db, tenant_id=11, is_admin=True, code="OWNRATE10",
+                               discount_pct=10, max_uses=5, expires_at=_future(),
+                               created_by_email="b@x.com")
+
+    # Quote from tenant A's perspective using B's code
+    quote_with_code = await build_quote(
+        db,
+        tenant_id=10,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+        discount_code="OWNRATE10",
+    )
+    # Quote from tenant A without any code (baseline: A's own rates)
+    quote_no_code = await build_quote(
+        db,
+        tenant_id=10,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+    )
+
+    # The discounted quote must NOT equal A's base fare.
+    # With per_mile=5 for B vs per_mile=1 for A, B's base fare is 5x higher,
+    # so even with 10% off, the discounted fare should be > A's undiscounted fare.
+    assert quote_with_code["total"] != quote_no_code["total"], (
+        "discounted quote should NOT match the booker's own rate (it should use B's higher rates)"
+    )
+    # More precisely: B's fare * 0.9 > A's fare (since B's per_mile is 5x A's)
+    # Get B's undiscounted fare for reference
+    quote_b_no_code = await build_quote(
+        db,
+        tenant_id=11,
+        pickup="6000 S Fraser St, Aurora CO",
+        dropoff="Denver International Airport (DEN)",
+    )
+    expected_discounted = round(quote_b_no_code["total"] * 0.90, 2)
+    assert abs(quote_with_code["total"] - expected_discounted) < 0.50, (
+        f"discounted total {quote_with_code['total']} should be close to "
+        f"B's base {quote_b_no_code['total']} * 0.9 = {expected_discounted}"
+    )

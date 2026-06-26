@@ -102,6 +102,8 @@ async def build_quote(
     if discount_code:
         code_row = await discounts.validate_code(db, discount_code)
         facts.discount_pct = code_row.discount_pct
+        # Re-resolve RateConfig using the code owner's tenant for correct base rates.
+        rc = await get_or_create_rate_config(db, tenant_id=code_row.tenant_id)
     breakdown = pricing.quote(rc, facts)
     breakdown["route_simulated"] = rr.simulated
     return breakdown
@@ -136,8 +138,9 @@ async def create_ride(
     When `discount_code` is given the ride stays in the booker's tenant
     (`tenant_id`), `assigned_tenant_id` is set to the code-owning tenant so
     that driver can see and service it, `client_id` is preserved as-is
-    (passenger contact is snapshotted on the ride), and `used_count` is
-    incremented atomically after the ride row is flushed."""
+    (passenger contact is snapshotted on the ride). The fare is computed using
+    the code owner's RateConfig (not the booker's), and `used_count` is
+    incremented only when payment succeeds — not at ride creation."""
     # Validate the discount code first so we have the owning-tenant info and
     # the discount_pct before the quote is computed.
     code_row = None
