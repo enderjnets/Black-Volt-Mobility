@@ -270,6 +270,16 @@ async def test_campaign_collision_safe_retries(db, monkeypatch):
     assert codes[0].code == f"{base}-BBBB"
 
 
+async def test_campaign_max_uses_zero_rejected(db):
+    """create_campaign with max_uses=0 raises DiscountError('max_uses_invalid')."""
+    with pytest.raises(DiscountError) as ei:
+        await D.create_campaign(
+            db, name="BADUSES", discount_pct=10, max_uses=0, expires_at=_future(),
+            created_by_email="a@x.com", created_by_tenant_id=1, driver_tenant_ids=[1],
+        )
+    assert ei.value.reason == "max_uses_invalid"
+
+
 async def test_campaign_raises_discount_error_on_exhausted_retries(db, monkeypatch):
     """All 10 retries collide → DiscountError('duplicate'), never IntegrityError."""
     monkeypatch.setattr(D, "_gen_suffix", lambda: "ZZZZ")
@@ -434,6 +444,11 @@ def _cleanup_api_codes():
                 # Clean up any remaining codes from these tests by code prefix
                 await s.execute(sa_del(DiscountCode).where(
                     DiscountCode.code.like("APITEST%")
+                ))
+                # Campaign-generated codes (APICAM prefix) are NOT cascade-deleted
+                # when the campaign is removed (FK is ON DELETE SET NULL).
+                await s.execute(sa_del(DiscountCode).where(
+                    DiscountCode.code.like("APICAM%")
                 ))
                 await s.execute(sa_del(DiscountCampaign).where(
                     DiscountCampaign.name.like("ApiCamp%")

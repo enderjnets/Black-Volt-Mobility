@@ -9,7 +9,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +41,7 @@ router = APIRouter(prefix="/discounts", tags=["discounts"])
 class CodeIn(BaseModel):
     code: str = ""
     discount_pct: float
-    max_uses: int
+    max_uses: int = Field(ge=1)
     expires_at: dt.datetime
 
 
@@ -69,10 +69,15 @@ class ValidateIn(BaseModel):
     code: str
 
 
+class ValidateOut(BaseModel):
+    valid: bool
+    discount_pct: float
+
+
 class CampaignIn(BaseModel):
     name: str
     discount_pct: float
-    max_uses: int
+    max_uses: int = Field(ge=1)
     expires_at: dt.datetime
     driver_tenant_ids: list[int]
 
@@ -171,12 +176,12 @@ async def delete_discount_code(
         ) from e
 
 
-@router.post("/validate")
+@router.post("/validate", response_model=ValidateOut)
 async def validate_discount_code(
     body: ValidateIn,
     payload: dict = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> ValidateOut:
     try:
         row = await validate_code(db, body.code)
     except DiscountError as e:
@@ -187,7 +192,7 @@ async def validate_discount_code(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.reason
         ) from e
-    return {"valid": True, "discount_pct": row.discount_pct}
+    return ValidateOut(valid=True, discount_pct=row.discount_pct)
 
 
 @router.post("/campaigns", status_code=status.HTTP_201_CREATED)

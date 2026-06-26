@@ -147,6 +147,8 @@ async def create_campaign(
 ) -> tuple[DiscountCampaign, list[DiscountCode]]:
     if discount_pct < 1 or discount_pct > 100:
         raise DiscountError("pct_out_of_range")
+    if max_uses < 1:
+        raise DiscountError("max_uses_invalid")
     if not driver_tenant_ids:
         raise DiscountError("no_drivers")
     camp = DiscountCampaign(
