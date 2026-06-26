@@ -103,3 +103,43 @@ def test_is_peak_time_weekend_late():
 def test_looks_like_airport():
     assert pricing.looks_like_airport("Downtown Denver", "Denver Intl (DEN)") is True
     assert pricing.looks_like_airport("Cherry Creek", "Union Station") is False
+
+
+def test_discount_code_overrides_loyalty():
+    # When both is_loyalty and discount_pct are set, only discount_code applies (no stacking).
+    rc = make_rates()  # loyalty_discount_pct=10.0
+    q = pricing.quote(
+        rc,
+        pricing.RouteFacts(distance_miles=18.4, duration_minutes=28, is_loyalty=True, discount_pct=15.0),
+    )
+    # subtotal=71.56; code discount=71.56*15/100=10.73; total=60.83
+    labels = [line["label"] for line in q["lines"]]
+    assert "discount_code" in labels
+    assert "loyalty_discount" not in labels
+    discount_line = next(line for line in q["lines"] if line["label"] == "discount_code")
+    assert discount_line["amount"] == -10.73
+    assert discount_line["pct"] == 15.0
+    assert q["total"] == 60.83
+
+
+def test_discount_code_alone_no_loyalty():
+    rc = make_rates()
+    q = pricing.quote(
+        rc,
+        pricing.RouteFacts(distance_miles=18.4, duration_minutes=28, discount_pct=10.0),
+    )
+    labels = [line["label"] for line in q["lines"]]
+    assert "discount_code" in labels
+    assert "loyalty_discount" not in labels
+    assert q["total"] == 64.4  # same math as loyalty at 10%, confirming parity
+
+
+def test_discount_code_zero_falls_through_to_loyalty():
+    rc = make_rates()
+    q = pricing.quote(
+        rc,
+        pricing.RouteFacts(distance_miles=18.4, duration_minutes=28, is_loyalty=True, discount_pct=0.0),
+    )
+    labels = [line["label"] for line in q["lines"]]
+    assert "loyalty_discount" in labels
+    assert "discount_code" not in labels
