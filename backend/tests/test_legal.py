@@ -162,3 +162,22 @@ def test_public_documents_are_unauthenticated():
     es = fresh.get("/api/v1/agreements/public/privacy_policy?lang=es")
     assert es.status_code == 200 and es.json()["lang"] == "es"
     assert fresh.get("/api/v1/agreements/public/nope").status_code == 404
+
+
+def test_unsigned_passenger_cannot_book_server_side(monkeypatch):
+    """The gate is enforced server-side, not just in the UI: an unsigned passenger
+    cannot create a ride via the API."""
+    _patch_google(
+        monkeypatch, email="rider-gate@example.com", sub="sub-gate-rider", name="Gate Rider"
+    )
+    assert client.post("/api/v1/auth/login/google", json={"id_token": "x"}).status_code == 200
+
+    body = {"pickup": "Cherry Creek", "dropoff": "DEN", "pax": 1, "passenger_name": "Gate Rider"}
+    blocked = client.post("/api/v1/rides", json=body)
+    assert blocked.status_code == 403
+    detail = blocked.json().get("detail")
+    assert isinstance(detail, dict) and detail.get("error") == "agreement_required"
+
+    # after signing, the booking is no longer blocked by the gate
+    client.post("/api/v1/agreements/client_terms/accept", json={"version": "1.0", "lang": "en"})
+    assert client.post("/api/v1/rides", json=body).status_code != 403

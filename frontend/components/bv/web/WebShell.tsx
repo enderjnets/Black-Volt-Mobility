@@ -117,6 +117,13 @@ export function WebShell({ children }: { children: ReactNode }) {
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
+  // The mandatory agreement gate fully REPLACES the app (the booking UI is never
+  // mounted behind it) — matches AuthGuard semantics so it can't be bypassed in
+  // the DOM and the live form isn't reachable by keyboard/programmatic access.
+  if (pendingAgreements.length > 0) {
+    return <AgreementGate pending={pendingAgreements} onComplete={refreshMe} />;
+  }
+
   return (
     <Ctx.Provider value={ctx}>
       <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--void)" }}>
@@ -296,6 +303,8 @@ export function WebShell({ children }: { children: ReactNode }) {
                     ? { name: email ? email.split("@")[0] : "Passenger", email, since: "" }
                     : BV_USER,
                 );
+                // Surface mandatory agreements right after sign-in (not only on reload).
+                setPendingAgreements(me.agreements_pending ?? []);
               } else {
                 setUser(BV_USER);
               }
@@ -327,10 +336,6 @@ export function WebShell({ children }: { children: ReactNode }) {
               cont?.();
             }}
           />
-        )}
-
-        {pendingAgreements.length > 0 && (
-          <AgreementGate pending={pendingAgreements} onComplete={refreshMe} />
         )}
 
         <footer

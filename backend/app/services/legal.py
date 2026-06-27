@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -115,6 +116,12 @@ async def record_consent(
     user_agent: str | None = None,
 ) -> DocumentConsent:
     subject_type, client_id, allowed_user_id = await _resolve_subject(db, payload)
+    if client_id is None and allowed_user_id is None:
+        # No identifiable subject — refuse rather than write an orphan all-NULL row
+        # (which the unique constraints can't dedupe and which would loop the gate).
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="unresolved_subject"
+        )
     existing = await _existing_consent(
         db, doc_type, version, client_id=client_id, allowed_user_id=allowed_user_id
     )
@@ -133,7 +140,17 @@ async def record_consent(
         user_agent=user_agent,
     )
     db.add(row)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # A concurrent accept won the race; treat as idempotent success.
+        await db.rollback()
+        existing = await _existing_consent(
+            db, doc_type, version, client_id=client_id, allowed_user_id=allowed_user_id
+        )
+        if existing is not None:
+            return existing
+        raise
     await db.refresh(row)
     return row
 

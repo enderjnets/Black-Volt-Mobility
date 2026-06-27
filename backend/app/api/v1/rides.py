@@ -27,6 +27,9 @@ from app.services import (
     smart,
     subscriptions,
 )
+from app.services import (
+    legal as legal_svc,
+)
 from app.services.discounts import DiscountError
 
 # Vision providers accept these; anything else is rejected before the model call.
@@ -305,6 +308,9 @@ async def create_ride(
     committing to pay-on-completion (POST /rides/{id}/confirm). This keeps
     unpaid drafts off the driver's calendar. Staff create manual rides QUOTED
     unless confirm=true."""
+    # Server-side enforcement of the legal-agreement gate (defense in depth on top
+    # of the frontend modal): no ride may be created until the user has signed.
+    await legal_svc.ensure_signed(db, payload)
     tenant_id = await resolve_tenant_id(db, payload)
     is_passenger = payload.get("role") == auth.ROLE_PASSENGER
     client_id = payload.get("cid") if is_passenger else body.client_id

@@ -166,6 +166,11 @@ def _passenger_client(client_id: int, tenant_id: int) -> TestClient:
     )
     c = TestClient(app)
     c.cookies.set(authsvc.COOKIE_NAME, token)
+    for _p in c.get("/api/v1/agreements/pending").json().get("pending", []):
+        c.post(
+            f"/api/v1/agreements/{_p['doc_type']}/accept",
+            json={"version": _p["version"], "lang": "en", "signed_name": "Test Signer"},
+        )
     return c
 
 

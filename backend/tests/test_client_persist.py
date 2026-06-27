@@ -40,6 +40,11 @@ def _make_ride(c: TestClient, *, name: str, phone: str | None = None, client_id=
         body["passenger_phone"] = phone
     if client_id:
         body["client_id"] = client_id
+    for _p in c.get("/api/v1/agreements/pending").json().get("pending", []):
+        c.post(
+            f"/api/v1/agreements/{_p['doc_type']}/accept",
+            json={"version": _p["version"], "lang": "en", "signed_name": "Test Signer"},
+        )
     r = c.post("/api/v1/rides", json=body)
     assert r.status_code == 201, r.text
     return r.json()

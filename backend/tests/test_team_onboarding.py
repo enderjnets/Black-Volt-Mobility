@@ -68,6 +68,11 @@ def _clear(*emails: str) -> None:
 
 
 def _make_ride(c: TestClient, name: str) -> int:
+    for _p in c.get("/api/v1/agreements/pending").json().get("pending", []):
+        c.post(
+            f"/api/v1/agreements/{_p['doc_type']}/accept",
+            json={"version": _p["version"], "lang": "en", "signed_name": "Test Signer"},
+        )
     r = c.post(
         "/api/v1/rides",
         json={"pickup": "Cherry Creek", "dropoff": "DEN", "pax": 1, "passenger_name": name},
