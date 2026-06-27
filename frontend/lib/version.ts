@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.49.0";
+export const CURRENT_VERSION = "0.50.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.50.0",
+    date: "2026-06-27",
+    title: "Booking funnel: show price first + reliable conversion tracking",
+    changes: [
+      "Visitors now see their fare instantly — no account required to get a price. You only sign in to actually book. This removes the biggest drop-off before paying for traffic.",
+      "The dashboard booking funnel is now measured reliably: each step counts once per visitor (no inflation from reloads), 'reviewed route' means the rider actually saw a price, and failed payments are now tracked so you can see where riders drop.",
+    ],
+  },
   {
     version: "0.49.0",
     date: "2026-06-27",

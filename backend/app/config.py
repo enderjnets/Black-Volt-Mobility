@@ -56,10 +56,12 @@ class Settings(BaseSettings):
     OWNER_EMAILS: str = "enderjnets@gmail.com"
 
     # Registration wall: when on (and AUTH_ENABLED), an anonymous visitor must
-    # sign in before they can price a trip (/quote). This captures every lead and
-    # binds them to their referring driver. Flip off to reopen anonymous quotes
-    # without a code change. No effect in open mode (AUTH_ENABLED=false).
-    REQUIRE_AUTH_TO_QUOTE: bool = True
+    # sign in before they can price a trip (/quote). Off by default — for paid/cold
+    # traffic, showing the fare up front converts far better, and the lead is still
+    # bound to the referring driver at booking (sign-in is required to create a ride,
+    # carrying the ?ref/bv_ref attribution). Flip on per-tenant to capture every quote
+    # as a lead. No effect in open mode (AUTH_ENABLED=false).
+    REQUIRE_AUTH_TO_QUOTE: bool = False
 
     # Canonical public origin used to build shareable driver links / QR codes.
     PUBLIC_BASE_URL: str = "https://app.blackvoltmobility.com"

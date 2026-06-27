@@ -29,6 +29,7 @@ EVENT_TYPES = (
     "book_review",
     "book_pay",
     "book_confirmed",
+    "book_pay_failed",
     "sign_in",
     "address_pick",
     "lang_switch",

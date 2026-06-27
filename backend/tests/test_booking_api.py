@@ -26,10 +26,12 @@ def _owner():
     return c
 
 
-def test_quote_requires_auth():
-    # Registration wall (default on): an anonymous visitor can't price a trip.
+def test_quote_open_for_anonymous():
+    # Registration wall OFF by default: an anonymous visitor CAN price a trip up front
+    # (conversion-friendly for paid traffic). Lead attribution still binds at booking.
     r = client.post("/api/v1/quote", json={"pickup": "Cherry Creek", "dropoff": "Union Station"})
-    assert r.status_code == 401, r.text
+    assert r.status_code == 200, r.text
+    assert r.json()["total"] > 0
 
 
 def test_quote_prices_trip():

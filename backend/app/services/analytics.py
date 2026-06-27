@@ -147,8 +147,11 @@ async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
         for r in (await db.execute(tp_q)).all()
     ]
 
-    # Booking funnel + sign-ins (raw event counts).
-    funnel_types = ["book_start", "book_review", "book_pay", "book_confirmed", "sign_in"]
+    # Booking funnel + sign-ins (raw event counts). book_pay_failed surfaces where riders
+    # drop at the payment step (declined card / failed ride creation).
+    funnel_types = [
+        "book_start", "book_review", "book_pay", "book_confirmed", "sign_in", "book_pay_failed",
+    ]
     fq = (
         select(AnalyticsEvent.event_type, func.count())
         .where(*base, AnalyticsEvent.event_type.in_(funnel_types))

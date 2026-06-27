@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.50.0 — 2026-06-27 — Booking funnel: show price first + reliable conversion tracking
+
+Prep for paid traffic: verified the dashboard booking funnel end-to-end and plugged the leaks
+before spending on visits.
+
+- **Removed the price wall** (`backend/app/config.py`): `REQUIRE_AUTH_TO_QUOTE` now defaults to
+  `False`, so anonymous visitors see their fare immediately instead of hitting a sign-up wall
+  before any price (the biggest cold-traffic drop-off). Lead attribution is preserved — sign-in
+  is still required to create a ride and carries the `?ref`/`bv_ref` driver attribution. The
+  wall stays available per-tenant for lead-capture mode. `Booking.tsx` moved the sign-in prompt
+  from the quote step to ride creation (401 on create → sign in → auto-retry).
+- **Reliable funnel measurement** (`Booking.tsx`): each stage now counts at most once per
+  session (no `book_start` inflation from reloads/back-nav); `book_review` ("reviewed route")
+  fires only when a price is actually shown, not just on reaching the step.
+- **Payment-failure visibility**: new `book_pay_failed` event on declined cards / failed ride
+  creation, surfaced in the dashboard Insights funnel (`analytics.py` summary + `Insights.tsx`,
+  EN/ES) so drop-off at the payment step is visible.
+- **Verified live**: `/api/v1/track` accepts events on both apex and `app.` hosts (202); UTM /
+  referrer / device are captured for source attribution.
+
 ## v0.49.0 — 2026-06-27 — Social posts: general luxury-EV focus + reference-photo matching
 
 Reworked AI social-post generation (`/dashboard/social`) on two owner complaints: posts

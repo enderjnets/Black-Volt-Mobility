@@ -224,6 +224,12 @@ export function Insights() {
                   <Icon name="message-circle" size={13} color="var(--success)" />
                   {t("dash.insights.signins", { n: f["sign_in"] || 0 })}
                 </div>
+                {(f["book_pay_failed"] || 0) > 0 && (
+                  <div style={{ fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Icon name="alert-circle" size={13} color="var(--danger)" />
+                    {t("dash.insights.payfailed", { n: f["book_pay_failed"] || 0 })}
+                  </div>
+                )}
               </div>
             </Panel>
 

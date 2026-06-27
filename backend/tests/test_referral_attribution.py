@@ -165,9 +165,16 @@ def test_first_touch_is_permanent():
 
 
 def test_quote_requires_auth_when_wall_on():
-    # Anonymous → blocked by the registration wall.
-    assert TestClient(app).post("/api/v1/quote", json=QUOTE).status_code == 401
-    # Signed-in passenger → priced.
+    # The wall is OFF by default; enable it explicitly to assert the lead-capture mode.
+    os.environ["REQUIRE_AUTH_TO_QUOTE"] = "true"
+    get_settings.cache_clear()
+    try:
+        # Anonymous → blocked by the registration wall.
+        assert TestClient(app).post("/api/v1/quote", json=QUOTE).status_code == 401
+    finally:
+        os.environ.pop("REQUIRE_AUTH_TO_QUOTE", None)
+        get_settings.cache_clear()
+    # Signed-in passenger → priced (works regardless of the wall).
     _reset("pax5@rider.test")
     pax, _ = _google("pax5@rider.test")
     r = pax.post("/api/v1/quote", json=QUOTE)

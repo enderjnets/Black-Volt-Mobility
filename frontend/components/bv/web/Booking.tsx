@@ -19,6 +19,24 @@ import { useWeb } from "./WebShell";
 
 const FUNNEL_EVENT = ["book_start", "book_review", "book_pay", "book_confirmed"] as const;
 
+// Fire a funnel stage at most once per browser session, so page reloads and
+// back-and-forth navigation don't inflate stage counts (which would make the
+// conversion math read worse than reality). Keyed off sessionStorage (per tab).
+function trackFunnelOnce(ev: string, props?: Record<string, unknown>) {
+  if (typeof window !== "undefined") {
+    try {
+      const KEY = "bv_funnel_fired";
+      const fired = (sessionStorage.getItem(KEY) || "").split(",").filter(Boolean);
+      if (fired.includes(ev)) return;
+      fired.push(ev);
+      sessionStorage.setItem(KEY, fired.join(","));
+    } catch {
+      // sessionStorage blocked (private mode) → fall through and still track once.
+    }
+  }
+  track(ev, props);
+}
+
 export function MapPlaceholder({ height = 200 }: { height?: number }) {
   return (
     <div
@@ -152,10 +170,14 @@ export function Booking() {
     if (ref) setRef(ref);
   }, []);
 
-  // Booking-funnel analytics: one event per step reached.
+  // Booking-funnel analytics: each stage counts at most once per session. `book_review`
+  // is fired when the price is actually shown (in the quote effect below), not just on
+  // reaching the step — so "reviewed route" reflects riders who really saw a fare.
   useEffect(() => {
     const ev = FUNNEL_EVENT[step];
-    if (ev) track(ev, ev === "book_confirmed" ? { fare: quote?.total } : undefined);
+    if (ev && ev !== "book_review") {
+      trackFunnelOnce(ev, ev === "book_confirmed" ? { fare: quote?.total } : undefined);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
@@ -171,7 +193,10 @@ export function Booking() {
     setAuthWall(false);
     getQuote({ pickup, dropoff, pax, scheduled_at: date ? buildScheduledAt(date, time) : null, ...(appliedCode ? { discount_code: appliedCode } : {}) })
       .then((q) => {
-        if (alive) setQuote(q);
+        if (alive) {
+          setQuote(q);
+          trackFunnelOnce("book_review"); // price shown = route actually reviewed
+        }
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -255,7 +280,18 @@ export function Booking() {
         setRideId(ride.id);
       }
       setStep(2);
-    } catch {
+    } catch (e) {
+      // Registration wall lives HERE now: anyone can see the price; signing in is only
+      // required to actually book. Bind the lead to the driver (?ref/cookie), then retry.
+      if (e instanceof ApiError && e.status === 401) {
+        setPaying(false);
+        openSignIn(() => {
+          setReload((n) => n + 1);
+          void proceedToPay();
+        });
+        return;
+      }
+      track("book_pay_failed", { reason: "ride" });
       setPayErr("ride");
     } finally {
       setPaying(false);
@@ -278,6 +314,7 @@ export function Booking() {
       setPayLater(true);
       setStep(3);
     } catch {
+      track("book_pay_failed", { reason: "confirm" });
       setPayErr("ride");
     } finally {
       setPaying(false);
@@ -296,6 +333,7 @@ export function Booking() {
       await authorizePayment({ ride_id: rideId, source_id: token });
       setStep(3);
     } catch {
+      track("book_pay_failed", { reason: "declined" });
       setPayErr("declined");
     } finally {
       setPaying(false);
