@@ -11,11 +11,14 @@ from pathlib import Path
 
 CLIENT_TERMS = "client_terms"
 DRIVER_AGREEMENT = "driver_agreement"
+PRIVACY_POLICY = "privacy_policy"
 
-# audience: which user type must sign. version: bump to force re-consent.
+# audience: which user type must sign ("public" = informational, never required to
+# sign — only displayed). version: bump to force re-consent (signable docs).
 LEGAL_DOCS: dict[str, dict[str, str]] = {
     CLIENT_TERMS: {"audience": "client", "version": "1.0"},
     DRIVER_AGREEMENT: {"audience": "driver", "version": "1.0"},
+    PRIVACY_POLICY: {"audience": "public", "version": "1.0"},
 }
 
 _DIR = Path(__file__).resolve().parent

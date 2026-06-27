@@ -148,3 +148,17 @@ def test_non_owner_admin_must_sign_driver_agreement(monkeypatch):
     assert ok.status_code == 200
 
     assert client.get("/api/v1/auth/me").json()["agreements_pending"] == []
+
+
+def test_public_documents_are_unauthenticated():
+    fresh = TestClient(app)  # no cookie → truly anonymous
+    for doc in ("client_terms", "privacy_policy", "driver_agreement"):
+        r = fresh.get(f"/api/v1/agreements/public/{doc}?lang=en")
+        assert r.status_code == 200, doc
+        body = r.json()
+        assert body["doc_type"] == doc
+        assert body["version"] == "1.0"
+        assert len(body["content_md"]) > 200
+    es = fresh.get("/api/v1/agreements/public/privacy_policy?lang=es")
+    assert es.status_code == 200 and es.json()["lang"] == "es"
+    assert fresh.get("/api/v1/agreements/public/nope").status_code == 404

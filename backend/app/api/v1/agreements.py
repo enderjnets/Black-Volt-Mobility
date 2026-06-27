@@ -27,6 +27,23 @@ async def list_pending(
     return {"pending": await legal_svc.pending_agreements(db, payload)}
 
 
+@router.get("/public/{doc_type}")
+async def get_public_document(doc_type: str, lang: str = "en"):
+    """Public, unauthenticated view of a legal document — for the /terms and
+    /privacy pages. Serves any known document; no audience restriction."""
+    if not is_known_doc(doc_type):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_document")
+    title, content_md = load_doc(doc_type, lang)
+    return {
+        "doc_type": doc_type,
+        "version": current_version(doc_type),
+        "audience": audience(doc_type),
+        "lang": normalize_lang(lang),
+        "title": title,
+        "content_md": content_md,
+    }
+
+
 @router.get("/{doc_type}")
 async def get_document(
     doc_type: str,
