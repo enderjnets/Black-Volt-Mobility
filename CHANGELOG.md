@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.51.0 — 2026-06-27 — Service area: full Denver metro + mountain resort transfers
+
+Expanded the stated service area to match what Black Volt actually serves (base: Aurora 80016).
+
+- **Backend** (`social.py` `_brand_ctx`): the service framing now covers the whole Denver metro
+  (including Boulder), DEN airport both ways, and a new high-value segment — luxury mountain-
+  resort transfers to Vail, Breckenridge & Aspen. The AI brief + deterministic template CTAs
+  (EN/ES) mention the mountain transfers so generated social posts pitch them.
+- **Frontend**: landing hero subtitle (EN/ES) rewritten to state metro + DEN + mountain
+  coverage; new coverage line on the booking page (`book.coverage`, EN/ES).
+
 ## v0.50.0 — 2026-06-27 — Booking funnel: show price first + reliable conversion tracking
 
 Prep for paid traffic: verified the dashboard booking funnel end-to-end and plugged the leaks

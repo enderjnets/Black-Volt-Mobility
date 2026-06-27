@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.50.0";
+export const CURRENT_VERSION = "0.51.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.51.0",
+    date: "2026-06-27",
+    title: "Service area: full Denver metro + mountain resort transfers",
+    changes: [
+      "The site and your AI social posts now state the full service area: door-to-door across the Denver metro (including Boulder), DEN airport transfers both ways, and luxury mountain transfers to Vail, Breckenridge & Aspen.",
+      "Added a coverage line on the booking page so riders see exactly where you go.",
+    ],
+  },
   {
     version: "0.50.0",
     date: "2026-06-27",

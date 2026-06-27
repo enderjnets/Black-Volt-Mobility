@@ -123,7 +123,7 @@ const EN: Record<string, string> = {
   // landing
   "home.hero.title": "Premium electric rides, on your schedule.",
   "home.hero.subtitle":
-    "Airport transfers and private chauffeur service in a luxury electric SUV. Silent, spacious, and always on time.",
+    "Private chauffeur service in a luxury electric SUV: door-to-door across the Denver metro, DEN airport transfers both ways, and mountain transfers to Vail, Breckenridge & Aspen. Silent, spacious, and always on time.",
   "home.cta.book": "Book a ride",
   "home.cta.driver": "Driver dashboard",
   "home.f1.t": "Silent EV ride",
@@ -138,6 +138,7 @@ const EN: Record<string, string> = {
     "A blacked-out Kia EV9 — three rows, captain's chairs, climate per seat, and a silent ride from curb to gate.",
   // booking
   "book.title": "Book your ride",
+  "book.coverage": "Denver metro door-to-door · DEN airport both ways · mountain transfers to Vail, Breckenridge & Aspen",
   "gate.title": "Complete your profile",
   "gate.subtitle": "We need a few details to confirm your ride.",
   "gate.first": "First name",
@@ -1067,7 +1068,7 @@ const ES: Record<string, string> = {
   "nav.dashboard": "Panel",
   "home.hero.title": "Viajes eléctricos premium, en tu horario.",
   "home.hero.subtitle":
-    "Traslados al aeropuerto y servicio de chofer privado en una SUV eléctrica de lujo. Silenciosa, amplia y siempre puntual.",
+    "Servicio de chofer privado en una SUV eléctrica de lujo: puerta a puerta por todo el metro de Denver, traslados al aeropuerto DEN en ambos sentidos y viajes a la montaña: Vail, Breckenridge y Aspen. Silenciosa, amplia y siempre puntual.",
   "home.cta.book": "Reservar viaje",
   "home.cta.driver": "Panel del driver",
   "home.f1.t": "Viaje eléctrico silencioso",
@@ -1081,6 +1082,7 @@ const ES: Record<string, string> = {
   "home.fleet.body":
     "Un Kia EV9 negro — tres filas, asientos capitán, clima por asiento y un viaje silencioso de la acera a la puerta.",
   "book.title": "Reserva tu viaje",
+  "book.coverage": "Metro de Denver puerta a puerta · Aeropuerto DEN ida y vuelta · Traslados a la montaña: Vail, Breckenridge y Aspen",
   "gate.title": "Completa tu perfil",
   "gate.subtitle": "Necesitamos unos datos para confirmar tu viaje.",
   "gate.first": "Nombre",

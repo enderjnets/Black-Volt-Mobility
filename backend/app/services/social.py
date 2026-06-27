@@ -225,15 +225,18 @@ async def _brand_ctx(db: AsyncSession, tenant_id: int) -> dict:
         "tagline": (tenant.tagline if tenant else None) or "Silent Power. Premium Arrival.",
         "vehicle": (tenant.vehicle if tenant else None) or "Kia EV9",
         "city": city,
-        # Always-on service framing: door-to-door across the whole metro AND
-        # both directions of the airport transfer. Injected into every brief /
-        # visual prompt so posts never drift off the actual service area.
-        "service_area": f"the entire {city} metro area",
+        # Always-on service framing: door-to-door across the whole metro, both
+        # directions of the airport transfer, AND luxury mountain-resort transfers.
+        # Injected into every brief / visual prompt so posts never drift off the
+        # actual service area.
+        "service_area": f"the entire {city} metro area (including Boulder)",
         "airport": "Denver International Airport (DEN)",
+        # High-value long-haul segment: transfers to/from the Colorado ski resorts.
+        "mountain": "mountain resort transfers to Vail, Breckenridge, and Aspen",
         "service_line": (
-            f"premium door-to-door electric chauffeur rides across {city} and "
-            f"airport transfers both ways with DEN — from anywhere in {city} to "
-            f"the airport, and from the airport to any destination in {city}"
+            f"premium door-to-door electric chauffeur rides across the {city} metro, "
+            f"airport transfers both ways with DEN, and luxury mountain-resort transfers "
+            f"to Vail, Breckenridge, Aspen and other Colorado ski towns"
         ),
     }
 
@@ -272,7 +275,8 @@ def _template_brief(brand: dict, topic: str, locale: str) -> dict:
             f"Dato curioso: {hook}. "
             "Los vehículos eléctricos de lujo combinan potencia silenciosa con una llegada "
             f"de primera. ¿Lo mejor? En {city} puedes reservar uno para tus viajes puerta a "
-            f"puerta y tus transfers al aeropuerto (DEN) en ambos sentidos con {brand['name']}."
+            "puerta, tus transfers al aeropuerto (DEN) en ambos sentidos y tus traslados a "
+            f"la montaña (Vail, Breckenridge, Aspen) con {brand['name']}."
         )
         caption = (
             f"⚡ {hook_cap}. Eléctricos de lujo para moverte por {city} ⇄ aeropuerto DEN "
@@ -287,8 +291,8 @@ def _template_brief(brand: dict, topic: str, locale: str) -> dict:
         script = (
             f"Did you know? {hook}. "
             "Luxury EVs pair silent power with a first-class arrival. The best part: in "
-            f"{city} you can book one for door-to-door rides and airport (DEN) transfers "
-            f"both ways with {brand['name']}."
+            f"{city} you can book one for door-to-door rides, airport (DEN) transfers both "
+            f"ways, and mountain transfers to Vail, Breckenridge and Aspen with {brand['name']}."
         )
         caption = (
             f"⚡ {hook_cap}. Luxury electric rides across {city} ⇄ DEN airport with "
@@ -342,8 +346,9 @@ async def _ai_brief(
         "high energy. Do NOT build the whole post around one specific car model; you MAY "
         "mention a specific model occasionally, but the focus is luxury EVs broadly, never "
         "'our car'. END with EXACTLY ONE call to action at the very end: viewers can book a "
-        f"luxury electric vehicle for door-to-door rides across {brand['city']} and "
-        f"{brand['airport']} transfers in BOTH directions. The growth goal is converting "
+        f"luxury electric vehicle for door-to-door rides across {brand['city']}, "
+        f"{brand['airport']} transfers both ways, and luxury mountain-resort transfers to "
+        "Vail, Breckenridge and Aspen. The growth goal is converting "
         "Uber/Lyft riders into private clients."
         f"{lessons_block}"
         " Stay truthful: use widely-true EV facts; if unsure of a number, frame it as an "

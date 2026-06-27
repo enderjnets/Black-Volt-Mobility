@@ -349,6 +349,12 @@ export function Booking() {
         {step < 3 && <StepDots step={step} />}
       </div>
 
+      {step === 0 && (
+        <p style={{ fontSize: 13, color: "var(--fg3)", margin: "-6px 0 14px", lineHeight: 1.5 }}>
+          {t("book.coverage")}
+        </p>
+      )}
+
       <Card glow pad={22}>
         {step === 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
