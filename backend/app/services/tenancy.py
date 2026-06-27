@@ -5,14 +5,20 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import Client, RateConfig, Ride, RideStatus, Tenant
 from app.models.rate_config import DEFAULT_RATES
 
-DEFAULT_TENANT_SLUG = "black-volt"
+DEFAULT_TENANT_SLUG = "ender-ocando"
+# Deprecated slugs that must keep resolving after a rename (printed QR codes,
+# already-shared links, referral cookies). Maps an old slug → the current slug.
+SLUG_ALIASES = {"black-volt": DEFAULT_TENANT_SLUG}
+# Slugs that identify the default/MVP tenant — the canonical one plus any alias —
+# so a not-yet-migrated row (old slug) is found instead of seeding a duplicate.
+_DEFAULT_LOOKUP_SLUGS = (DEFAULT_TENANT_SLUG, *SLUG_ALIASES.keys())
 DEFAULT_TENANT = {
     "slug": DEFAULT_TENANT_SLUG,
     "name": "Black Volt Mobility",
@@ -25,8 +31,15 @@ DEFAULT_TENANT = {
 async def ensure_seed(db: AsyncSession) -> Tenant:
     """Idempotently ensure the Black Volt tenant exists. Returns it."""
     t = (
-        await db.execute(select(Tenant).where(Tenant.slug == DEFAULT_TENANT_SLUG))
-    ).scalar_one_or_none()
+        await db.execute(
+            select(Tenant)
+            .where(Tenant.slug.in_(_DEFAULT_LOOKUP_SLUGS))
+            # Prefer the canonical slug so coexisting old+new rows resolve
+            # deterministically instead of raising MultipleResultsFound.
+            .order_by(case((Tenant.slug == DEFAULT_TENANT_SLUG, 0), else_=1))
+            .limit(1)
+        )
+    ).scalars().first()
     if t is None:
         t = Tenant(**DEFAULT_TENANT)
         db.add(t)
@@ -43,8 +56,15 @@ async def ensure_seed(db: AsyncSession) -> Tenant:
 
 async def get_default_tenant(db: AsyncSession) -> Tenant:
     t = (
-        await db.execute(select(Tenant).where(Tenant.slug == DEFAULT_TENANT_SLUG))
-    ).scalar_one_or_none()
+        await db.execute(
+            select(Tenant)
+            .where(Tenant.slug.in_(_DEFAULT_LOOKUP_SLUGS))
+            # Prefer the canonical slug so coexisting old+new rows resolve
+            # deterministically instead of raising MultipleResultsFound.
+            .order_by(case((Tenant.slug == DEFAULT_TENANT_SLUG, 0), else_=1))
+            .limit(1)
+        )
+    ).scalars().first()
     if t is None:
         t = await ensure_seed(db)
     return t
@@ -56,12 +76,18 @@ def _slugify(text: str) -> str:
 
 
 async def _unique_slug(db: AsyncSession, base: str) -> str:
-    """Slugify `base` and de-duplicate against existing tenant slugs (-2, -3…)."""
+    """Slugify `base` and de-duplicate against existing tenant slugs (-2, -3…).
+    Reserved alias keys are treated as taken so a new tenant can't claim a slug
+    that resolves elsewhere via SLUG_ALIASES."""
     base = _slugify(base)
     slug, n = base, 2
     while (
-        await db.execute(select(Tenant.id).where(Tenant.slug == slug))
-    ).scalar_one_or_none() is not None:
+        slug in SLUG_ALIASES
+        or (
+            await db.execute(select(Tenant.id).where(Tenant.slug == slug))
+        ).scalar_one_or_none()
+        is not None
+    ):
         slug, n = f"{base}-{n}", n + 1
     return slug
 
@@ -87,9 +113,16 @@ async def create_tenant_for(
 
 
 async def get_tenant_by_slug(db: AsyncSession, slug: str) -> Tenant | None:
-    return (
+    # Resolve the literal slug first; only fall back to an alias target when no
+    # real tenant owns that slug, so a future tenant can't be shadowed by an alias.
+    t = (
         await db.execute(select(Tenant).where(Tenant.slug == slug))
     ).scalar_one_or_none()
+    if t is None and slug in SLUG_ALIASES:
+        t = (
+            await db.execute(select(Tenant).where(Tenant.slug == SLUG_ALIASES[slug]))
+        ).scalar_one_or_none()
+    return t
 
 
 async def get_tenant(db: AsyncSession, tenant_id: int) -> Tenant | None:

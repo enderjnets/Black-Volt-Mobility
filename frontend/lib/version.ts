@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.48.0";
+export const CURRENT_VERSION = "0.48.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.48.1",
+    date: "2026-06-26",
+    title: "Driver profile: working social links, correct booking, vCard photo",
+    changes: [
+      "Fixed the driver profile Instagram and website links — they now show as clean tappable buttons (with the Instagram and web icons) and open the right page even if the full URL was pasted.",
+      "\"Book a ride\" and the shared profile link / QR now always open the public booking site (blackvoltmobility.com), carrying the driver so the price is correct.",
+      "Driver profile URL is now personalized (e.g. /d/ender-ocando); old links keep working via redirect.",
+      "\"Save contact\" now downloads a complete contact card including the driver's photo.",
+    ],
+  },
   {
     version: "0.48.0",
     date: "2026-06-26",

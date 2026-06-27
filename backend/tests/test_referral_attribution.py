@@ -126,17 +126,25 @@ def test_passenger_attributed_to_referral_driver():
     assert _slug_of(pax) == margie_slug
 
 
-def test_passenger_without_ref_defaults_to_black_volt():
+def test_passenger_without_ref_defaults_to_owner():
     _reset("pax2@rider.test")
     pax, body = _google("pax2@rider.test")
     assert body["role"] == "passenger"
-    assert _slug_of(pax) == "black-volt"
+    assert _slug_of(pax) == "ender-ocando"
 
 
 def test_invalid_ref_falls_back_to_default():
     _reset("pax3@rider.test")
     pax, _ = _google("pax3@rider.test", ref="no-such-driver-9999")
-    assert _slug_of(pax) == "black-volt"
+    assert _slug_of(pax) == "ender-ocando"
+
+
+def test_legacy_slug_alias_still_attributes():
+    # The default tenant was renamed black-volt -> ender-ocando; its deprecated
+    # slug must keep attributing leads (printed QRs / shared links / ref cookies).
+    _reset("pax-alias@rider.test")
+    pax, _ = _google("pax-alias@rider.test", ref="black-volt")
+    assert _slug_of(pax) == "ender-ocando"
 
 
 def test_first_touch_is_permanent():

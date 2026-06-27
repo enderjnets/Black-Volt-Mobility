@@ -115,7 +115,7 @@ def test_detail_aggregates_business_for_provisioned_driver():
     a = _admin()
     a.post("/api/v1/team", json={"email": "det-active@bv.test", "name": "Active"})
     drv, body = _google("det-active@bv.test", name="Active Driver")
-    assert body["tenant"] not in (None, "black-volt")
+    assert body["tenant"] not in (None, "ender-ocando")
     rid = _make_ride(drv, "DETAIL-PASSENGER-XYZ")
 
     d = a.get("/api/v1/team/det-active@bv.test/detail")
@@ -123,7 +123,7 @@ def test_detail_aggregates_business_for_provisioned_driver():
     j = d.json()
     assert j["provisioned"] is True
     assert j["last_login"] is not None
-    assert j["tenant_slug"] not in (None, "black-volt")
+    assert j["tenant_slug"] not in (None, "ender-ocando")
     assert j["rides"]["total"] >= 1
     assert len(j["week"]) == 7 and "week_total" in j
     # The just-created ride shows in recent_rides.

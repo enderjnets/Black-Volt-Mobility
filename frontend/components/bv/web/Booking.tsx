@@ -14,6 +14,7 @@ import { ApiError, confirmRide, createRide, getQuote, validateDiscount, type Quo
 import { defaultRidePreferences, getProfile, type RidePreferences } from "@/lib/profile";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
 import { track } from "@/lib/analytics";
+import { setRef } from "@/lib/referral";
 import { useWeb } from "./WebShell";
 
 const FUNNEL_EVENT = ["book_start", "book_review", "book_pay", "book_confirmed"] as const;
@@ -139,6 +140,17 @@ export function Booking() {
   const [codePct, setCodePct] = useState(0);
   const [codeErr, setCodeErr] = useState<string | null>(null);
   const [codeApplying, setCodeApplying] = useState(false);
+
+  // Driver attribution across the host boundary: a customer arriving from a
+  // driver's profile (served on the `app.` dashboard host) lands here on the apex
+  // booking host with `?ref=<slug>`. The referral cookie is host-scoped so it
+  // doesn't survive the jump — persist the slug from the URL before any quote or
+  // sign-in so the registration wall binds the lead to that driver and prices
+  // against their rate. `setRef` ignores malformed slugs.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) setRef(ref);
+  }, []);
 
   // Booking-funnel analytics: one event per step reached.
   useEffect(() => {

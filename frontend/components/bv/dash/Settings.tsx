@@ -18,6 +18,7 @@ import {
 import { useI18n } from "@/lib/i18n";
 import {
   getTenantSettings,
+  instagramHandle,
   updateTenantSettings,
   uploadTenantAsset,
   type TenantSettings,
@@ -94,7 +95,7 @@ export function Settings() {
         name: form.name.trim(),
         tagline: form.tagline.trim() || null,
         bio: form.bio.trim() || null,
-        instagram: form.instagram.trim() || null,
+        instagram: instagramHandle(form.instagram),
         website: form.website.trim() || null,
         vehicle: form.vehicle.trim() || null,
         city: form.city.trim() || null,
@@ -157,7 +158,7 @@ export function Settings() {
           <Field icon="sparkles" label={t("dash.settings.tagline")} value={form.tagline} onChange={(v) => set("tagline", v)} />
           <TextArea label={t("dash.settings.bio")} hint={t("dash.settings.bioHint")} value={form.bio} onChange={(v) => set("bio", v)} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field icon="image" label={t("dash.settings.instagram")} value={form.instagram} onChange={(v) => set("instagram", v)} placeholder="@blackvolt" />
+            <Field icon="instagram" label={t("dash.settings.instagram")} value={form.instagram} onChange={(v) => set("instagram", v)} placeholder="@blackvolt" />
             <Field icon="globe" label={t("dash.settings.website")} value={form.website} onChange={(v) => set("website", v)} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

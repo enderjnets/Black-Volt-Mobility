@@ -3,9 +3,9 @@
 import { fmtApiDetail } from "./booking";
 
 // The single-tenant MVP's public profile slug — matches the seeded tenant
-// (backend tenancy.DEFAULT_TENANT_SLUG = "black-volt"). The app's own nav/CTAs
+// (backend tenancy.DEFAULT_TENANT_SLUG = "ender-ocando"). The app's own nav/CTAs
 // must point here; a wrong slug 404s the live profile lookup.
-export const PUBLIC_PROFILE_SLUG = "black-volt";
+export const PUBLIC_PROFILE_SLUG = "ender-ocando";
 
 export interface PaymentsStatus {
   connected: boolean;
@@ -114,13 +114,67 @@ export async function uploadTenantAsset(
   return r.json();
 }
 
-// Canonical shareable URL for a driver's public profile (`/d/{slug}`). Uses the
-// current origin in the browser (so it's correct per environment) and falls back
-// to the production host during SSR.
-export function publicProfileUrl(slug: string): string {
+// Canonical PUBLIC site origin (where customers book), derived from the current
+// origin. The driver dashboard lives on the `app.` subdomain; customer-facing
+// links (profile share, QR, "Book a ride") must point at the apex host so the
+// booking funnel and per-driver pricing work — never the dashboard host. Strips a
+// leading `app.` label and leaves localhost/apex untouched; `NEXT_PUBLIC_PUBLIC_ORIGIN`
+// overrides when set. Host-agnostic so it also holds for the multi-tenant SaaS path.
+export function publicSiteOrigin(): string {
+  const override = process.env.NEXT_PUBLIC_PUBLIC_ORIGIN;
+  if (override) return override.replace(/\/+$/, "");
   const origin =
-    typeof window !== "undefined" ? window.location.origin : "https://app.blackvoltmobility.com";
-  return `${origin}/d/${encodeURIComponent(slug)}`;
+    typeof window !== "undefined" ? window.location.origin : "https://blackvoltmobility.com";
+  return origin.replace("://app.", "://");
+}
+
+// Canonical shareable URL for a driver's public profile (`/d/{slug}`), always on
+// the public (apex) host so the shared link/QR never lands a customer on the
+// dashboard subdomain.
+export function publicProfileUrl(slug: string): string {
+  return `${publicSiteOrigin()}/d/${encodeURIComponent(slug)}`;
+}
+
+// ── Social link normalization ────────────────────────────────────────────────
+// Drivers paste anything into the Instagram field — a full share URL with a
+// `?igsh=…` tracking param, an `@handle`, or a bare handle. Reduce all of them to
+// the canonical handle so the link resolves (never `instagram.com/https://…`).
+export function instagramHandle(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let s = raw.trim();
+  if (!s) return null;
+  const m = s.match(/instagram\.com\/([^/?#]+)/i);
+  if (m) s = m[1];
+  s = s
+    .replace(/^@/, "")
+    .replace(/[/?#].*$/, "")
+    .trim();
+  return s || null;
+}
+
+// Full Instagram profile URL for a normalized handle, or null when unusable.
+export function instagramUrl(raw: string | null | undefined): string | null {
+  const h = instagramHandle(raw);
+  return h ? `https://instagram.com/${h}` : null;
+}
+
+// Browsable website URL — prepend https:// when the driver omits the scheme.
+export function websiteUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s) return null;
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+}
+
+// Clean website label for display: drop scheme, leading `www.`, and trailing slash.
+export function websiteLabel(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s) return null;
+  return s
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/+$/, "");
 }
 
 // Public — returns null on 404 (unknown slug). Sends the session cookie so a

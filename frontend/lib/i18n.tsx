@@ -951,6 +951,8 @@ const EN: Record<string, string> = {
   "profile.electric": "All-electric",
   "profile.call": "Call",
   "profile.text": "Text",
+  "profile.instagram": "Instagram",
+  "profile.website": "Website",
   "profile.loading": "Loading profile…",
   "profile.notFound": "Profile not found.",
 };
@@ -1889,6 +1891,8 @@ const ES: Record<string, string> = {
   "profile.electric": "100% eléctrico",
   "profile.call": "Llamar",
   "profile.text": "Mensaje",
+  "profile.instagram": "Instagram",
+  "profile.website": "Sitio web",
   "profile.loading": "Cargando perfil…",
   "profile.notFound": "Perfil no encontrado.",
 };

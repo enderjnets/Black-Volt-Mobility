@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.48.1 — 2026-06-26 — Driver profile: links, booking host, slug & vCard
+
+Fixes to the public driver profile (`/d/<slug>`) reported on `app.blackvoltmobility.com`.
+
+- **Social links**: the Instagram link no longer double-prefixes the URL (it broke when a full share URL with `?igsh=…` was pasted). Instagram/website now render as modern icon+label pills via normalizers (`instagramHandle`/`instagramUrl`/`websiteUrl`); the Instagram value is also normalized to a handle on save in Settings.
+- **Booking host**: "Book a ride" and the shared profile link/QR (`publicProfileUrl`) now target the public apex host via `publicSiteOrigin()` (strips the `app.` dashboard subdomain). "Book a ride" carries `?ref=<slug>`, and the booking page persists it (`setRef`) before the sign-in wall so the lead is attributed to the driver and priced against their rate across the host boundary.
+- **Profile slug**: the default tenant slug is renamed `black-volt` → `ender-ocando` (migration `0032`); `black-volt` keeps resolving via `SLUG_ALIASES` (profile fetch + referral) and a frontend redirect, so existing links/QRs don't break.
+- **Save contact**: the downloaded vCard now includes structured name, org, title, phone, profile/website/Instagram URLs, bio, and the embedded avatar photo (base64, RFC 2426 folded; URI fallback on CORS failure).
+
 ## v0.48.0 — 2026-06-26 — Mandatory client/driver agreement signing
 
 Passengers and drivers must accept their required legal agreement before using the app.

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 
 import { Icon } from "../Icon";
@@ -10,6 +9,9 @@ import { useI18n } from "@/lib/i18n";
 import {
   getPublicProfile,
   publicProfileUrl,
+  publicSiteOrigin,
+  instagramUrl,
+  websiteUrl,
   PUBLIC_PROFILE_SLUG,
   type PublicProfile,
 } from "@/lib/tenant";
@@ -18,23 +20,88 @@ import { setRef } from "@/lib/referral";
 
 /** Escape a value for a vCard property (RFC 6350 §3.4). */
 function vcardEscape(v: string): string {
-  return v.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+  return v
+    .replace(/\\/g, "\\\\")
+    .replace(/\r\n|\r|\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
 }
 
-/** Trigger a .vcf download so a visitor can save the driver to their contacts. */
-function saveContact(p: PublicProfile): void {
-  const url = publicProfileUrl(p.slug);
-  const website = p.website ? (p.website.startsWith("http") ? p.website : `https://${p.website}`) : null;
+/** RFC 2426 line folding: ≤75 octets per line, continuation lines begin with a
+ * space. Needed so the (long) base64 PHOTO line imports on stricter clients (iOS). */
+function foldVcard(line: string): string {
+  if (line.length <= 75) return line;
+  const parts: string[] = [line.slice(0, 75)];
+  let rest = line.slice(75);
+  while (rest.length > 74) {
+    parts.push(" " + rest.slice(0, 74));
+    rest = rest.slice(74);
+  }
+  parts.push(" " + rest);
+  return parts.join("\r\n");
+}
+
+/** Build a vCard PHOTO line for the driver avatar: base64-embedded so it shows in
+ * Contacts offline, falling back to a URI reference if the image can't be fetched
+ * (CORS/network), or null when there's no photo. */
+async function vcardPhotoLine(rawUrl: string | null | undefined): Promise<string | null> {
+  if (!rawUrl) return null;
+  const abs = rawUrl.startsWith("http")
+    ? rawUrl
+    : `${publicSiteOrigin()}${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`;
+  try {
+    const res = await fetch(abs, { mode: "cors" });
+    if (!res.ok) throw new Error(String(res.status));
+    const blob = await res.blob();
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result));
+      fr.onerror = () => reject(fr.error);
+      fr.readAsDataURL(blob);
+    });
+    const m = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+    if (!m) throw new Error("not-image");
+    const type = m[1].split("/")[1].toUpperCase();
+    return foldVcard(`PHOTO;ENCODING=b;TYPE=${type}:${m[2]}`);
+  } catch {
+    return `PHOTO;VALUE=URI:${vcardEscape(abs)}`;
+  }
+}
+
+/** Send the customer to the PUBLIC booking page on the apex host (never the
+ * dashboard `app.` subdomain), carrying the driver referral so the funnel
+ * attributes the lead and prices against that driver's rate even across the host
+ * boundary (the referral cookie is host-scoped, so the `?ref=` param carries it). */
+function gotoBook(slug?: string): void {
+  const base = `${publicSiteOrigin()}/book`;
+  window.location.assign(slug ? `${base}?ref=${encodeURIComponent(slug)}` : base);
+}
+
+/** Trigger a .vcf download so a visitor can save the driver to their contacts —
+ * complete info (name, org, title, phone, profile + website + Instagram links,
+ * bio) plus the embedded avatar photo. */
+async function saveContact(p: PublicProfile): Promise<void> {
+  const nameParts = p.name.trim().split(/\s+/);
+  const given = nameParts[0] || p.name;
+  const family = nameParts.slice(1).join(" ");
+  const profileUrl = publicProfileUrl(p.slug);
+  const site = websiteUrl(p.website);
+  const ig = instagramUrl(p.instagram);
+  const photo = await vcardPhotoLine(p.logo_url);
   const lines = [
     "BEGIN:VCARD",
     "VERSION:3.0",
+    `N:${vcardEscape(family)};${vcardEscape(given)};;;`,
     `FN:${vcardEscape(p.name)}`,
-    `ORG:${vcardEscape(p.name)}`,
+    "ORG:Black Volt Mobility",
     `TITLE:${vcardEscape(p.tagline || "Black Volt Mobility")}`,
-    website ? `URL:${vcardEscape(website)}` : null,
-    `URL:${vcardEscape(url)}`,
+    photo,
     // Only present for registered viewers (the backend gates the phone field).
-    p.phone ? `TEL;TYPE=CELL:${vcardEscape(p.phone)}` : null,
+    p.phone ? `TEL;TYPE=CELL,VOICE:${vcardEscape(p.phone)}` : null,
+    `URL:${vcardEscape(profileUrl)}`,
+    site ? `URL:${vcardEscape(site)}` : null,
+    ig ? `X-SOCIALPROFILE;TYPE=instagram:${vcardEscape(ig)}` : null,
+    ig ? `URL:${vcardEscape(ig)}` : null,
     p.bio ? `NOTE:${vcardEscape(p.bio)}` : null,
     "END:VCARD",
   ].filter(Boolean) as string[];
@@ -47,6 +114,41 @@ function saveContact(p: PublicProfile): void {
   a.click();
   a.remove();
   URL.revokeObjectURL(href);
+}
+
+/** Modern pill link (icon + label) for a driver's social/web links. Replaces the
+ * raw URL text so a broken/overflowing link can't render — and the symbol reads
+ * professionally at a glance. */
+function SocialPill({ href, icon, label, accent }: { href: string; icon: string; label: string; accent: string }) {
+  const [h, setH] = useState(false);
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onMouseEnter={() => setH(true)}
+      onMouseLeave={() => setH(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 14px",
+        borderRadius: 999,
+        border: `1px solid ${h ? accent : "var(--line-strong)"}`,
+        background: "var(--obsidian-3)",
+        color: h ? "var(--arctic)" : "var(--silver)",
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: "var(--font-sans)",
+        textDecoration: "none",
+        boxShadow: h ? `0 0 0 1px ${accent}33, 0 6px 18px -8px ${accent}` : "none",
+        transition: "all .15s",
+      }}
+    >
+      <Icon name={icon} size={16} color={accent} />
+      {label}
+    </a>
+  );
 }
 
 function Stat({ value, label, icon, accent }: { value: string; label: string; icon: string; accent: string }) {
@@ -65,7 +167,6 @@ function Stat({ value, label, icon, accent }: { value: string; label: string; ic
 
 export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
   const { t } = useI18n();
-  const router = useRouter();
   const [p, setP] = useState<PublicProfile | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "missing">("loading");
   const [isMine, setIsMine] = useState(false);
@@ -119,7 +220,7 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: "var(--arctic)", marginBottom: 18 }}>
           {t("profile.notFound")}
         </div>
-        <Button variant="solid" size="lg" icon="zap" onClick={() => router.push("/book")}>
+        <Button variant="solid" size="lg" icon="zap" onClick={() => gotoBook()}>
           {t("profile.book")}
         </Button>
       </div>
@@ -193,32 +294,21 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 24, color: "var(--arctic)" }}>{p.name}</div>
           <div style={{ fontSize: 13, color: "var(--silver)", marginTop: 2 }}>{p.tagline || subtitle}</div>
           {p.bio && <div style={{ fontSize: 13, color: "var(--fg3)", marginTop: 10, lineHeight: 1.55 }}>{p.bio}</div>}
-          {(p.instagram || p.website) && (
-            <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
-              {p.instagram && (
-                <a
-                  href={`https://instagram.com/${p.instagram.replace(/^@/, "")}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--silver)", textDecoration: "none" }}
-                >
-                  <Icon name="image" size={14} color={accent} />
-                  {p.instagram}
-                </a>
-              )}
-              {p.website && (
-                <a
-                  href={p.website.startsWith("http") ? p.website : `https://${p.website}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--silver)", textDecoration: "none" }}
-                >
-                  <Icon name="globe" size={14} color={accent} />
-                  {p.website.replace(/^https?:\/\//, "")}
-                </a>
-              )}
-            </div>
-          )}
+          {(() => {
+            const ig = instagramUrl(p.instagram);
+            const site = websiteUrl(p.website);
+            if (!ig && !site) return null;
+            return (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
+                {ig && (
+                  <SocialPill href={ig} icon="instagram" label={t("profile.instagram")} accent={accent} />
+                )}
+                {site && (
+                  <SocialPill href={site} icon="globe" label={t("profile.website")} accent={accent} />
+                )}
+              </div>
+            );
+          })()}
           {/* Direct line — only delivered by the backend to registered/signed-in
               clients, so its mere presence means the viewer is entitled to it. */}
           {p.phone && (
@@ -247,7 +337,7 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
             <Stat value={p.years_active != null ? `${p.years_active} yr` : "—"} label={t("profile.years")} icon="clock" accent={accent} />
           </div>
           <div style={{ marginTop: 18 }}>
-            <Button variant="solid" full size="lg" icon="zap" onClick={() => router.push("/book")}>
+            <Button variant="solid" full size="lg" icon="zap" onClick={() => gotoBook(p.slug)}>
               {t("profile.book")}
             </Button>
           </div>
@@ -268,7 +358,7 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
         </div>
         <p style={{ fontSize: 13, color: "var(--silver)", margin: "8px 0 16px", lineHeight: 1.5 }}>{t("profile.scan.sub")}</p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Button variant="ghost" full icon="user" onClick={() => saveContact(p)}>
+          <Button variant="ghost" full icon="user" onClick={() => void saveContact(p)}>
             {t("profile.saveContact")}
           </Button>
           <Button variant="plain" full icon={copied ? "check" : "link"} onClick={copyLink}>

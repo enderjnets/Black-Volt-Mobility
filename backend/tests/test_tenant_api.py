@@ -64,7 +64,7 @@ def test_get_settings_returns_profile_and_status():
     r = c.get("/api/v1/tenant/settings")
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["slug"] == "black-volt"
+    assert d["slug"] == "ender-ocando"
     assert "name" in d
     # Integration status is read-only and present.
     assert set(d["payments"].keys()) == {"connected", "live", "env"}

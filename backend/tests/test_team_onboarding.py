@@ -111,15 +111,15 @@ def test_driver_first_login_provisions_isolated_tenant():
     _clear("bob@bv.test")
     a = _admin()
     a.post("/api/v1/team", json={"email": "bob@bv.test", "name": "Bob"})
-    # Bob signs in → owner of his OWN tenant (not black-volt), provisioned now.
+    # Bob signs in → owner of his OWN tenant (not the owner tenant), provisioned now.
     bob, body = _google("bob@bv.test", name="Bob Driver")
     assert body["role"] == "owner" and body["is_admin"] is False
-    assert body["tenant"] not in (None, "black-volt")
+    assert body["tenant"] not in (None, "ender-ocando")
     # Bob creates a ride; he sees it.
     _make_ride(bob, "BOBS-PASSENGER-XYZ")
     bob_rides = bob.get("/api/v1/rides").json()["rides"]
     assert any(r["passenger_name"] == "BOBS-PASSENGER-XYZ" for r in bob_rides)
-    # The admin (black-volt tenant) must NOT see Bob's ride — tenant isolation.
+    # The admin (owner tenant) must NOT see Bob's ride — tenant isolation.
     admin_rides = a.get("/api/v1/rides").json()["rides"]
     assert not any(r["passenger_name"] == "BOBS-PASSENGER-XYZ" for r in admin_rides)
 
