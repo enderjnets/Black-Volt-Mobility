@@ -118,6 +118,86 @@ async def test_generate_brief_template_path(db):
     assert "airport ride" in brief["caption"].lower()
 
 
+def _brand_fixture() -> dict:
+    return {
+        "name": "Black Volt Mobility",
+        "tagline": "Silent Power. Premium Arrival.",
+        "vehicle": "Kia EV9",
+        "city": "Denver",
+        "service_area": "the entire Denver metro area",
+        "airport": "Denver International Airport (DEN)",
+        "service_line": "premium electric chauffeur rides",
+    }
+
+
+def test_template_brief_is_general_not_model_locked():
+    # No topic → leads with a luxury-EV curiosity hook, never forces the specific model,
+    # and closes with the door-to-door + DEN booking CTA (EN + ES).
+    b = _brand_fixture()
+    en = S._template_brief(b, "", "en")
+    assert "Kia EV9" not in en["script"]
+    assert "luxury" in (en["script"] + en["caption"]).lower()
+    assert "DEN" in en["script"] and "book" in en["script"].lower()
+    es = S._template_brief(b, "", "es")
+    assert "Kia EV9" not in es["script"]
+    assert "DEN" in es["script"] and "reserva" in es["script"].lower()
+
+
+def test_template_brief_uses_topic_as_hook():
+    out = S._template_brief(_brand_fixture(), "regenerative braking", "en")
+    assert "regenerative braking" in out["script"]
+
+
+def test_template_video_prompts_generic_without_reference():
+    prompts = S._template_video_prompts(_brand_fixture(), "")
+    assert prompts and all("Kia EV9" not in p for p in prompts)
+    assert any("luxury electric" in p.lower() for p in prompts)
+
+
+def test_template_video_prompts_uses_vehicle_match():
+    vm = "a dark green Kia EV9 boxy luxury electric SUV"
+    prompts = S._template_video_prompts(_brand_fixture(), "", vm)
+    assert prompts and all(vm in p for p in prompts)
+
+
+def test_ensure_vehicle_forces_descriptor_into_every_prompt():
+    vm = "a dark green Kia EV9"
+    base = ["A city street at night", f"Close-up of {vm} interior"]
+    out = S._ensure_vehicle(base, vm)
+    assert all(vm in p for p in out)
+    assert out[1] == base[1]  # idempotent: already-named prompt isn't doubled
+    assert S._ensure_vehicle(base, None) == base  # no descriptor → unchanged
+    assert S._ensure_vehicle(base, "   ") == base
+
+
+async def test_request_render_injects_vehicle_match_when_reference(db, monkeypatch):
+    tid = (await get_default_tenant(db)).id
+    post = await S.create_post(
+        db, tenant_id=tid, content={"caption": "c", "script": "s", "topic": "t"}, lang="en",
+        reference_paths=[f"tenants/{tid}/social/refs/ref-1.jpg"],
+    )
+    vm = "a midnight-blue luxury electric SUV with full-width LED bar"
+    monkeypatch.setattr(S, "_vehicle_match_from_ref", lambda _rel: _async_return(vm))
+    captured: dict = {}
+
+    async def _fake_submit(*, tenant_id, post_id, script):
+        captured["script"] = script
+        return {"job_id": "j", "status": "rendered", "media_path": "simulated://x.mp4",
+                "cover_path": None, "simulated": True}
+
+    monkeypatch.setattr(S.render_client, "submit", _fake_submit)
+    await S.request_render(db, tenant_id=tid, post_id=post["id"])
+    sc = captured["script"]
+    assert sc["vehicle_match"] == vm
+    assert sc["video_prompts"] and all(vm in p for p in sc["video_prompts"])
+
+
+def _async_return(value):
+    async def _coro():
+        return value
+    return _coro()
+
+
 async def test_render_approve_publish_state_machine(db):
     tid = (await get_default_tenant(db)).id
     post = await S.create_post(

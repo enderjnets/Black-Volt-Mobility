@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.49.0 — 2026-06-27 — Social posts: general luxury-EV focus + reference-photo matching
+
+Reworked AI social-post generation (`/dashboard/social`) on two owner complaints: posts
+were forced to name the specific car, and an uploaded reference photo only matched the first
+shot while the rest showed unrelated vehicles.
+
+- **General, fact-led content** (`backend/app/services/social.py`): the brief no longer
+  builds every post around `{vehicle}`. Both the AI prompt (`_ai_brief`) and the deterministic
+  fallback (`_template_brief`) now open with an attention-grabbing fact about luxury electric
+  vehicles, stay general (a specific model may be mentioned but isn't the subject), and place a
+  single CTA at the end (book a luxury EV for door-to-door rides + DEN transfers both ways).
+- **Generic visuals when no photo**: `_VP_SYSTEM` + `_template_video_prompts` depict "luxury
+  electric vehicles" in general rather than a pinned model.
+- **Reference-photo matching**: when a photo is attached, `request_render` derives a concrete
+  vehicle description from it via vision (`_describe_vehicle_visual` / `_vehicle_match_from_ref`),
+  injects it into every Kling prompt (`_ensure_vehicle`), and passes `vehicle_match` to the
+  render worker. The worker (`bv_producer.py`) now anchors the ad in the uploaded car —
+  multiple distinct Ken Burns motion variants + i2v of the SAME photo make the majority of the
+  body — and fills only the remaining ambiance with description-matched AI shots, so vehicles
+  no longer mismatch.
+
 ## v0.48.1 — 2026-06-26 — Driver profile: links, booking host, slug & vCard
 
 Fixes to the public driver profile (`/d/<slug>`) reported on `app.blackvoltmobility.com`.

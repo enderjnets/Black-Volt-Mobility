@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.48.1";
+export const CURRENT_VERSION = "0.49.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.49.0",
+    date: "2026-06-27",
+    title: "Social posts: general luxury-EV focus + reference photo matching",
+    changes: [
+      "Generated social posts no longer force the specific car model. They now open with an attention-grabbing fact about luxury electric vehicles and only mention booking a luxury EV for door-to-door rides and DEN airport transfers at the end.",
+      "When you upload a reference photo, the video now keeps every vehicle shot consistent with your car — the uploaded photo anchors the ad (multiple motion shots) and any AI-generated shots are described to match it, instead of showing unrelated cars.",
+    ],
+  },
   {
     version: "0.48.1",
     date: "2026-06-26",
