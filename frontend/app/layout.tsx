@@ -13,8 +13,17 @@ const rajdhani = Rajdhani({
 });
 
 export const metadata: Metadata = {
+  // Absolute base so per-page canonical/OG URLs resolve correctly (override per env).
+  metadataBase: new URL(process.env.NEXT_PUBLIC_PUBLIC_ORIGIN || "https://blackvoltmobility.com"),
   title: "Black Volt Mobility — Premium Electric Rides",
   description: "Silent Power. Premium Arrival. Luxury electric chauffeur & airport transfers.",
+  openGraph: {
+    title: "Black Volt Mobility — Premium Electric Rides",
+    description:
+      "Silent Power. Premium Arrival. Luxury electric chauffeur, airport & mountain transfers in Denver.",
+    type: "website",
+    siteName: "Black Volt Mobility",
+  },
 };
 
 export const viewport: Viewport = {

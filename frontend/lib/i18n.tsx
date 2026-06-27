@@ -115,6 +115,7 @@ const EN: Record<string, string> = {
   // nav
   "nav.home": "Home",
   "nav.book": "Book a ride",
+  "nav.rides": "Routes",
   "nav.fleet": "The Fleet",
   "nav.driver": "Your Driver",
   "nav.trips": "My Trips",
@@ -1061,6 +1062,7 @@ const ES: Record<string, string> = {
   "common.back": "Atrás",
   "nav.home": "Inicio",
   "nav.book": "Reservar viaje",
+  "nav.rides": "Rutas",
   "nav.fleet": "La Flota",
   "nav.driver": "Tu Chofer",
   "nav.trips": "Mis Viajes",

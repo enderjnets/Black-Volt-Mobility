@@ -35,6 +35,7 @@ export function useWeb(): WebCtx {
 const NAV = [
   { href: "/", key: "nav.home" },
   { href: "/book", key: "nav.book" },
+  { href: "/rides", key: "nav.rides" },
   { href: "/trips", key: "nav.trips" },
   // Smart route: resolves to the visitor's designated driver (see /your-driver).
   { href: "/your-driver", key: "nav.driver" },

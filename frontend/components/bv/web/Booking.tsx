@@ -166,8 +166,15 @@ export function Booking() {
   // sign-in so the registration wall binds the lead to that driver and prices
   // against their rate. `setRef` ignores malformed slugs.
   useEffect(() => {
-    const ref = new URLSearchParams(window.location.search).get("ref");
+    const qp = new URLSearchParams(window.location.search);
+    const ref = qp.get("ref");
     if (ref) setRef(ref);
+    // Prefill the trip from a deep-link (e.g. SEO route landing pages → /book?from=&to=)
+    // so the visitor lands straight on a quote.
+    const qpFrom = qp.get("from");
+    const qpTo = qp.get("to");
+    if (qpFrom) setFrom(qpFrom);
+    if (qpTo) setTo(qpTo);
   }, []);
 
   // Booking-funnel analytics: each stage counts at most once per session. `book_review`

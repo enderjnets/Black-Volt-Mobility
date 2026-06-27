@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.52.0 — 2026-06-27 — SEO route landing pages for organic traffic
+
+Foundation for free, long-term organic traffic — built to avoid Google's "doorway page"
+penalty (each page is hand-written with unique content, not templated).
+
+- **8 curated route/use-case pages** at `/rides/[slug]` (`lib/seoRoutes.ts` + server components
+  with `generateStaticParams`/`generateMetadata`): Aurora→DEN, Cherry Creek→DEN, DTC corporate→DEN,
+  Boulder→DEN, Red Rocks concert rides, and Denver→Vail/Breckenridge/Aspen. Each has unique copy,
+  a real example fare (anchored to the live /quote engine), highlights, and a route-specific FAQ.
+- **Deep-link CTAs**: each page links to `/book?from=…&to=…&ref=…&utm_campaign=<slug>` and
+  `Booking.tsx` now reads `?from`/`?to` to prefill the trip → visitor lands on an instant quote,
+  conversion attributed by campaign in Insights.
+- **`/rides` hub** page + nav link (EN/ES) for discovery and internal linking.
+- **SEO foundation**: `app/sitemap.ts`, `app/robots.ts`, `metadataBase` + default OpenGraph in the
+  root layout, `LocalBusiness` JSON-LD on the home page, and `Service` + `FAQPage` + `BreadcrumbList`
+  JSON-LD on each route page.
+
 ## v0.51.0 — 2026-06-27 — Service area: full Denver metro + mountain resort transfers
 
 Expanded the stated service area to match what Black Volt actually serves (base: Aurora 80016).

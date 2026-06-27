@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.51.0";
+export const CURRENT_VERSION = "0.52.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.52.0",
+    date: "2026-06-27",
+    title: "SEO route landing pages for organic traffic",
+    changes: [
+      "New dedicated pages for high-intent local searches (Aurora→DEN, Cherry Creek→DEN, DTC corporate, Boulder→DEN, Red Rocks concert rides, and Denver→Vail/Breckenridge/Aspen) — each with a real example fare and a one-tap link to an instant quote with the trip prefilled.",
+      "Added the SEO foundation Google needs: sitemap.xml, robots.txt, and structured data (LocalBusiness, Service & FAQ) so these pages get discovered and can earn rich results.",
+    ],
+  },
   {
     version: "0.51.0",
     date: "2026-06-27",
