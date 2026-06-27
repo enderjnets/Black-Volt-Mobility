@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.db.base import get_db
 from app.models.allowed_user import ROLE_ADMIN
 from app.services import auth, profile
+from app.services import legal as legal_svc
 from app.services.tenancy import (
     create_tenant_for,
     find_client_by_google_sub,
@@ -150,6 +151,9 @@ async def me(request: Request, db: AsyncSession = Depends(get_db)):
             "is_admin": await session_is_admin(db, payload),
         }
     )
+    base["agreements_pending"] = [
+        p["doc_type"] for p in await legal_svc.pending_agreements(db, payload)
+    ]
     cid = payload.get("cid")
     if cid is not None:
         from sqlalchemy import select

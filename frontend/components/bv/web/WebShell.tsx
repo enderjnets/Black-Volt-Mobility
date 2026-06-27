@@ -14,6 +14,7 @@ import { track } from "@/lib/analytics";
 import { ChatAssistant } from "./Chat";
 import { ClientTabBar } from "./ClientTabBar";
 import { ProfileGate } from "./ProfileGate";
+import { AgreementGate } from "../AgreementGate";
 import { BV_USER, type BvUser, SignInModal } from "./SignInModal";
 
 interface WebCtx {
@@ -78,20 +79,29 @@ export function WebShell({ children }: { children: ReactNode }) {
   const [gateNext, setGateNext] = useState<(() => void) | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [pendingAgreements, setPendingAgreements] = useState<string[]>([]);
 
   const openSignIn = (onDone?: () => void) => {
     setAfterSignIn(() => onDone ?? null);
     setSignin(true);
   };
 
-  // Reflect an existing passenger session (real Google sign-in) on load.
-  useEffect(() => {
+  // Reflect an existing passenger session (real Google sign-in) on load, and
+  // surface any mandatory agreements the passenger still has to sign.
+  const refreshMe = () => {
     fetchMe().then((me) => {
       if (me.authenticated && me.role === "passenger") {
         const email = me.email || "";
         setUser({ name: email ? email.split("@")[0] : "Passenger", email, since: "" });
+        setPendingAgreements(me.agreements_pending ?? []);
+      } else {
+        setPendingAgreements([]);
       }
     });
+  };
+  useEffect(() => {
+    refreshMe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const ctx: WebCtx = {
@@ -317,6 +327,10 @@ export function WebShell({ children }: { children: ReactNode }) {
               cont?.();
             }}
           />
+        )}
+
+        {pendingAgreements.length > 0 && (
+          <AgreementGate pending={pendingAgreements} onComplete={refreshMe} />
         )}
 
         <footer

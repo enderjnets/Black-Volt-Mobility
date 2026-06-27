@@ -40,7 +40,8 @@ def _reset_ride_data():
             # reset them too for deterministic funnel/coach tests.
             await conn.execute(
                 "TRUNCATE rides, payments, driver_funnel_logs, platform_stats, "
-                "driver_goals, social_posts, social_interactions, social_accounts "
+                "driver_goals, social_posts, social_interactions, social_accounts, "
+                "document_consents "
                 "RESTART IDENTITY CASCADE"
             )
         finally:

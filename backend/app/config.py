@@ -50,6 +50,10 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_ADMIN_EMAILS: str = ""  # comma-separated; pinned owner/driver admins
+    # Comma-separated emails of principals (dueños) exempt from signing the driver
+    # agreement. The master/password owner session is always exempt; add a Google
+    # email here if the owner signs in with Google instead of the master password.
+    OWNER_EMAILS: str = "enderjnets@gmail.com"
 
     # Registration wall: when on (and AUTH_ENABLED), an anonymous visitor must
     # sign in before they can price a trip (/quote). This captures every lead and
@@ -63,6 +67,10 @@ class Settings(BaseSettings):
     @property
     def google_admin_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.GOOGLE_ADMIN_EMAILS.split(",") if e.strip()]
+
+    @property
+    def owner_emails_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.OWNER_EMAILS.split(",") if e.strip()]
 
     # ─── Maps (Phase 2) ─────────────────────────────────────────────────
     # Google Maps Platform powers route distance/duration + place autocomplete.

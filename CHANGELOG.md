@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.48.0 — 2026-06-26 — Mandatory client/driver agreement signing
+
+Passengers and drivers must accept their required legal agreement before using the app.
+
+- **Client terms (passengers)**: a non-dismissable, full-screen step shows the client terms (markdown) with a clickwrap "I have read and accept" checkbox; booking is gated until accepted.
+- **Driver agreement (drivers/owners)**: requires a typed full legal name as an electronic signature in addition to the checkbox before the dashboard unlocks.
+- Bilingual (EN/ES), follows the app locale; re-fetches and re-prompts if the document version changed (409) between load and accept.
+- **Frontend**: new `GET /auth/me.agreements_pending` drives the gate; new `lib/agreements.ts` API client + `AgreementGate` component (with a small dependency-free markdown renderer), wired into `AuthGuard` (staff/drivers) and `WebShell` (passengers).
+
 ## v0.47.1 — 2026-06-26 — Social video voice no longer reads hashtags
 
 Bug fix: the generated social video's voiceover was reading the hashtags aloud.

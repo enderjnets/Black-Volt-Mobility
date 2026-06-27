@@ -4,8 +4,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
+import { AgreementGate } from "../AgreementGate";
 import { useI18n } from "@/lib/i18n";
-import { fetchMe } from "@/lib/auth";
+import { fetchMe, type Me } from "@/lib/auth";
 
 const STAFF = new Set(["owner", "driver"]);
 
@@ -16,19 +17,23 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [state, setState] = useState<"checking" | "ok">("checking");
+  const [me, setMe] = useState<Me | null>(null);
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     let alive = true;
     fetchMe().then((me) => {
       if (!alive) return;
       const allowed = !me.auth_enabled || (me.authenticated && STAFF.has(me.role || ""));
-      if (allowed) setState("ok");
-      else router.replace(`/login?next=${encodeURIComponent(pathname || "/dashboard")}`);
+      if (allowed) {
+        setMe(me);
+        setState("ok");
+      } else router.replace(`/login?next=${encodeURIComponent(pathname || "/dashboard")}`);
     });
     return () => {
       alive = false;
     };
-  }, [router, pathname]);
+  }, [router, pathname, refresh]);
 
   if (state === "checking") {
     return (
@@ -47,6 +52,9 @@ export function AuthGuard({ children }: { children: ReactNode }) {
         <span style={{ fontSize: 13, color: "var(--silver)", fontFamily: "var(--font-sans)" }}>{t("auth.checking")}</span>
       </div>
     );
+  }
+  if (me?.agreements_pending && me.agreements_pending.length > 0) {
+    return <AgreementGate pending={me.agreements_pending} onComplete={() => setRefresh((n) => n + 1)} />;
   }
   return <>{children}</>;
 }

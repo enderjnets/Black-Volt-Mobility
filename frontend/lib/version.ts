@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.47.1";
+export const CURRENT_VERSION = "0.48.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.48.0",
+    date: "2026-06-26",
+    title: "Mandatory client/driver agreement signing",
+    changes: [
+      "Passengers must read and accept the client terms before booking; drivers must read and electronically sign the driver agreement (typed full legal name) before using the dashboard.",
+      "The agreement appears as a full-screen step you can't skip, available in English and Spanish.",
+    ],
+  },
   {
     version: "0.47.1",
     date: "2026-06-26",
