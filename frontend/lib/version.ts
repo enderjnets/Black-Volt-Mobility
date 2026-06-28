@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.52.0";
+export const CURRENT_VERSION = "0.52.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.52.1",
+    date: "2026-06-27",
+    title: "Route pages discoverable from the home page & footer",
+    changes: [
+      "Added a 'Popular routes' section to the home page and route links in the footer, so visitors (especially on mobile) can find the new route pages — and it strengthens internal SEO linking.",
+      "Updated the footer to show the full service area (Denver metro · DEN · Vail/Breck/Aspen).",
+    ],
+  },
   {
     version: "0.52.0",
     date: "2026-06-27",

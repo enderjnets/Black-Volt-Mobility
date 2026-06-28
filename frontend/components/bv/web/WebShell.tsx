@@ -13,6 +13,7 @@ import { fetchMe, logout } from "@/lib/auth";
 import { track } from "@/lib/analytics";
 import { ChatAssistant } from "./Chat";
 import { ClientTabBar } from "./ClientTabBar";
+import { SEO_ROUTES } from "@/lib/seoRoutes";
 import { ProfileGate } from "./ProfileGate";
 import { AgreementGate } from "../AgreementGate";
 import { BV_USER, type BvUser, SignInModal } from "./SignInModal";
@@ -341,7 +342,7 @@ export function WebShell({ children }: { children: ReactNode }) {
 
         <footer
           style={{
-            padding: "22px 20px",
+            padding: "26px 20px 32px",
             textAlign: "center",
             borderTop: "1px solid var(--line)",
             fontSize: 12,
@@ -349,7 +350,32 @@ export function WebShell({ children }: { children: ReactNode }) {
             fontFamily: "var(--font-sans)",
           }}
         >
-          © {t("brand.name")} · Denver / Aurora, CO
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: "10px 18px",
+              marginBottom: 12,
+            }}
+          >
+            <Link href="/book" style={{ color: "var(--fg2)", textDecoration: "none" }}>
+              {t("nav.book")}
+            </Link>
+            <Link href="/rides" style={{ color: "var(--fg2)", textDecoration: "none" }}>
+              {t("nav.rides")}
+            </Link>
+            {SEO_ROUTES.slice(0, 4).map((r) => (
+              <Link
+                key={r.slug}
+                href={`/rides/${r.slug}`}
+                style={{ color: "var(--fg3)", textDecoration: "none" }}
+              >
+                {r.shortLabel}
+              </Link>
+            ))}
+          </div>
+          © {t("brand.name")} · {t("footer.area")}
         </footer>
       </div>
     </Ctx.Provider>

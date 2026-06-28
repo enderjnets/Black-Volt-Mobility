@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.52.1 — 2026-06-27 — Route pages discoverable from home & footer
+
+Internal linking so the new `/rides` pages are reachable from the site (not only via Google),
+which also helps SEO.
+
+- **Home**: new "Popular routes" section (`Landing.tsx`) with cards to the top routes + a
+  "See all routes" link to `/rides`. Works on mobile (body content), unlike the desktop-only
+  header nav.
+- **Footer** (`WebShell.tsx`): added Book / Routes / top-route links and replaced the outdated
+  "Denver / Aurora, CO" with the full service area (Denver metro · DEN · Vail/Breck/Aspen).
+- i18n keys added (EN/ES): `home.routes.*`, `footer.area`, `nav.rides`.
+
 ## v0.52.0 — 2026-06-27 — SEO route landing pages for organic traffic
 
 Foundation for free, long-term organic traffic — built to avoid Google's "doorway page"

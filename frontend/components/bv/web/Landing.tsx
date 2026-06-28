@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
 import { useI18n } from "@/lib/i18n";
+import { SEO_ROUTES } from "@/lib/seoRoutes";
 import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
 
 function Feature({ icon, title, body }: { icon: string; title: string; body: string }) {
@@ -166,6 +168,79 @@ export function Landing() {
         <Feature icon="leaf" title={t("home.f1.t")} body={t("home.f1.d")} />
         <Feature icon="plane" title={t("home.f2.t")} body={t("home.f2.d")} />
         <Feature icon="dollar-sign" title={t("home.f3.t")} body={t("home.f3.d")} />
+      </section>
+
+      <section style={{ marginBottom: 56 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 16,
+          }}
+        >
+          <h2
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              fontSize: 26,
+              color: "var(--arctic)",
+              margin: 0,
+            }}
+          >
+            {t("home.routes.title")}
+          </h2>
+          <Link
+            href="/rides"
+            style={{ color: "var(--volt)", textDecoration: "none", fontSize: 14, fontWeight: 600 }}
+          >
+            {t("home.routes.all")} →
+          </Link>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {SEO_ROUTES.slice(0, 6).map((r) => (
+            <Link
+              key={r.slug}
+              href={`/rides/${r.slug}`}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+                padding: "14px 16px",
+                background: "var(--obsidian)",
+                border: "1px solid var(--line-strong)",
+                borderRadius: "var(--radius-lg)",
+                textDecoration: "none",
+              }}
+            >
+              <span style={{ display: "grid", gap: 2 }}>
+                <span
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: "var(--arctic)",
+                    fontFamily: "var(--font-display)",
+                  }}
+                >
+                  {r.shortLabel}
+                </span>
+                <span style={{ fontSize: 12.5, color: "var(--silver)" }}>
+                  {r.priceFrom != null ? `${t("home.routes.from")} $${r.priceFrom}` : t("home.routes.quote")}
+                </span>
+              </span>
+              <span style={{ color: "var(--volt)", fontWeight: 700 }}>→</span>
+            </Link>
+          ))}
+        </div>
       </section>
 
       <section
