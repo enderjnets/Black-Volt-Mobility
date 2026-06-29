@@ -94,6 +94,58 @@ async def _group_count(db, col, where, *, limit=10, label="value"):
     return [{"value": r[0], "count": r[1]} for r in (await db.execute(q)).all()]
 
 
+_STEP_KEY = {
+    "book_start": "starts",
+    "book_review": "reviewed",
+    "book_pay": "paid",
+    "book_confirmed": "confirmed",
+}
+
+
+async def _campaign_funnel(db, base, step_types: list[str]) -> list[dict]:
+    """Funnel by UTM campaign via session attribution: a session's campaign comes from its
+    session_start; funnel events are matched by shared session_id. Top campaigns by starts."""
+    ss_rows = (
+        await db.execute(
+            select(
+                AnalyticsEvent.session_id,
+                func.max(AnalyticsEvent.utm_campaign),
+                func.max(AnalyticsEvent.utm_source),
+            )
+            .where(*base, AnalyticsEvent.event_type == "session_start")
+            .group_by(AnalyticsEvent.session_id)
+        )
+    ).all()
+    sess_camp: dict[str, tuple[str, str]] = {}
+    for sid, camp, src in ss_rows:
+        if sid:
+            sess_camp[sid] = (camp or "(none)", src or "(none)")
+
+    fr_rows = (
+        await db.execute(
+            select(AnalyticsEvent.session_id, AnalyticsEvent.event_type)
+            .where(*base, AnalyticsEvent.event_type.in_(step_types))
+            .distinct()
+        )
+    ).all()
+
+    def _blank(camp: str, src: str) -> dict:
+        return {
+            "campaign": camp, "source": src, "sessions": 0,
+            "starts": 0, "reviewed": 0, "paid": 0, "confirmed": 0,
+        }
+
+    agg: dict[str, dict] = {}
+    for _sid, (camp, src) in sess_camp.items():
+        agg.setdefault(camp, _blank(camp, src))["sessions"] += 1
+    for sid, etype in fr_rows:
+        camp, src = sess_camp.get(sid, ("(none)", "(none)"))
+        agg.setdefault(camp, _blank(camp, src))[_STEP_KEY[etype]] += 1
+
+    rows = sorted(agg.values(), key=lambda r: (r["starts"], r["sessions"]), reverse=True)
+    return rows[:8]
+
+
 async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
     """Aggregate usage stats for the last `days` for the Insights dashboard."""
     cutoff = datetime.now(UTC) - timedelta(days=days)
@@ -167,18 +219,28 @@ async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
         for r in (await db.execute(tp_q)).all()
     ]
 
-    # Booking funnel + sign-ins (raw event counts). book_pay_failed surfaces where riders
-    # drop at the payment step (declined card / failed ride creation).
-    funnel_types = [
-        "book_start", "book_review", "book_pay", "book_confirmed", "sign_in", "book_pay_failed",
-    ]
-    fq = (
-        select(AnalyticsEvent.event_type, func.count())
-        .where(*base, AnalyticsEvent.event_type.in_(funnel_types))
+    # Booking funnel — counted by DISTINCT sessions reaching each step (conversion semantics,
+    # not raw clicks). sign_in / book_pay_failed stay as raw event counts (side metrics).
+    step_types = ["book_start", "book_review", "book_pay", "book_confirmed"]
+    sq = (
+        select(AnalyticsEvent.event_type, func.count(func.distinct(AnalyticsEvent.session_id)))
+        .where(*base, AnalyticsEvent.event_type.in_(step_types))
         .group_by(AnalyticsEvent.event_type)
     )
-    fcounts = {r[0]: r[1] for r in (await db.execute(fq)).all()}
-    funnel = {t: fcounts.get(t, 0) for t in funnel_types}
+    scounts = {r[0]: r[1] for r in (await db.execute(sq)).all()}
+    eq = (
+        select(AnalyticsEvent.event_type, func.count())
+        .where(*base, AnalyticsEvent.event_type.in_(["sign_in", "book_pay_failed"]))
+        .group_by(AnalyticsEvent.event_type)
+    )
+    ecounts = {r[0]: r[1] for r in (await db.execute(eq)).all()}
+    funnel = {t: scounts.get(t, 0) for t in step_types}
+    funnel["sign_in"] = ecounts.get("sign_in", 0)
+    funnel["book_pay_failed"] = ecounts.get("book_pay_failed", 0)
+
+    # Conversion by UTM campaign — session attribution (funnel events carry no utm; only
+    # session_start does, and they share session_id).
+    campaigns = await _campaign_funnel(db, base, step_types)
 
     # Breakdowns from session_start rows (one per session, full context).
     devices = await _group_count(db, AnalyticsEvent.device, ss)
@@ -211,6 +273,7 @@ async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
         "timeseries": timeseries,
         "top_pages": top_pages,
         "funnel": funnel,
+        "campaigns": campaigns,
         "devices": devices,
         "countries": countries,
         "referrers": referrers,

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.57.0 — 2026-06-29 — Insights: visual booking funnel + conversion by campaign
+
+- **Visual funnel** (`components/bv/dash/charts.tsx::FunnelChart`): the booking funnel is now
+  descending bars (started → reviewed → paid → confirmed) with % of start and a hover tooltip
+  (conversion vs previous step + drop-off).
+- **Conversion by UTM campaign**: `summary()` adds a `campaigns` block computed by **session
+  attribution** (funnel events carry no utm; only `session_start` does, joined by `session_id`).
+  Insights gets a campaign selector that re-scopes the funnel + a per-campaign conversion table
+  (starts → confirmed %). Funnel steps now count **distinct sessions** (real conversion), not
+  raw clicks (`sign_in`/`book_pay_failed` remain event counts).
+- No migration. New deterministic backend test for session-based funnel + campaign attribution.
+
+> Note (ops, not code): review-request emails send fine (Resend returns 200) but the sending
+> domain `send.blackvoltmobility.com` is **missing its SPF TXT record** (DKIM is present, DMARC
+> = quarantine), so Gmail routes them to Spam. Add the SPF (and bounce MX) record shown in the
+> Resend dashboard to land them in the inbox.
+
 ## v0.56.0 — 2026-06-29 — Insights: interactive charts + accurate time metrics
 
 - **Interactive charts** (`components/bv/dash/charts.tsx`, zero-dependency SVG): `TrendChart`

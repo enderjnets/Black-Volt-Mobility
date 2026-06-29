@@ -142,6 +142,81 @@ export function TrendChart({
   );
 }
 
+export type FunnelStep = { key: string; label: string; count: number };
+
+export function FunnelChart({ steps, ofLabel, dropLabel }: { steps: FunnelStep[]; ofLabel: string; dropLabel: string }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const start = steps[0]?.count || 0;
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {steps.map((s, i) => {
+        const pctStart = start > 0 ? Math.round((s.count / start) * 100) : 0;
+        const prev = i > 0 ? steps[i - 1].count : s.count;
+        const pctPrev = prev > 0 ? Math.round((s.count / prev) * 100) : 0;
+        const drop = i > 0 ? prev - s.count : 0;
+        const width = Math.max(6, pctStart); // % bar width, min visible
+        const on = hover === i;
+        return (
+          <div
+            key={s.key}
+            onMouseEnter={() => setHover(i)}
+            onMouseLeave={() => setHover(null)}
+            style={{ position: "relative" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+              <span style={{ color: "var(--silver)" }}>{s.label}</span>
+              <span style={{ color: "var(--arctic)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                {s.count}
+                <span style={{ color: "var(--fg3)", fontWeight: 400, marginLeft: 8 }}>{pctStart}%</span>
+              </span>
+            </div>
+            <div style={{ height: 26, background: "var(--obsidian-3)", borderRadius: 6, overflow: "hidden" }}>
+              <div
+                style={{
+                  width: `${width}%`,
+                  height: "100%",
+                  background: on
+                    ? "var(--volt)"
+                    : "linear-gradient(90deg, var(--volt) 0%, rgba(0,229,255,0.55) 100%)",
+                  borderRadius: 6,
+                  transition: "filter .12s",
+                  filter: on ? "brightness(1.1)" : "none",
+                }}
+              />
+            </div>
+            {on && i > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: -2,
+                  transform: "translateY(-100%)",
+                  background: "var(--obsidian-2)",
+                  border: "1px solid var(--line-strong)",
+                  borderRadius: 8,
+                  padding: "6px 9px",
+                  fontSize: 12,
+                  whiteSpace: "nowrap",
+                  boxShadow: "var(--shadow-pop)",
+                  zIndex: 5,
+                }}
+              >
+                <span style={{ color: "var(--volt)" }}>{pctPrev}%</span>{" "}
+                <span style={{ color: "var(--fg3)" }}>{ofLabel}</span>
+                {drop > 0 && (
+                  <span style={{ color: "var(--fg3)" }}>
+                    {" "}· {drop} {dropLabel}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const DONUT_COLORS = ["var(--volt)", "#7c5cff", "#34d399", "#f59e0b", "#f472b6", "#60a5fa"];
 
 function arc(cx: number, cy: number, r: number, a0: number, a1: number): string {

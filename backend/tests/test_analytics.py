@@ -179,3 +179,65 @@ def test_summary_excludes_staff_and_dashboard():
     paths = [p["path"] for p in s["top_pages"]]
     assert paths == ["/book"]
     assert all(not p.startswith("/dashboard") for p in paths)
+
+
+# ── funnel-by-session + campaign attribution (deterministic, isolated tenant) ──
+
+
+async def _seed_campaign_tenant() -> int:
+    eng = create_async_engine(os.environ["DATABASE_URL"])
+    sf = async_sessionmaker(eng, expire_on_commit=False)
+    try:
+        async with sf() as db:
+            slug = "analytics-campaign-test"
+            t = (await db.execute(select(Tenant).where(Tenant.slug == slug))).scalar_one_or_none()
+            if t is None:
+                t = Tenant(slug=slug, name="Analytics Campaign")
+                db.add(t)
+                await db.commit()
+                await db.refresh(t)
+            await db.execute(delete(AnalyticsEvent).where(AnalyticsEvent.tenant_id == t.id))
+
+            def ss(sid: str, camp: str | None) -> AnalyticsEvent:
+                return AnalyticsEvent(
+                    tenant_id=t.id, event_type="session_start", path="/", role="anon",
+                    visitor_id=sid, session_id=sid, utm_campaign=camp,
+                    utm_source="site" if camp else None,
+                )
+
+            def fn(sid: str, etype: str) -> AnalyticsEvent:
+                return AnalyticsEvent(
+                    tenant_id=t.id, event_type=etype, path="/book", role="anon",
+                    visitor_id=sid, session_id=sid,
+                )
+
+            db.add_all(
+                [
+                    ss("s1", "alpha"), ss("s2", "alpha"), ss("s3", "beta"), ss("s4", None),
+                    fn("s1", "book_start"), fn("s1", "book_confirmed"),
+                    fn("s2", "book_start"),
+                    fn("s3", "book_start"),
+                    fn("s4", "book_start"),
+                ]
+            )
+            await db.commit()
+            return t.id
+    finally:
+        await eng.dispose()
+
+
+def test_funnel_by_session_and_campaign_attribution():
+    tid = _run(_seed_campaign_tenant())
+    s = _run(_summary_for(tid))
+    # global funnel = distinct sessions per step
+    assert s["funnel"]["book_start"] == 4
+    assert s["funnel"]["book_confirmed"] == 1
+    # campaigns attributed by session
+    by = {c["campaign"]: c for c in s["campaigns"]}
+    assert by["alpha"]["starts"] == 2
+    assert by["alpha"]["confirmed"] == 1
+    assert by["alpha"]["sessions"] == 2
+    assert by["beta"]["starts"] == 1 and by["beta"]["confirmed"] == 0
+    assert by["(none)"]["starts"] == 1
+    # ordered by starts desc → alpha first
+    assert s["campaigns"][0]["campaign"] == "alpha"

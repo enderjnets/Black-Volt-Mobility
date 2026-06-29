@@ -140,12 +140,22 @@ export interface CountRow {
   value: string;
   count: number;
 }
+export interface CampaignRow {
+  campaign: string;
+  source: string;
+  sessions: number;
+  starts: number;
+  reviewed: number;
+  paid: number;
+  confirmed: number;
+}
 export interface AnalyticsSummary {
   days: number;
   totals: { visitors: number; sessions: number; pageviews: number; avg_session_ms: number };
   timeseries: { day: string; pageviews: number; visitors: number }[];
   top_pages: { path: string; views: number; avg_ms: number }[];
   funnel: Record<string, number>;
+  campaigns: CampaignRow[];
   devices: CountRow[];
   countries: CountRow[];
   referrers: CountRow[];

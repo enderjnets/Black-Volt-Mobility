@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.56.0";
+export const CURRENT_VERSION = "0.57.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.57.0",
+    date: "2026-06-29",
+    title: "Insights: visual booking funnel + conversion by campaign",
+    changes: [
+      "The booking funnel is now an interactive visual chart (started → reviewed → paid → confirmed) — hover any step to see its conversion and drop-off.",
+      "New campaign selector + table: see conversion (starts → confirmed) per UTM campaign, attributed by session. Pick a campaign to view its own funnel.",
+      "Funnel now counts distinct sessions (real conversion) instead of raw clicks.",
+    ],
+  },
   {
     version: "0.56.0",
     date: "2026-06-29",

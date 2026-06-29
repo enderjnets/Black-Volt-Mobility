@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
-import { Donut, TrendChart } from "./charts";
+import { Donut, FunnelChart, TrendChart } from "./charts";
 import { useI18n } from "@/lib/i18n";
 import { type AnalyticsSummary, type CountRow, getAnalyticsSummary } from "@/lib/analytics";
 
@@ -111,6 +111,7 @@ export function Insights() {
   const [data, setData] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
+  const [campaign, setCampaign] = useState("__all__");
 
   useEffect(() => {
     let alive = true;
@@ -128,12 +129,19 @@ export function Insights() {
   const tt = data?.totals;
   const f = data?.funnel || {};
   const funnelSteps = [
-    { key: "book_start", label: t("dash.insights.f.start") },
-    { key: "book_review", label: t("dash.insights.f.review") },
-    { key: "book_pay", label: t("dash.insights.f.pay") },
-    { key: "book_confirmed", label: t("dash.insights.f.confirmed") },
-  ];
-  const fStart = f["book_start"] || 0;
+    { key: "book_start", camp: "starts", label: t("dash.insights.f.start") },
+    { key: "book_review", camp: "reviewed", label: t("dash.insights.f.review") },
+    { key: "book_pay", camp: "paid", label: t("dash.insights.f.pay") },
+    { key: "book_confirmed", camp: "confirmed", label: t("dash.insights.f.confirmed") },
+  ] as const;
+  const campaigns = data?.campaigns || [];
+  const selCamp = campaigns.find((c) => c.campaign === campaign);
+  // Funnel steps for the selected scope (all = global funnel; else the campaign row).
+  const chartSteps = funnelSteps.map((s) => ({
+    key: s.key,
+    label: s.label,
+    count: selCamp ? (selCamp[s.camp] as number) : f[s.key] || 0,
+  }));
 
   return (
     <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 22 }}>
@@ -185,32 +193,90 @@ export function Insights() {
 
           <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
             <Panel title={t("dash.insights.funnel")}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {funnelSteps.map((s) => {
-                  const v = f[s.key] || 0;
-                  const pct = fStart ? Math.round((v / fStart) * 100) : 0;
-                  return (
-                    <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <Icon name="circle-dot" size={13} color="var(--volt)" />
-                      <span style={{ fontSize: 13, color: "var(--silver)", flex: 1 }}>{s.label}</span>
-                      <div style={{ width: 110, height: 8, borderRadius: 99, background: "var(--obsidian-3)", overflow: "hidden" }}>
-                        <div style={{ width: `${pct}%`, height: "100%", background: "var(--volt)", borderRadius: 99 }} />
-                      </div>
-                      <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, color: "var(--arctic)", width: 30, textAlign: "right" }}>{v}</span>
-                    </div>
-                  );
-                })}
-                <div style={{ borderTop: "1px solid var(--line)", marginTop: 4, paddingTop: 10, fontSize: 12.5, color: "var(--fg3)", display: "flex", alignItems: "center", gap: 6 }}>
-                  <Icon name="message-circle" size={13} color="var(--success)" />
-                  {t("dash.insights.signins", { n: f["sign_in"] || 0 })}
-                </div>
-                {(f["book_pay_failed"] || 0) > 0 && (
-                  <div style={{ fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
-                    <Icon name="alert-circle" size={13} color="var(--danger)" />
-                    {t("dash.insights.payfailed", { n: f["book_pay_failed"] || 0 })}
-                  </div>
-                )}
+              {campaigns.length > 0 && (
+                <select
+                  value={campaign}
+                  onChange={(e) => setCampaign(e.target.value)}
+                  style={{
+                    width: "100%",
+                    marginBottom: 14,
+                    padding: "8px 10px",
+                    fontSize: 13,
+                    color: "var(--arctic)",
+                    background: "var(--obsidian-3)",
+                    border: "1px solid var(--line)",
+                    borderRadius: "var(--radius-md)",
+                  }}
+                >
+                  <option value="__all__">{t("dash.insights.campaign.all")}</option>
+                  {campaigns.map((c) => (
+                    <option key={c.campaign} value={c.campaign}>
+                      {c.campaign === "(none)" ? t("dash.insights.campaign.none") : c.campaign} · {c.starts}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <FunnelChart
+                steps={chartSteps}
+                ofLabel={t("dash.insights.funnel.ofPrev")}
+                dropLabel={t("dash.insights.funnel.dropoff")}
+              />
+
+              <div style={{ borderTop: "1px solid var(--line)", marginTop: 12, paddingTop: 10, fontSize: 12.5, color: "var(--fg3)", display: "flex", alignItems: "center", gap: 6 }}>
+                <Icon name="message-circle" size={13} color="var(--success)" />
+                {t("dash.insights.signins", { n: f["sign_in"] || 0 })}
               </div>
+              {(f["book_pay_failed"] || 0) > 0 && (
+                <div style={{ fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                  <Icon name="alert-circle" size={13} color="var(--danger)" />
+                  {t("dash.insights.payfailed", { n: f["book_pay_failed"] || 0 })}
+                </div>
+              )}
+
+              {campaigns.length > 0 && (
+                <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+                  <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>
+                    {t("dash.insights.campaign.title")}
+                  </div>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    {campaigns.map((c) => {
+                      const conv = c.starts > 0 ? Math.round((c.confirmed / c.starts) * 100) : 0;
+                      const on = campaign === c.campaign;
+                      return (
+                        <button
+                          key={c.campaign}
+                          onClick={() => setCampaign(on ? "__all__" : c.campaign)}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr auto auto",
+                            gap: 10,
+                            alignItems: "center",
+                            fontSize: 12.5,
+                            textAlign: "left",
+                            padding: "7px 8px",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            border: `1px solid ${on ? "var(--volt-border)" : "transparent"}`,
+                            background: on ? "var(--volt-bg)" : "transparent",
+                            color: "var(--silver)",
+                          }}
+                        >
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {c.campaign === "(none)" ? t("dash.insights.campaign.none") : c.campaign}
+                          </span>
+                          <span style={{ color: "var(--fg3)", fontVariantNumeric: "tabular-nums" }}>
+                            {c.starts}→{c.confirmed}
+                          </span>
+                          <span style={{ color: "var(--volt)", fontWeight: 600, width: 42, textAlign: "right" }}>
+                            {conv}%
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </Panel>
 
             <Panel title={t("dash.insights.topPages")}>
