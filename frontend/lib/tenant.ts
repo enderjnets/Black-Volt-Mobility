@@ -32,6 +32,8 @@ export interface TenantSettings {
   brand_color: string | null;
   rating: number | null;
   since_year: number | null;
+  review_reminders_enabled: boolean;
+  review_reminder_hours: number;
   logo_url: string | null;
   photo_url: string | null;
   payments: PaymentsStatus;
@@ -70,6 +72,8 @@ export type TenantSettingsInput = {
   brand_color?: string | null;
   rating?: number | null;
   since_year?: number | null;
+  review_reminders_enabled?: boolean;
+  review_reminder_hours?: number;
 };
 
 async function jget<T>(path: string): Promise<T> {

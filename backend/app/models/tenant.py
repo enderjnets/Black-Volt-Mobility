@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -32,4 +32,12 @@ class Tenant(Base):
     # Public-profile vanity stats the owner sets (rides are computed live).
     rating: Mapped[float | None] = mapped_column(Float, nullable=True)
     since_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Auto review-request reminder: email a rider this many hours after a ride completes.
+    # Off by default — the owner opts in from Settings (avoids auto-emailing without consent).
+    review_reminders_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    review_reminder_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="3"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

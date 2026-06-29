@@ -145,6 +145,8 @@ TENANT_EDITABLE_FIELDS = (
     "brand_color",
     "rating",
     "since_year",
+    "review_reminders_enabled",
+    "review_reminder_hours",
 )
 
 
@@ -192,6 +194,8 @@ async def tenant_settings(db: AsyncSession, *, tenant_id: int) -> dict | None:
         "brand_color": t.brand_color,
         "rating": t.rating,
         "since_year": t.since_year,
+        "review_reminders_enabled": t.review_reminders_enabled,
+        "review_reminder_hours": t.review_reminder_hours,
         "logo_url": media_url(t.logo_path),
         "photo_url": media_url(t.photo_path),
         # Read-only status of integrations (configured env-level for the MVP).

@@ -7,7 +7,7 @@
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
-import { Button, Field, Pill } from "../ui";
+import { Button, Field, Pill, Toggle } from "../ui";
 import { ShareLink } from "./ShareLink";
 import {
   type CalendarConnection,
@@ -38,6 +38,8 @@ type Form = {
   brand_color: string;
   rating: string;
   since_year: string;
+  review_reminders_enabled: boolean;
+  review_reminder_hours: string;
 };
 
 function toForm(d: TenantSettings): Form {
@@ -53,6 +55,8 @@ function toForm(d: TenantSettings): Form {
     brand_color: d.brand_color || "#00E5FF",
     rating: d.rating != null ? String(d.rating) : "",
     since_year: d.since_year != null ? String(d.since_year) : "",
+    review_reminders_enabled: d.review_reminders_enabled ?? true,
+    review_reminder_hours: d.review_reminder_hours != null ? String(d.review_reminder_hours) : "3",
   };
 }
 
@@ -91,6 +95,7 @@ export function Settings() {
     try {
       const ratingNum = form.rating.trim() === "" ? null : Number(form.rating);
       const yearNum = form.since_year.trim() === "" ? null : Number(form.since_year);
+      const hoursNum = Math.min(72, Math.max(1, Number(form.review_reminder_hours) || 3));
       const d = await updateTenantSettings({
         name: form.name.trim(),
         tagline: form.tagline.trim() || null,
@@ -103,6 +108,8 @@ export function Settings() {
         brand_color: form.brand_color || null,
         rating: ratingNum != null && !Number.isNaN(ratingNum) ? ratingNum : null,
         since_year: yearNum != null && !Number.isNaN(yearNum) ? yearNum : null,
+        review_reminders_enabled: form.review_reminders_enabled,
+        review_reminder_hours: hoursNum,
       });
       setData(d);
       setForm(toForm(d));
@@ -170,6 +177,32 @@ export function Settings() {
             <Field icon="star" type="number" label={t("dash.settings.rating")} value={form.rating} onChange={(v) => set("rating", v)} placeholder="4.98" />
             <Field icon="clock" type="number" label={t("dash.settings.sinceYear")} value={form.since_year} onChange={(v) => set("since_year", v)} placeholder="2021" />
           </div>
+        </Section>
+
+        <Section title={t("dash.settings.reviewsSection")} icon="star">
+          <label
+            style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "var(--arctic)" }}
+          >
+            <Toggle
+              on={form.review_reminders_enabled}
+              setOn={(v) => setForm((f) => (f ? { ...f, review_reminders_enabled: v } : f))}
+            />
+            {t("dash.settings.reviewReminders")}
+          </label>
+          <p style={{ fontSize: 13, color: "var(--silver)", margin: "8px 0 0", lineHeight: 1.5 }}>
+            {t("dash.settings.reviewRemindersHint")}
+          </p>
+          {form.review_reminders_enabled && (
+            <div style={{ marginTop: 12, maxWidth: 240 }}>
+              <Field
+                icon="clock"
+                type="number"
+                label={t("dash.settings.reviewHours")}
+                value={form.review_reminder_hours}
+                onChange={(v) => set("review_reminder_hours", v)}
+              />
+            </div>
+          )}
         </Section>
 
         <Section title={t("dash.settings.brandSection")} icon="wand">

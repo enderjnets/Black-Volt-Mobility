@@ -46,6 +46,20 @@ async def _daily_generate_job() -> None:
         logger.warning("daily_generate job failed: %s", e)
 
 
+async def _review_reminders_job() -> None:
+    """Email a review request to riders whose ride completed ~N hours ago (per tenant)."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import reviews
+
+        async with get_session_factory()() as db:
+            n = await reviews.send_due_reminders(db)
+            if n:
+                logger.info("review reminders sent: %d", n)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("review_reminders job failed: %s", e)
+
+
 def start() -> None:
     """Start the scheduler. Best-effort: a missing APScheduler or any startup
     error degrades to 'no background publishing' rather than breaking the app."""
@@ -70,6 +84,11 @@ def start() -> None:
             _daily_generate_job,
             CronTrigger(hour=9, minute=0, timezone="America/Denver"),
             id="social_daily_generate", max_instances=1, coalesce=True,
+        )
+        # Auto review-request reminders: email riders ~N hours after their ride completes.
+        sched.add_job(
+            _review_reminders_job, "interval", minutes=15, id="review_reminders",
+            max_instances=1, coalesce=True,
         )
         sched.start()
         _scheduler = sched

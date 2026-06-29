@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import Client, Review, ReviewInvite, ReviewStatus, Ride, RideStatus
+from app.models import Client, Review, ReviewInvite, ReviewStatus, Ride, RideStatus, Tenant
 
 
 class ReviewError(Exception):
@@ -300,3 +300,79 @@ def sms_href(inv: ReviewInvite, lang: str = "en") -> str:
     body = urllib.parse.quote(invite_message(inv, lang))
     phone = (inv.to_phone or "").strip()
     return f"sms:{phone}?&body={body}" if phone else f"sms:?&body={body}"
+
+
+# ─── automatic post-ride reminder (scheduler) ────────────────────────────────
+
+
+async def send_due_reminders(db: AsyncSession) -> int:
+    """Email a review request to riders whose ride completed ~N hours ago.
+
+    Per-tenant enable + hours; a global kill-switch lives in settings. Dedup via any
+    existing ReviewInvite/Review for the ride (so manual requests, repeats, and already-
+    reviewed rides are skipped). Uses `updated_at` as the completion proxy (rides have no
+    completed_at) within a bounded lookback window, so enabling never blasts old rides.
+    Email only — the SMS path is a manual deep link from the owner's phone. Returns count.
+    """
+    s = get_settings()
+    if not s.REVIEW_REMINDERS_ENABLED:
+        return 0
+    from app.services import email  # lazy import to avoid a cycle
+
+    now = _now()
+    sent = 0
+    tenants = (
+        await db.execute(select(Tenant).where(Tenant.review_reminders_enabled.is_(True)))
+    ).scalars().all()
+    for tnt in tenants:
+        hours = tnt.review_reminder_hours or s.REVIEW_REMINDER_HOURS_DEFAULT
+        due_before = now - dt.timedelta(hours=hours)
+        window_start = due_before - dt.timedelta(hours=s.REVIEW_REMINDER_LOOKBACK_HOURS)
+        rides = (
+            await db.execute(
+                select(Ride)
+                .where(
+                    Ride.tenant_id == tnt.id,
+                    Ride.status == RideStatus.COMPLETED,
+                    Ride.client_id.is_not(None),
+                    Ride.updated_at <= due_before,
+                    Ride.updated_at >= window_start,
+                )
+                .order_by(Ride.id.desc())
+                .limit(50)
+            )
+        ).scalars().all()
+        for ride in rides:
+            invited = (
+                await db.execute(
+                    select(ReviewInvite.id).where(ReviewInvite.ride_id == ride.id).limit(1)
+                )
+            ).first()
+            if invited:
+                continue
+            reviewed = (
+                await db.execute(select(Review.id).where(Review.ride_id == ride.id).limit(1))
+            ).first()
+            if reviewed:
+                continue
+            client = await db.get(Client, ride.client_id)
+            if client is None or not client.email:
+                continue
+            name = (client.name or client.first_name or "").strip() or None
+            inv = await create_invite(
+                db,
+                tenant_id=tnt.id,
+                ride_id=ride.id,
+                client_id=ride.client_id,
+                to_email=client.email,
+                author_name=name,
+            )
+            lang = "es" if str(getattr(ride, "lang", "") or "").lower().startswith("es") else "en"
+            try:
+                await email.send_review_request(
+                    to=client.email, author_name=name, link=invite_link(inv), lang=lang
+                )
+            except Exception:  # noqa: BLE001 — one bad send must not stop the batch
+                pass
+            sent += 1
+    return sent

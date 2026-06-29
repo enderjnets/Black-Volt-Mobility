@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.55.0 — 2026-06-28 — Automatic review requests after each ride
+
+Closes the reviews loop: completed rides now trigger an automatic review-request email.
+
+- **Scheduler** (`services/scheduler.py`): a 15-min interval job calls
+  `reviews.send_due_reminders`, which emails a review request to riders whose ride completed
+  ~N hours ago. Per-tenant enable + hours (`tenants.review_reminders_enabled` /
+  `review_reminder_hours`, migration `0034`, **off by default / 3h** — opt in from Settings);
+  global kill-switch + `REVIEW_REMINDER_LOOKBACK_HOURS` in config so enabling never blasts
+  old rides.
+- Dedup via any existing `ReviewInvite`/`Review` for the ride (manual requests and repeats are
+  skipped); uses `updated_at` as the completion proxy within a bounded window; **email only**
+  (the SMS path stays a manual deep link). The created invite makes the resulting review
+  VERIFIED. Owner controls it from **Settings → Auto review requests** (toggle + hours).
+- Verified: 4 new backend tests (due once, dedup, too-recent skip, no-email skip, tenant
+  off-toggle) + full suite green, ruff clean, no new migration drift; scheduler registers the
+  job cleanly; settings endpoint round-trips the flags.
+
 ## v0.54.0 — 2026-06-28 — Customer reviews: collect, moderate & request
 
 A full first-party reviews system (replaces the empty testimonials placeholder).

@@ -961,6 +961,11 @@ const EN: Record<string, string> = {
   "dash.settings.rating": "Rating",
   "dash.settings.ratingHint": "0–5, shown on your profile.",
   "dash.settings.sinceYear": "Driving since",
+  "dash.settings.reviewsSection": "Auto review requests",
+  "dash.settings.reviewReminders": "Email a review request after each ride",
+  "dash.settings.reviewRemindersHint":
+    "We automatically email past riders a few hours after their ride, inviting them to leave a review. Only rides with an email on file are contacted.",
+  "dash.settings.reviewHours": "Hours after the ride",
   "dash.settings.sinceYearHint": "The year you started — powers “years on the road”.",
   "dash.settings.accent": "Brand accent",
   "dash.settings.accentHint": "Drives your public profile & QR card.",
@@ -1955,6 +1960,11 @@ const ES: Record<string, string> = {
   "dash.settings.rating": "Calificación",
   "dash.settings.ratingHint": "0–5, se muestra en tu perfil.",
   "dash.settings.sinceYear": "Manejando desde",
+  "dash.settings.reviewsSection": "Solicitud automática de reseñas",
+  "dash.settings.reviewReminders": "Enviar por correo una solicitud de reseña tras cada viaje",
+  "dash.settings.reviewRemindersHint":
+    "Enviamos un correo a los pasajeros unas horas después de su viaje invitándolos a dejar una reseña. Solo se contacta a viajes con correo registrado.",
+  "dash.settings.reviewHours": "Horas después del viaje",
   "dash.settings.sinceYearHint": "El año en que empezaste — alimenta “años en la ruta”.",
   "dash.settings.accent": "Acento de marca",
   "dash.settings.accentHint": "Define tu perfil público y tarjeta QR.",

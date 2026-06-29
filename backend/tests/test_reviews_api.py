@@ -22,8 +22,17 @@ from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
 from app.main import app  # noqa: E402
-from app.models import Review, ReviewStatus, Ride, RideStatus, Tenant  # noqa: E402
+from app.models import (  # noqa: E402
+    Client,
+    Review,
+    ReviewInvite,
+    ReviewStatus,
+    Ride,
+    RideStatus,
+    Tenant,
+)
 from app.services import auth as authsvc  # noqa: E402
+from app.services import reviews as reviews_svc  # noqa: E402
 from app.services.tenancy import get_default_tenant  # noqa: E402
 
 
@@ -284,6 +293,134 @@ def test_candidates_lists_completed_ride():
     ride_id = _run(_seed_completed_ride(tenant_id=tid))
     cands = owner.get("/api/v1/reviews/admin/candidates").json()
     assert any(c["ride_id"] == ride_id for c in cands)
+
+
+# ─── automatic post-ride reminders ───────────────────────────────────────────
+
+
+async def _seed_client(*, tenant_id: int, email: str | None) -> int:
+    eng = create_async_engine(os.environ["DATABASE_URL"])
+    sf = async_sessionmaker(eng, expire_on_commit=False)
+    try:
+        async with sf() as db:
+            c = Client(tenant_id=tenant_id, email=email, name="Rider One", ride_preferences={})
+            db.add(c)
+            await db.commit()
+            await db.refresh(c)
+            return c.id
+    finally:
+        await eng.dispose()
+
+
+async def _seed_completed_ride_aged(*, tenant_id: int, client_id: int, hours_ago: float) -> int:
+    """Insert a COMPLETED ride whose updated_at (the completion proxy) is in the past.
+    The timestamp goes in the constructor so the INSERT keeps it (no later UPDATE)."""
+    eng = create_async_engine(os.environ["DATABASE_URL"])
+    sf = async_sessionmaker(eng, expire_on_commit=False)
+    try:
+        async with sf() as db:
+            past = dt.datetime.now(dt.UTC) - dt.timedelta(hours=hours_ago)
+            ride = Ride(
+                tenant_id=tenant_id,
+                client_id=client_id,
+                status=RideStatus.COMPLETED,
+                pickup_text="Aurora, CO",
+                dropoff_text="Denver Intl (DEN)",
+                fare_total=110.0,
+                duration_minutes=22.0,
+                scheduled_at=past,
+                updated_at=past,
+            )
+            db.add(ride)
+            await db.commit()
+            await db.refresh(ride)
+            return ride.id
+    finally:
+        await eng.dispose()
+
+
+async def _run_reminders() -> int:
+    eng = create_async_engine(os.environ["DATABASE_URL"])
+    sf = async_sessionmaker(eng, expire_on_commit=False)
+    try:
+        async with sf() as db:
+            return await reviews_svc.send_due_reminders(db)
+    finally:
+        await eng.dispose()
+
+
+async def _invites_for_ride(ride_id: int) -> int:
+    eng = create_async_engine(os.environ["DATABASE_URL"])
+    sf = async_sessionmaker(eng, expire_on_commit=False)
+    try:
+        async with sf() as db:
+            rows = (
+                await db.execute(select(ReviewInvite.id).where(ReviewInvite.ride_id == ride_id))
+            ).all()
+            return len(rows)
+    finally:
+        await eng.dispose()
+
+
+async def _set_tenant_reminders(tenant_id: int, *, enabled: bool, hours: int = 3) -> None:
+    eng = create_async_engine(os.environ["DATABASE_URL"])
+    sf = async_sessionmaker(eng, expire_on_commit=False)
+    try:
+        async with sf() as db:
+            t = await db.get(Tenant, tenant_id)
+            t.review_reminders_enabled = enabled
+            t.review_reminder_hours = hours
+            await db.commit()
+    finally:
+        await eng.dispose()
+
+
+def test_reminder_emails_due_ride_once():
+    tid = _run(_default_tenant_id())
+    _run(_set_tenant_reminders(tid, enabled=True, hours=3))
+    cid = _run(_seed_client(tenant_id=tid, email="due-rider@example.com"))
+    ride_id = _run(_seed_completed_ride_aged(tenant_id=tid, client_id=cid, hours_ago=4))
+
+    _run(_run_reminders())
+    assert _run(_invites_for_ride(ride_id)) == 1  # one request created (+ email simulated)
+
+    # dedup: running again does not create a second invite
+    _run(_run_reminders())
+    assert _run(_invites_for_ride(ride_id)) == 1
+
+
+def test_reminder_skips_recent_ride():
+    tid = _run(_default_tenant_id())
+    _run(_set_tenant_reminders(tid, enabled=True, hours=3))
+    cid = _run(_seed_client(tenant_id=tid, email="recent-rider@example.com"))
+    ride_id = _run(_seed_completed_ride_aged(tenant_id=tid, client_id=cid, hours_ago=1))
+    _run(_run_reminders())
+    assert _run(_invites_for_ride(ride_id)) == 0  # too recent (< 3h)
+
+
+def test_reminder_skips_ride_without_email():
+    tid = _run(_default_tenant_id())
+    _run(_set_tenant_reminders(tid, enabled=True, hours=3))
+    cid = _run(_seed_client(tenant_id=tid, email=None))
+    ride_id = _run(_seed_completed_ride_aged(tenant_id=tid, client_id=cid, hours_ago=5))
+    _run(_run_reminders())
+    assert _run(_invites_for_ride(ride_id)) == 0  # no email → no reminder
+
+
+def test_reminder_respects_tenant_off_toggle():
+    tid = _run(_default_tenant_id())
+    cid = _run(_seed_client(tenant_id=tid, email="toggle-rider@example.com"))
+    ride_id = _run(_seed_completed_ride_aged(tenant_id=tid, client_id=cid, hours_ago=5))
+    try:
+        _run(_set_tenant_reminders(tid, enabled=False, hours=3))
+        _run(_run_reminders())
+        assert _run(_invites_for_ride(ride_id)) == 0  # disabled → nothing
+        # turning it back on now reminds
+        _run(_set_tenant_reminders(tid, enabled=True, hours=3))
+        _run(_run_reminders())
+        assert _run(_invites_for_ride(ride_id)) == 1
+    finally:
+        _run(_set_tenant_reminders(tid, enabled=True, hours=3))
 
 
 def test_public_list_is_tenant_scoped():

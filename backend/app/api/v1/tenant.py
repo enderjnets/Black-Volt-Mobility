@@ -43,6 +43,8 @@ class TenantSettingsBody(BaseModel):
     brand_color: str | None = Field(default=None, max_length=9)
     rating: float | None = Field(default=None, ge=0, le=5)
     since_year: int | None = Field(default=None, ge=1950, le=2100)
+    review_reminders_enabled: bool | None = None
+    review_reminder_hours: int | None = Field(default=None, ge=1, le=72)
 
     @field_validator(
         "tagline", "bio", "instagram", "website", "vehicle", "city", "phone", mode="before"

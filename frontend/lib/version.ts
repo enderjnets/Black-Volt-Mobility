@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.54.0";
+export const CURRENT_VERSION = "0.55.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.55.0",
+    date: "2026-06-28",
+    title: "Automatic review requests after each ride",
+    changes: [
+      "Black Volt can automatically email past riders a few hours after their ride, inviting them to leave a review — no manual step needed.",
+      "Off by default: turn it on in Settings → Auto review requests and choose how many hours after the ride to send (default 3).",
+    ],
+  },
   {
     version: "0.54.0",
     date: "2026-06-28",

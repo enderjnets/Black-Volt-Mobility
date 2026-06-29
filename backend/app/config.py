@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     # as a lead. No effect in open mode (AUTH_ENABLED=false).
     REQUIRE_AUTH_TO_QUOTE: bool = False
 
+    # Auto review-request reminder. Global kill-switch; per-tenant enable + hours live on
+    # the tenant row. LOOKBACK bounds how far back the scheduler will reach so enabling the
+    # feature never blasts old completed rides — only rides finished within this window.
+    REVIEW_REMINDERS_ENABLED: bool = True
+    REVIEW_REMINDER_HOURS_DEFAULT: int = 3
+    REVIEW_REMINDER_LOOKBACK_HOURS: int = 48
+
     # Canonical public origin used to build shareable driver links / QR codes.
     PUBLIC_BASE_URL: str = "https://app.blackvoltmobility.com"
 
