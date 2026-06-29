@@ -130,6 +130,7 @@ export function WebShell({ children }: { children: ReactNode }) {
     <Ctx.Provider value={ctx}>
       <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--void)" }}>
         <header
+          className="bv-web-header"
           style={{
             position: "sticky",
             top: 0,
@@ -171,8 +172,13 @@ export function WebShell({ children }: { children: ReactNode }) {
             })}
           </nav>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <LanguageSwitcher />
-            <VersionButton />
+            <span
+              className="bv-web-actions-extra"
+              style={{ display: "flex", alignItems: "center", gap: 14 }}
+            >
+              <LanguageSwitcher />
+              <VersionButton />
+            </span>
             {user ? (
               <div style={{ position: "relative" }}>
                 <button
@@ -262,9 +268,11 @@ export function WebShell({ children }: { children: ReactNode }) {
                 )}
               </div>
             ) : (
-              <Button variant="ghost" size="sm" onClick={() => openSignIn()}>
-                {t("auth.signin")}
-              </Button>
+              <span className="bv-web-actions-extra">
+                <Button variant="ghost" size="sm" onClick={() => openSignIn()}>
+                  {t("auth.signin")}
+                </Button>
+              </span>
             )}
             <Button variant="solid" size="sm" icon="zap" onClick={() => router.push("/book")}>
               {t("home.cta.book")}

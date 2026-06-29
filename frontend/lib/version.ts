@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.52.1";
+export const CURRENT_VERSION = "0.53.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.53.0",
+    date: "2026-06-28",
+    title: "Route pages: premium hero, real route map & trust signals",
+    changes: [
+      "Each route page now opens with a luxury-vehicle hero image and shows a real, brand-styled map of the actual drive — so visitors instantly see the route and the experience.",
+      "Added a trust strip (owner-driven, fully insured, 100% electric, flat upfront pricing, flight-aware, private) to build confidence before booking.",
+    ],
+  },
   {
     version: "0.52.1",
     date: "2026-06-27",

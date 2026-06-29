@@ -43,6 +43,11 @@ export interface SeoRoute {
   faq: FaqItem[];
   /** related slugs for internal linking */
   related: string[];
+  /** hero photo override (defaults by route category in routeHero) */
+  heroImage?: string;
+  heroAlt?: string;
+  /** real customer testimonials — only rendered when present (never placeholders) */
+  testimonials?: { quote: string; author: string }[];
 }
 
 export const SEO_ROUTES: SeoRoute[] = [
@@ -372,4 +377,19 @@ export function bookHref(route: SeoRoute): string {
     utm_campaign: route.slug,
   });
   return `/book?${p.toString()}`;
+}
+
+/** Hero photo for a route — explicit override, else a sensible default by category. */
+export function routeHero(route: SeoRoute): { src: string; alt: string } {
+  if (route.heroImage) return { src: route.heroImage, alt: route.heroAlt ?? route.h1 };
+  const outdoors = /vail|breckenridge|aspen|red-rocks/.test(route.slug);
+  const src = outdoors ? "/assets/ev9-coors-field.jpg" : "/assets/ev9-charging.jpg";
+  const alt =
+    route.heroAlt ?? `Black Volt Mobility luxury electric SUV — ${route.shortLabel}`;
+  return { src, alt };
+}
+
+/** Committed static route map (real OpenStreetMap basemap, brand-dark, with the route line). */
+export function routeMap(route: SeoRoute): string {
+  return `/assets/maps/${route.slug}.webp`;
 }

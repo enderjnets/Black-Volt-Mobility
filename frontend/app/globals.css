@@ -129,6 +129,17 @@ body {
   .bv-web-nav {
     display: none !important;
   }
+  /* trim the header on mobile so the actions never overflow the viewport:
+     language switcher, version pill and Sign in are reachable via the tab bar /
+     account flow; keep the logo + primary "Book a ride" CTA. */
+  .bv-web-actions-extra {
+    display: none !important;
+  }
+  .bv-web-header {
+    gap: 8px !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
   .bv-dash-aside {
     display: none !important;
   }
