@@ -272,7 +272,7 @@ def test_invalid_token_404():
 
 def test_passenger_review_of_own_ride_is_verified():
     tid = _run(_default_tenant_id())
-    client_id = 4242
+    client_id = _run(_seed_client(tenant_id=tid, email="pax-owner@example.com"))
     ride_id = _run(_seed_completed_ride(tenant_id=tid, client_id=client_id))
     pax = _passenger(client_id, tid)
     marker = "PASSENGER-OWNED body"

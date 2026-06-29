@@ -106,3 +106,76 @@ def test_summary_aggregates_as_owner():
     assert "funnel" in body
     assert "top_pages" in body
     assert "devices" in body
+
+
+# ── staff/dashboard exclusion (deterministic, isolated tenant) ────────────────
+
+import asyncio  # noqa: E402
+
+from sqlalchemy import delete, select  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
+
+from app.models import AnalyticsEvent, Tenant  # noqa: E402
+from app.services import analytics  # noqa: E402
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+async def _seed_excl_tenant() -> int:
+    eng = create_async_engine(os.environ["DATABASE_URL"])
+    sf = async_sessionmaker(eng, expire_on_commit=False)
+    try:
+        async with sf() as db:
+            slug = "analytics-excl-test"
+            t = (await db.execute(select(Tenant).where(Tenant.slug == slug))).scalar_one_or_none()
+            if t is None:
+                t = Tenant(slug=slug, name="Analytics Excl")
+                db.add(t)
+                await db.commit()
+                await db.refresh(t)
+            await db.execute(delete(AnalyticsEvent).where(AnalyticsEvent.tenant_id == t.id))
+
+            def ev(path: str, role: str, vid: str, sid: str) -> AnalyticsEvent:
+                return AnalyticsEvent(
+                    tenant_id=t.id,
+                    event_type="pageview",
+                    path=path,
+                    role=role,
+                    visitor_id=vid,
+                    session_id=sid,
+                )
+
+            db.add_all(
+                [
+                    ev("/book", "anon", "v1", "s1"),  # visitor on a public page → counted
+                    ev("/book", "anon", "v2", "s2"),
+                    ev("/book", "owner", "v3", "s3"),  # staff → excluded by role
+                    ev("/dashboard/stats", "anon", "v4", "s4"),  # dashboard → excluded by path
+                ]
+            )
+            await db.commit()
+            return t.id
+    finally:
+        await eng.dispose()
+
+
+async def _summary_for(tid: int) -> dict:
+    eng = create_async_engine(os.environ["DATABASE_URL"])
+    sf = async_sessionmaker(eng, expire_on_commit=False)
+    try:
+        async with sf() as db:
+            return await analytics.summary(db, tenant_id=tid, days=1)
+    finally:
+        await eng.dispose()
+
+
+def test_summary_excludes_staff_and_dashboard():
+    tid = _run(_seed_excl_tenant())
+    s = _run(_summary_for(tid))
+    assert s["totals"]["pageviews"] == 2  # only the two anon /book views
+    assert s["totals"]["visitors"] == 2
+    paths = [p["path"] for p in s["top_pages"]]
+    assert paths == ["/book"]
+    assert all(not p.startswith("/dashboard") for p in paths)

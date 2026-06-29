@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
+import { Donut, TrendChart } from "./charts";
 import { useI18n } from "@/lib/i18n";
 import { type AnalyticsSummary, type CountRow, getAnalyticsSummary } from "@/lib/analytics";
 
@@ -68,30 +69,6 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
     <div style={{ background: "var(--obsidian)", border: "1px solid var(--line-strong)", borderRadius: "var(--radius-lg)", padding: 18 }}>
       <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, color: "var(--arctic)", marginBottom: 14 }}>{title}</div>
       {children}
-    </div>
-  );
-}
-
-function Timeseries({ data }: { data: { day: string; pageviews: number }[] }) {
-  const { t } = useI18n();
-  if (!data.length) return <Empty text={t("dash.insights.nodata")} />;
-  const max = Math.max(...data.map((d) => d.pageviews), 1);
-  const show = data.slice(-30);
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 110 }}>
-      {show.map((d, i) => (
-        <div key={d.day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 0 }} title={`${d.day}: ${d.pageviews}`}>
-          <div
-            style={{
-              width: "100%",
-              height: `${Math.max(2, (d.pageviews / max) * 88)}px`,
-              borderRadius: 3,
-              background: i === show.length - 1 ? "var(--volt)" : "var(--obsidian-3)",
-              boxShadow: i === show.length - 1 ? "var(--shadow-volt-sm)" : "none",
-            }}
-          />
-        </div>
-      ))}
     </div>
   );
 }
@@ -199,8 +176,11 @@ export function Insights() {
             <Kpi icon="clock" label={t("dash.insights.avgtime")} value={msText(tt?.avg_session_ms ?? 0)} />
           </div>
 
-          <Panel title={t("dash.insights.pageviewsOverTime")}>
-            <Timeseries data={data.timeseries} />
+          <Panel title={t("dash.insights.trafficOverTime")}>
+            <TrendChart
+              data={data.timeseries}
+              labels={{ visitors: t("dash.insights.visitors"), pageviews: t("dash.insights.pageviews") }}
+            />
           </Panel>
 
           <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
@@ -254,7 +234,8 @@ export function Insights() {
             </Panel>
 
             <Panel title={t("dash.insights.devices")}>
-              <BarList rows={rowsOf(data.devices, "—")} empty={t("dash.insights.nodata")} />
+              <Donut data={rowsOf(data.devices, "—")} />
+              <div style={{ height: 14 }} />
               <div style={{ height: 14 }} />
               <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("dash.insights.countries")}</div>
               <BarList rows={rowsOf(data.countries, "—")} empty={t("dash.insights.nodata")} />

@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import AnalyticsEvent
 
 MAX_BATCH = 50
+# Cap time-on-page so an idle/backgrounded tab (e.g. a dashboard left open for hours)
+# can't inflate the average. 30 min is well beyond any genuine page view.
+MAX_DURATION_MS = 1_800_000
 _KNOWN_DEVICES = {"mobile", "tablet", "desktop"}
 
 
@@ -68,7 +71,7 @@ async def record_events(
                 utm_campaign=_trunc(ev.get("utm_campaign") or utm.get("campaign"), 120),
                 device=device,
                 country=_trunc(ctx.get("country"), 2),
-                duration_ms=dur if dur and dur > 0 else None,
+                duration_ms=min(int(dur), MAX_DURATION_MS) if dur and dur > 0 else None,
                 props=ev.get("props") if isinstance(ev.get("props"), dict) else None,
             )
         )
@@ -94,7 +97,15 @@ async def _group_count(db, col, where, *, limit=10, label="value"):
 async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
     """Aggregate usage stats for the last `days` for the Insights dashboard."""
     cutoff = datetime.now(UTC) - timedelta(days=days)
-    base = [AnalyticsEvent.tenant_id == tenant_id, AnalyticsEvent.created_at >= cutoff]
+    base = [
+        AnalyticsEvent.tenant_id == tenant_id,
+        AnalyticsEvent.created_at >= cutoff,
+        # Insights reflects the public booking site, not the operator's own dashboard
+        # usage — exclude staff (owner/driver) traffic and any /dashboard/* page. NULL role
+        # (legacy) counts as a visitor; NULL path (non-pageview events) is kept.
+        func.coalesce(AnalyticsEvent.role, "anon").notin_(("owner", "driver")),
+        ~func.coalesce(AnalyticsEvent.path, "").like("/dashboard%"),
+    ]
     pv = [*base, AnalyticsEvent.event_type == "pageview"]
     ss = [*base, AnalyticsEvent.event_type == "session_start"]
     dur = [*base, AnalyticsEvent.event_type == "page_duration"]
@@ -107,7 +118,13 @@ async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
         await db.execute(select(func.count(distinct(AnalyticsEvent.session_id))).where(*base))
     ).scalar_one()
     total_dur = (
-        await db.execute(select(func.coalesce(func.sum(AnalyticsEvent.duration_ms), 0)).where(*dur))
+        await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(func.least(AnalyticsEvent.duration_ms, MAX_DURATION_MS)), 0
+                )
+            ).where(*dur)
+        )
     ).scalar_one()
     avg_session_ms = int(total_dur / sessions) if sessions else 0
 
@@ -137,7 +154,10 @@ async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
         .limit(12)
     )
     avg_q = (
-        select(AnalyticsEvent.path, func.avg(AnalyticsEvent.duration_ms).label("avg_ms"))
+        select(
+            AnalyticsEvent.path,
+            func.avg(func.least(AnalyticsEvent.duration_ms, MAX_DURATION_MS)).label("avg_ms"),
+        )
         .where(*dur, AnalyticsEvent.path.isnot(None))
         .group_by(AnalyticsEvent.path)
     )

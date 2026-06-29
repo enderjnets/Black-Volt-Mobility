@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.55.0";
+export const CURRENT_VERSION = "0.56.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.56.0",
+    date: "2026-06-29",
+    title: "Insights: interactive charts + accurate time metrics",
+    changes: [
+      "The Insights dashboard now has an interactive traffic chart (visitors + pageviews over time) with hover details, and a device-mix donut.",
+      "Fixed inflated time-on-page/session averages: an idle tab left open no longer skews the numbers (capped at 30 minutes).",
+    ],
+  },
   {
     version: "0.55.0",
     date: "2026-06-28",

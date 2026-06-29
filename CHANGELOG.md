@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.56.0 — 2026-06-29 — Insights: interactive charts + accurate time metrics
+
+- **Interactive charts** (`components/bv/dash/charts.tsx`, zero-dependency SVG): `TrendChart`
+  plots visitors + pageviews over time with a hover crosshair + tooltip; `Donut` shows the
+  device mix with hover highlight + center readout. Wired into `Insights.tsx`, replacing the
+  static pageviews bars; the device list became a donut.
+- **Data correctness**: capped time-on-page at 30 min (`MAX_DURATION_MS` in
+  `services/analytics.py`) at ingest **and** in the `summary()` aggregates (`LEAST(...)`), so an
+  idle/backgrounded tab no longer inflates `avg_session_ms` / per-page averages. Verified the
+  summary matches raw `analytics_events` counts (pageviews/visitors/sessions) on prod.
+
 ## v0.55.0 — 2026-06-28 — Automatic review requests after each ride
 
 Closes the reviews loop: completed rides now trigger an automatic review-request email.
