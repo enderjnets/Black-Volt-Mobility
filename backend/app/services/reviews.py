@@ -54,6 +54,7 @@ async def submit_review(
     author_email: str | None = None,
     token: str | None = None,
     ride_id: int | None = None,
+    tenant_slug: str | None = None,
     payload: dict | None = None,
 ) -> Review:
     rating = int(rating)
@@ -95,6 +96,16 @@ async def submit_review(
             client_id = ride.client_id
             verified = True
             source = "trips"
+
+    if source == "public" and tenant_slug:
+        slug = _clean(tenant_slug, 80).lower()
+        if slug:
+            t = (
+                await db.execute(select(Tenant).where(Tenant.slug == slug))
+            ).scalar_one_or_none()
+            if t is not None:
+                tenant_id = t.id  # review left on this driver's public profile
+                source = "profile"
 
     review = Review(
         tenant_id=tenant_id,
@@ -142,30 +153,38 @@ async def get_invite(db: AsyncSession, *, token: str) -> ReviewInvite:
 
 
 async def list_admin(
-    db: AsyncSession, *, tenant_id: int, status: str | None = None
-) -> list[Review]:
-    stmt = select(Review).where(Review.tenant_id == tenant_id)
+    db: AsyncSession, *, tenant_id: int | None = None, status: str | None = None
+) -> list[tuple[Review, str, str]]:
+    """Admin moderation list. tenant_id None → all tenants (platform-owner view).
+
+    Returns (review, tenant_name, tenant_slug) so the panel can label which driver
+    each review belongs to. Only the platform owner reaches the admin routes, so a
+    cross-tenant view does not leak between drivers; revisit if per-tenant admins land.
+    """
+    stmt = select(Review, Tenant.name, Tenant.slug).join(Tenant, Review.tenant_id == Tenant.id)
+    if tenant_id is not None:
+        stmt = stmt.where(Review.tenant_id == tenant_id)
     if status:
         stmt = stmt.where(Review.status == ReviewStatus(status))
     stmt = stmt.order_by(Review.created_at.desc())
-    return list((await db.execute(stmt)).scalars().all())
+    rows = (await db.execute(stmt)).all()
+    return [(row[0], row[1], row[2]) for row in rows]
 
 
 async def patch_review(
     db: AsyncSession,
     *,
-    tenant_id: int,
     review_id: int,
+    tenant_id: int | None = None,
     status: str | None = None,
     show_on_home: bool | None = None,
     featured: bool | None = None,
     owner_reply: str | None = None,
 ) -> Review:
-    r = (
-        await db.execute(
-            select(Review).where(Review.id == review_id, Review.tenant_id == tenant_id)
-        )
-    ).scalar_one_or_none()
+    stmt = select(Review).where(Review.id == review_id)
+    if tenant_id is not None:
+        stmt = stmt.where(Review.tenant_id == tenant_id)
+    r = (await db.execute(stmt)).scalar_one_or_none()
     if r is None:
         raise ReviewError("not_found")
     if status is not None:
@@ -184,12 +203,11 @@ async def patch_review(
     return r
 
 
-async def delete_review(db: AsyncSession, *, tenant_id: int, review_id: int) -> None:
-    r = (
-        await db.execute(
-            select(Review).where(Review.id == review_id, Review.tenant_id == tenant_id)
-        )
-    ).scalar_one_or_none()
+async def delete_review(db: AsyncSession, *, review_id: int, tenant_id: int | None = None) -> None:
+    stmt = select(Review).where(Review.id == review_id)
+    if tenant_id is not None:
+        stmt = stmt.where(Review.tenant_id == tenant_id)
+    r = (await db.execute(stmt)).scalar_one_or_none()
     if r is None:
         raise ReviewError("not_found")
     await db.delete(r)
@@ -200,18 +218,14 @@ async def delete_review(db: AsyncSession, *, tenant_id: int, review_id: int) -> 
 
 
 async def list_candidates(
-    db: AsyncSession, *, tenant_id: int, q: str | None = None, limit: int = 25
+    db: AsyncSession, *, tenant_id: int | None = None, q: str | None = None, limit: int = 25
 ) -> list[dict]:
-    """Recent completed rides for this tenant + the rider's contact, for the picker."""
+    """Recent completed rides + the rider's contact, for the picker. tenant_id None → all."""
+    stmt = select(Ride).where(Ride.status == RideStatus.COMPLETED)
+    if tenant_id is not None:
+        stmt = stmt.where(Ride.tenant_id == tenant_id)
     rides = list(
-        (
-            await db.execute(
-                select(Ride)
-                .where(Ride.tenant_id == tenant_id, Ride.status == RideStatus.COMPLETED)
-                .order_by(Ride.id.desc())
-                .limit(limit)
-            )
-        ).scalars().all()
+        (await db.execute(stmt.order_by(Ride.id.desc()).limit(limit))).scalars().all()
     )
     client_ids = [r.client_id for r in rides if r.client_id]
     clients: dict[int, Client] = {}
@@ -220,6 +234,13 @@ async def list_candidates(
             await db.execute(select(Client).where(Client.id.in_(client_ids)))
         ).scalars().all()
         clients = {c.id: c for c in crows}
+    tenant_ids = {r.tenant_id for r in rides}
+    tenants: dict[int, Tenant] = {}
+    if tenant_ids:
+        trows = (
+            await db.execute(select(Tenant).where(Tenant.id.in_(tenant_ids)))
+        ).scalars().all()
+        tenants = {t.id: t for t in trows}
 
     out: list[dict] = []
     for r in rides:
@@ -227,6 +248,7 @@ async def list_candidates(
         name = (c.name if c and c.name else None) or r.passenger_name or "Passenger"
         email = c.email if c else None
         phone = (c.phone if c and c.phone else None) or r.passenger_phone
+        tnt = tenants.get(r.tenant_id)
         out.append(
             {
                 "ride_id": r.id,
@@ -236,6 +258,8 @@ async def list_candidates(
                 "phone": phone,
                 "route": f"{r.pickup_text} → {r.dropoff_text}",
                 "when": r.scheduled_at,
+                "tenant_id": r.tenant_id,
+                "tenant_name": tnt.name if tnt else None,
             }
         )
     if q:
@@ -260,6 +284,12 @@ async def create_invite(
     to_phone: str | None = None,
     author_name: str | None = None,
 ) -> ReviewInvite:
+    if ride_id:
+        ride = (await db.execute(select(Ride).where(Ride.id == ride_id))).scalar_one_or_none()
+        if ride is not None:
+            tenant_id = ride.tenant_id  # invite belongs to the driver who served the ride
+            if client_id is None:
+                client_id = ride.client_id
     inv = ReviewInvite(
         tenant_id=tenant_id,
         ride_id=ride_id,

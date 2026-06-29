@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.57.0";
+export const CURRENT_VERSION = "0.58.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.58.0",
+    date: "2026-06-29",
+    title: "Reviews: centralized moderation across all drivers",
+    changes: [
+      "The owner now sees and approves reviews for every driver from one panel, each tagged with the driver it belongs to.",
+      "New driver filter to focus the panel on a single driver's reviews.",
+      "Reviews left on a driver's public profile are now attributed to that driver (correct ownership).",
+    ],
+  },
   {
     version: "0.57.0",
     date: "2026-06-29",

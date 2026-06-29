@@ -12,6 +12,8 @@ export interface PublicReview {
 export interface AdminReview {
   id: number;
   tenant_id: number;
+  tenant_name: string | null;
+  tenant_slug: string | null;
   ride_id: number | null;
   author_name: string;
   author_email: string | null;
@@ -35,6 +37,8 @@ export interface ReviewCandidate {
   phone: string | null;
   route: string;
   when: string | null;
+  tenant_id?: number;
+  tenant_name?: string | null;
 }
 
 export interface InviteResult {
@@ -91,6 +95,7 @@ export interface SubmitReviewInput {
   author_email?: string;
   token?: string;
   ride_id?: number;
+  tenant_slug?: string;
 }
 
 export async function submitReview(
@@ -111,9 +116,18 @@ export async function getReviewInvite(
 
 // ─── admin ────────────────────────────────────────────────────────────────
 
-export async function listAdminReviews(status?: string): Promise<AdminReview[]> {
-  const q = status ? `?status=${encodeURIComponent(status)}` : "";
-  const r = await fetch(`/api/v1/reviews/admin${q}`, { credentials: "include", cache: "no-store" });
+export async function listAdminReviews(
+  status?: string,
+  tenantId?: number,
+): Promise<AdminReview[]> {
+  const p = new URLSearchParams();
+  if (status) p.set("status", status);
+  if (tenantId) p.set("tenant_id", String(tenantId));
+  const qs = p.toString();
+  const r = await fetch(`/api/v1/reviews/admin${qs ? `?${qs}` : ""}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
   if (!r.ok) throw new Error(`reviews:${r.status}`);
   return r.json();
 }

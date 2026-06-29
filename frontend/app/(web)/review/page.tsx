@@ -11,7 +11,8 @@ function ReviewFormWithRide() {
   const sp = useSearchParams();
   const raw = sp.get("ride");
   const rideId = raw && Number.isFinite(Number(raw)) ? Number(raw) : undefined;
-  return <ReviewForm rideId={rideId} />;
+  const driver = sp.get("driver") || undefined;
+  return <ReviewForm rideId={rideId} tenantSlug={driver} />;
 }
 
 export default function ReviewPage() {

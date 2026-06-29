@@ -370,7 +370,7 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
 
       <ReviewsStrip surface="profile" limit={6} />
       <a
-        href="/review"
+        href={`/review?driver=${encodeURIComponent(p.slug)}`}
         style={{
           display: "inline-block",
           marginTop: 16,

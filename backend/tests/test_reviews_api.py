@@ -435,3 +435,77 @@ def test_public_list_is_tenant_scoped():
         f"/api/v1/reviews/public?surface=home&tenant_id={other_tenant}"
     ).json()
     assert any(row["body"] == marker for row in pub2)
+
+
+# --- cross-tenant admin moderation + profile attribution (v0.58.0) ------------
+
+
+def test_admin_list_is_cross_tenant_with_driver_label():
+    owner = _owner()
+    other = _run(_other_tenant_id())
+    marker = "XTENANT-LABEL body"
+    _run(_insert_review(tenant_id=other, body=marker, approved=False, show_on_home=False))
+    rows = owner.get("/api/v1/reviews/admin").json()
+    mine = [x for x in rows if x["body"] == marker]
+    assert len(mine) == 1
+    assert mine[0]["tenant_id"] == other
+    assert mine[0]["tenant_slug"] == "reviews-iso-test"
+    assert mine[0]["tenant_name"] == "Reviews Iso Test"
+
+
+def test_admin_list_filter_by_tenant():
+    owner = _owner()
+    tid = _run(_default_tenant_id())
+    other = _run(_other_tenant_id())
+    home_marker = "FILTER-HOME body"
+    other_marker = "FILTER-OTHER body"
+    _run(_insert_review(tenant_id=tid, body=home_marker, approved=False, show_on_home=False))
+    _run(_insert_review(tenant_id=other, body=other_marker, approved=False, show_on_home=False))
+    rows = owner.get(f"/api/v1/reviews/admin?tenant_id={other}").json()
+    bodies = [x["body"] for x in rows]
+    assert other_marker in bodies
+    assert home_marker not in bodies
+    assert all(x["tenant_id"] == other for x in rows)
+
+
+def test_admin_patch_cross_tenant():
+    owner = _owner()
+    other = _run(_other_tenant_id())
+    marker = "XTENANT-PATCH body"
+    rid = _run(_insert_review(tenant_id=other, body=marker, approved=False, show_on_home=False))
+    patched = owner.patch(f"/api/v1/reviews/admin/{rid}", json={"status": "approved"})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["status"] == "approved"
+    row = [x for x in owner.get("/api/v1/reviews/admin").json() if x["id"] == rid][0]
+    assert row["status"] == "approved"
+
+
+def test_admin_delete_cross_tenant():
+    owner = _owner()
+    other = _run(_other_tenant_id())
+    marker = "XTENANT-DELETE body"
+    rid = _run(_insert_review(tenant_id=other, body=marker, approved=False, show_on_home=False))
+    assert owner.delete(f"/api/v1/reviews/admin/{rid}").status_code == 204
+    assert all(x["id"] != rid for x in owner.get("/api/v1/reviews/admin").json())
+
+
+def test_submit_with_tenant_slug_routes_to_driver():
+    owner = _owner()
+    other = _run(_other_tenant_id())
+    marker = "PROFILE-ATTRIB body"
+    r = TestClient(app).post(
+        "/api/v1/reviews",
+        json={
+            "rating": 5,
+            "body": marker,
+            "author_name": "Profile Pax",
+            "tenant_slug": "reviews-iso-test",
+        },
+    )
+    assert r.status_code == 201, r.text
+    rows = owner.get(f"/api/v1/reviews/admin?tenant_id={other}").json()
+    mine = [x for x in rows if x["body"] == marker]
+    assert len(mine) == 1
+    assert mine[0]["tenant_id"] == other
+    assert mine[0]["source"] == "profile"
+    assert mine[0]["verified"] is False

@@ -29,6 +29,8 @@ export function Reviews() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [rows, setRows] = useState<AdminReview[]>([]);
   const [filter, setFilter] = useState<string>("");
+  const [tenantFilter, setTenantFilter] = useState<number | "all">("all");
+  const [drivers, setDrivers] = useState<{ id: number; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -40,12 +42,28 @@ export function Reviews() {
   }, []);
 
   const load = useCallback(async () => {
-    setRows(await listAdminReviews(filter || undefined));
-  }, [filter]);
+    setRows(
+      await listAdminReviews(filter || undefined, tenantFilter === "all" ? undefined : tenantFilter),
+    );
+  }, [filter, tenantFilter]);
 
   useEffect(() => {
     if (isAdmin) load().catch(() => setRows([]));
   }, [isAdmin, load]);
+
+  // Build the driver list from the full set so the dropdown survives filtering.
+  useEffect(() => {
+    if (!isAdmin) return;
+    listAdminReviews()
+      .then((rs) => {
+        const seen = new Map<number, string>();
+        for (const r of rs) {
+          if (!seen.has(r.tenant_id)) seen.set(r.tenant_id, r.tenant_name || `#${r.tenant_id}`);
+        }
+        setDrivers([...seen].map(([id, name]) => ({ id, name })));
+      })
+      .catch(() => setDrivers([]));
+  }, [isAdmin]);
 
   async function mutate(id: number, patch: Parameters<typeof patchReview>[1]) {
     setBusy(true);
@@ -99,6 +117,33 @@ export function Reviews() {
 
       <RequestPanel lang={lang} t={t} onSent={load} />
 
+      {drivers.length > 1 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: "var(--fg2)" }}>{t("dash.reviews.driver")}</span>
+          <select
+            value={tenantFilter === "all" ? "all" : String(tenantFilter)}
+            onChange={(e) =>
+              setTenantFilter(e.target.value === "all" ? "all" : Number(e.target.value))
+            }
+            style={{
+              padding: "6px 12px",
+              fontSize: 13,
+              color: "var(--arctic)",
+              background: "var(--obsidian-3)",
+              border: "1px solid var(--line)",
+              borderRadius: "var(--radius-full)",
+            }}
+          >
+            <option value="all">{t("dash.reviews.filter.allDrivers")}</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {FILTERS.map((f) => (
           <button
@@ -135,6 +180,11 @@ export function Reviews() {
                 {r.verified && (
                   <Pill tone="muted" icon="check">
                     {t("dash.reviews.verifiedTag")}
+                  </Pill>
+                )}
+                {r.tenant_name && (
+                  <Pill tone="muted" icon="user">
+                    {r.tenant_name}
                   </Pill>
                 )}
               </div>

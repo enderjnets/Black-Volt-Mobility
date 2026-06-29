@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.58.0 — 2026-06-29 — Reviews: centralized cross-tenant moderation + driver attribution
+
+- **Cross-tenant moderation**: the platform owner's review panel (`/dashboard/reviews`) now lists,
+  approves, hides, replies to and deletes reviews for **all drivers**, not just the owner's tenant.
+  Admin endpoints (`list_admin`/`patch_review`/`delete_review`) accept `tenant_id=None` → all tenants;
+  safe because only the platform owner passes `require_admin` (revisit if per-tenant admins land).
+- **Driver attribution**: `list_admin` joins `Tenant` and returns `tenant_name`/`tenant_slug`; each
+  review card shows a driver badge, and a driver dropdown filters the panel to one driver.
+- **Profile attribution**: a review left on a driver's public profile (`/review?driver=<slug>`) is
+  routed to that driver's tenant (`submit_review` resolves `tenant_slug`), so the badge is truthful.
+  Invites created from a ride inherit the ride's tenant; candidates picker spans all drivers.
+- No schema change (no migration). Backend 479 tests (+5 cross-tenant/attribution).
+
 ## v0.57.0 — 2026-06-29 — Insights: visual booking funnel + conversion by campaign
 
 - **Visual funnel** (`components/bv/dash/charts.tsx::FunnelChart`): the booking funnel is now

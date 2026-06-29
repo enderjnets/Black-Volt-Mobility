@@ -42,11 +42,14 @@ class ReviewSubmitIn(BaseModel):
     author_email: str | None = Field(default=None, max_length=254)
     token: str | None = None
     ride_id: int | None = None
+    tenant_slug: str | None = Field(default=None, max_length=80)
 
 
 class AdminReviewOut(BaseModel):
     id: int
     tenant_id: int
+    tenant_name: str | None = None
+    tenant_slug: str | None = None
     ride_id: int | None = None
     author_name: str
     author_email: str | None = None
@@ -121,6 +124,7 @@ async def submit_review(
             author_email=body.author_email,
             token=body.token,
             ride_id=body.ride_id,
+            tenant_slug=body.tenant_slug,
             payload=payload,
         )
     except ReviewError as e:
@@ -143,22 +147,29 @@ async def submit_review(
 @router.get("/admin", response_model=list[AdminReviewOut])
 async def admin_list_reviews(
     status_filter: str | None = Query(default=None, alias="status"),
+    tenant_id: int | None = Query(default=None),
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[AdminReviewOut]:
-    tid = await resolve_tenant_id(db, payload)
-    rows = await reviews.list_admin(db, tenant_id=tid, status=status_filter)
-    return [AdminReviewOut.model_validate(r) for r in rows]
+    # Platform-owner view: tenant_id None → reviews across all drivers.
+    rows = await reviews.list_admin(db, tenant_id=tenant_id, status=status_filter)
+    out: list[AdminReviewOut] = []
+    for r, tname, tslug in rows:
+        o = AdminReviewOut.model_validate(r)
+        o.tenant_name = tname
+        o.tenant_slug = tslug
+        out.append(o)
+    return out
 
 
 @router.get("/admin/candidates")
 async def admin_review_candidates(
     q: str | None = Query(default=None),
+    tenant_id: int | None = Query(default=None),
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
-    tid = await resolve_tenant_id(db, payload)
-    return await reviews.list_candidates(db, tenant_id=tid, q=q)
+    return await reviews.list_candidates(db, tenant_id=tenant_id, q=q)
 
 
 @router.post("/admin/invites", status_code=status.HTTP_201_CREATED)
@@ -201,11 +212,9 @@ async def admin_patch_review(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AdminReviewOut:
-    tid = await resolve_tenant_id(db, payload)
     try:
         r = await reviews.patch_review(
             db,
-            tenant_id=tid,
             review_id=review_id,
             status=body.status,
             show_on_home=body.show_on_home,
@@ -228,8 +237,7 @@ async def admin_delete_review(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    tid = await resolve_tenant_id(db, payload)
     try:
-        await reviews.delete_review(db, tenant_id=tid, review_id=review_id)
+        await reviews.delete_review(db, review_id=review_id)
     except ReviewError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.reason) from e

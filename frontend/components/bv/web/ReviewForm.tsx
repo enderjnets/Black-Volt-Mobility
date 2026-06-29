@@ -21,10 +21,12 @@ const inputStyle: React.CSSProperties = {
 export default function ReviewForm({
   token,
   rideId,
+  tenantSlug,
   defaultName,
 }: {
   token?: string;
   rideId?: number;
+  tenantSlug?: string;
   defaultName?: string;
 }) {
   const { t } = useI18n();
@@ -50,6 +52,7 @@ export default function ReviewForm({
         author_email: email.trim() || undefined,
         token,
         ride_id: rideId,
+        tenant_slug: tenantSlug,
       });
       setState("done");
     } catch {
