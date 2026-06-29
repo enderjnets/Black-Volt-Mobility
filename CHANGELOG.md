@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.54.0 — 2026-06-28 — Customer reviews: collect, moderate & request
+
+A full first-party reviews system (replaces the empty testimonials placeholder).
+
+- **Backend** (`models/review.py`, mig `0033`, `services/reviews.py`, `api/v1/reviews.py`):
+  `Review` + `ReviewInvite` tables (tenant-scoped). Public endpoints to submit a review
+  (always `PENDING`), list approved reviews per surface, and resolve an invite token; admin
+  endpoints (`require_admin`) to list/approve/reject, toggle `show_on_home` / `featured`,
+  reply, delete, list completed-ride candidates, and create review-request invites. Reviews
+  are VERIFIED when they come from an invite token or a signed-in passenger reviewing their
+  own ride. Owner is emailed (Resend) on each new review.
+- **Request a review**: admin picks a past customer and sends via **email** (Resend), **text**
+  (an `sms:` deep link from the owner's phone — no Twilio), or **copy** (message + link).
+- **Frontend**: `StarRating`, `ReviewsStrip` (home / route / profile islands), `ReviewForm`,
+  public `/review` and `/review/[token]` pages, a "Leave a review" CTA on completed trips, and
+  an admin `dashboard/reviews` panel. Approved reviews surface on home, route pages, and the
+  driver profile. EN + ES.
+- Verified: 10 new backend tests + full suite green, ruff clean, no migration drift; frontend
+  tsc + lint + build clean; submit→moderate→home loop verified end-to-end; no mobile overflow.
+
 ## v0.53.0 — 2026-06-28 — Route pages: premium hero, real route map & trust signals
 
 Upgraded the `/rides/[slug]` landing pages from text-only to premium, conversion-ready pages —

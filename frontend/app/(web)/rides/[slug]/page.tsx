@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import ReviewsStrip from "@/components/bv/web/ReviewsStrip";
 import RouteTrust from "@/components/bv/web/RouteTrust";
 import {
   SEO_ROUTES,
@@ -264,6 +265,9 @@ export default function RidePage({ params }: { params: { slug: string } }) {
           </div>
         </section>
       )}
+
+      {/* Real customer reviews (approved) */}
+      <ReviewsStrip surface="route" limit={6} />
 
       {/* FAQ */}
       <section style={{ marginTop: 34 }}>

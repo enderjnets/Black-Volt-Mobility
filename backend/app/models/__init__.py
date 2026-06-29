@@ -10,6 +10,7 @@ from app.models.driver_funnel import DriverFunnelLog, DriverGoal
 from app.models.payment import Payment, PaymentStatus
 from app.models.platform_stat import PlatformStat
 from app.models.rate_config import RateConfig
+from app.models.review import Review, ReviewInvite, ReviewStatus
 from app.models.ride import PaymentMethod, Ride, RideStatus
 from app.models.social import (
     SocialAccount,
@@ -28,6 +29,9 @@ __all__ = [
     "Client",
     "ClientAddress",
     "RateConfig",
+    "Review",
+    "ReviewInvite",
+    "ReviewStatus",
     "Ride",
     "RideStatus",
     "PaymentMethod",

@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { Icon } from "../Icon";
 import { Button, Card, Pill } from "../ui";
+import ReviewsStrip from "./ReviewsStrip";
 import { useI18n } from "@/lib/i18n";
 import {
   getPublicProfile,
@@ -366,6 +367,21 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
           </Button>
         </div>
       </Card>
+
+      <ReviewsStrip surface="profile" limit={6} />
+      <a
+        href="/review"
+        style={{
+          display: "inline-block",
+          marginTop: 16,
+          fontSize: 13.5,
+          fontWeight: 600,
+          color: "var(--volt)",
+          textDecoration: "none",
+        }}
+      >
+        ★ {t("reviews.cta.write")}
+      </a>
     </div>
   );
 }

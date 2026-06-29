@@ -41,7 +41,7 @@ def _reset_ride_data():
             await conn.execute(
                 "TRUNCATE rides, payments, driver_funnel_logs, platform_stats, "
                 "driver_goals, social_posts, social_interactions, social_accounts, "
-                "document_consents "
+                "document_consents, reviews, review_invites "
                 "RESTART IDENTITY CASCADE"
             )
         finally:

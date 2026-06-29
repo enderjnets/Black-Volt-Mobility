@@ -258,8 +258,18 @@ function PastRow({ ride, t, lang }: { ride: RideRow; t: (k: string) => string; l
           {ride.pickup} → {ride.dropoff}
         </div>
       </div>
-      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--arctic)" }}>
-        {money(ride)}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--arctic)" }}>
+          {money(ride)}
+        </div>
+        {ride.status === "completed" && (
+          <a
+            href={`/review?ride=${ride.id}`}
+            style={{ fontSize: 12.5, fontWeight: 600, color: "var(--volt)", textDecoration: "none", whiteSpace: "nowrap" }}
+          >
+            ★ {t("trips.leaveReview")}
+          </a>
+        )}
       </div>
     </div>
   );

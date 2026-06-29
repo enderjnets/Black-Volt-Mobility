@@ -251,3 +251,77 @@ async def send_driver_ride_cancelled(db, *, ride, refund_pending: bool = False) 
         log.warning("Cancellation email to %s failed: %s", user.email, e)
         return "failed"
     return "simulated" if res.get("simulated") else "sent"
+
+
+async def notify_owner_new_review(db, *, review) -> str:
+    """Tell the tenant owner a new review landed (pending moderation). Never raises."""
+    user = await _driver_recipient(db, tenant_id=review.tenant_id)
+    if user is None or not user.email:
+        return "skipped"
+    rating = int(review.rating)
+    stars = "★" * rating + "☆" * (5 - rating)
+    dash = f"{get_settings().PUBLIC_DASHBOARD_URL}/reviews"
+    subject = f"New review ({rating}/5) from {review.author_name}"
+    text = (
+        f"A new review is waiting for your approval.\n\n"
+        f"{stars}  {rating}/5\n"
+        f"From: {review.author_name}\n\n"
+        f'"{review.body}"\n\n'
+        f"Approve or hide it here:\n{dash}\n\n— Black Volt Mobility"
+    )
+    try:
+        res = await send_email(to=user.email, subject=subject, body_text=text)
+    except Exception as e:
+        log.warning("New-review email to %s failed: %s", user.email, e)
+        return "failed"
+    return "simulated" if res.get("simulated") else "sent"
+
+
+async def send_review_request(
+    *, to: str, author_name: str | None, link: str, lang: str = "en"
+) -> str:
+    """Email a past customer asking for a review (link to the public review form)."""
+    lang = "es" if (lang or "").lower().startswith("es") else "en"
+    who = (author_name or "").strip()
+    if lang == "es":
+        subject = "¿Nos dejas una reseña? — Black Volt Mobility"
+        greet = f"Hola {who}," if who else "Hola,"
+        intro = (
+            "Gracias por viajar con Black Volt Mobility. ¿Nos dejas una reseña rápida? "
+            "Toma menos de un minuto."
+        )
+        cta = "Escribir mi reseña"
+        outro = "Gracias por tu apoyo."
+    else:
+        subject = "Mind leaving a review? — Black Volt Mobility"
+        greet = f"Hi {who}," if who else "Hi,"
+        intro = (
+            "Thanks for riding with Black Volt Mobility. Would you leave a quick review? "
+            "It takes under a minute."
+        )
+        cta = "Write my review"
+        outro = "Thanks for the support."
+    text = f"{greet}\n\n{intro}\n\n{link}\n\n{outro}\n— Black Volt Mobility"
+    html = (
+        '<div style="font-family:Inter,Arial,sans-serif;background:#f4f4f5;padding:32px">'
+        '<div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:14px;'
+        'overflow:hidden;border:1px solid #e4e4e7">'
+        '<div style="background:#0A0A0F;padding:24px 28px">'
+        '<span style="color:#00E5FF;font-size:18px;font-weight:700;letter-spacing:0.04em">'
+        "BLACK VOLT MOBILITY</span></div>"
+        '<div style="padding:28px;color:#333333;font-size:15px;line-height:1.6">'
+        f'<p style="margin:0 0 14px">{html_escape(greet)}</p>'
+        f'<p style="margin:0 0 22px">{html_escape(intro)}</p>'
+        f'<a href="{link}" style="display:inline-block;background:#00E5FF;color:#0A0A0F;'
+        "font-weight:700;text-decoration:none;padding:12px 22px;border-radius:8px;"
+        f'font-size:14px">{cta}</a>'
+        f'<p style="margin:22px 0 0;color:#666666;font-size:13px">{html_escape(outro)}<br>'
+        "— Black Volt Mobility</p>"
+        "</div></div></div>"
+    )
+    try:
+        res = await send_email(to=to, subject=subject, body_text=text, body_html=html)
+    except Exception as e:
+        log.warning("Review-request email to %s failed: %s", to, e)
+        return "failed"
+    return "simulated" if res.get("simulated") else "sent"

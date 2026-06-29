@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.53.0";
+export const CURRENT_VERSION = "0.54.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.54.0",
+    date: "2026-06-28",
+    title: "Customer reviews: collect, moderate & request",
+    changes: [
+      "Riders can now leave a star rating + review — from a completed trip, a profile link, or a request you send. Reviews stay hidden until you approve them.",
+      "New admin Reviews section: approve/reject, toggle which reviews show on the home page, feature the best ones, and reply.",
+      "Request a review from any past customer by email, text message, or a copy-paste link.",
+      "Approved reviews appear on the home page, route pages, and your driver profile.",
+    ],
+  },
   {
     version: "0.53.0",
     date: "2026-06-28",

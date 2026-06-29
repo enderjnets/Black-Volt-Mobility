@@ -24,6 +24,7 @@ const MORE = [
 ];
 // Super-admin only (social management + the access list).
 const ADMIN_ITEMS = [
+  { seg: "reviews", href: "/dashboard/reviews", icon: "star", key: "dash.nav.reviews" },
   { seg: "social", href: "/dashboard/social", icon: "share-2", key: "dash.nav.social" },
   { seg: "team", href: "/dashboard/team", icon: "shield-check", key: "dash.nav.team" },
 ];

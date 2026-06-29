@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
+import ReviewsStrip from "./ReviewsStrip";
 import { useI18n } from "@/lib/i18n";
 import { SEO_ROUTES } from "@/lib/seoRoutes";
 import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
@@ -307,6 +308,8 @@ export function Landing() {
           />
         </div>
       </section>
+
+      <ReviewsStrip surface="home" limit={6} />
     </div>
   );
 }
