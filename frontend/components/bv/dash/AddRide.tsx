@@ -15,9 +15,9 @@ import { ClientSuggestionDropdown, useClientSuggest } from "../ClientAutocomplet
 import { useI18n } from "@/lib/i18n";
 import { getClientDetail, inferRoute, type ClientLite } from "@/lib/dashboard";
 import { createRide, getQuote } from "@/lib/booking";
-import { extractReservation, hasAnyField, SmartError } from "@/lib/smart";
+import { extractReservations, hasAnyField, SmartError } from "@/lib/smart";
 
-const SMART_MAX_IMAGES = 5;
+const SMART_MAX_IMAGES = 6;
 
 type Shot = { file: File; url: string };
 
@@ -63,6 +63,19 @@ const BV_T: Record<string, any> = {
     err_image_too_large: "That image is too large — try a screenshot under 10 MB.",
     err_decode_failed: "Couldn't read that image (HEIC?) — convert it to PNG or JPG and retry.",
     err_service: "Couldn't reach the AI service — try again, or fill the form manually.",
+    err_too_many: "Too many screenshots — remove some, then add more.",
+    err_not_image: "That file isn't an image — upload a PNG or JPG screenshot.",
+    startOver: "Start over",
+    reservationN: (n: number) => `Reservation ${n}`,
+    readyTag: "Ready",
+    missingTag: (n: number) => `${n} missing`,
+    createdTag: "Created",
+    createThis: "Create this ride",
+    createAll: (n: number) => `Create all ready (${n})`,
+    discard: "Discard",
+    queueHint: "Review each reservation, then create.",
+    multiDoneTitle: (n: number) => `${n} rides created`,
+    multiDoneSub: "Confirmation messages are ready to send.",
     noReadNote: "Couldn't read the details from the image — add them manually below.",
     scanning: "Reading the screenshots…", scanningSub: "Pulling out the reservation details.",
     scanningN: (n: number) => `Reading ${n} ${n === 1 ? "screenshot" : "screenshots"}…`,
@@ -115,6 +128,19 @@ const BV_T: Record<string, any> = {
     err_image_too_large: "Esa imagen es muy grande — usa una captura de menos de 10 MB.",
     err_decode_failed: "No pude leer esa imagen (¿HEIC?) — conviértela a PNG o JPG e intenta de nuevo.",
     err_service: "No pude contactar el servicio de IA — intenta de nuevo o llena el formulario a mano.",
+    err_too_many: "Demasiadas capturas — quita algunas y agrega más.",
+    err_not_image: "Ese archivo no es una imagen — sube una captura PNG o JPG.",
+    startOver: "Empezar de nuevo",
+    reservationN: (n: number) => `Reserva ${n}`,
+    readyTag: "Lista",
+    missingTag: (n: number) => `Faltan ${n}`,
+    createdTag: "Creada",
+    createThis: "Crear este viaje",
+    createAll: (n: number) => `Crear todas las listas (${n})`,
+    discard: "Descartar",
+    queueHint: "Revisa cada reserva y créala.",
+    multiDoneTitle: (n: number) => `${n} viajes creados`,
+    multiDoneSub: "Los mensajes de confirmación están listos para enviar.",
     noReadNote: "No pude leer los datos de la imagen — agrégalos a mano abajo.",
     scanning: "Leyendo las capturas…", scanningSub: "Extrayendo los datos de la reserva.",
     scanningN: (n: number) => `Leyendo ${n} ${n === 1 ? "captura" : "capturas"}…`,
@@ -183,32 +209,73 @@ export function AddRide() {
   const t = BV_T[lang] || BV_T.en;
   const [mode, setMode] = useState<"manual" | "smart">("manual");
   const [smartStage, setSmartStage] = useState<"capture" | "scanning" | "form">("capture");
-  const [form, setForm] = useState<Form>(BV_BLANK);
-  const [aiFields, setAiFields] = useState<Record<string, boolean>>({});
+  type Draft = {
+    form: Form;
+    aiFields: Record<string, boolean>;
+    createdId: number | null;
+    createErr: string | null;
+  };
+  const blankDraft = (): Draft => ({
+    form: { ...BV_BLANK },
+    aiFields: {},
+    createdId: null,
+    createErr: null,
+  });
+
+  const [drafts, setDrafts] = useState<Draft[]>([blankDraft()]);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [aiRan, setAiRan] = useState(false);
   const [shots, setShots] = useState<Shot[]>([]);
   const [smartDemo, setSmartDemo] = useState(false);
   const [smartErr, setSmartErr] = useState<string | null>(null);
   const [noRead, setNoRead] = useState(false);
-  const [submitErr, setSubmitErr] = useState<string | null>(null);
-  const [created, setCreated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [suggested, setSuggested] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
 
+  // The form editor always operates on the active draft. Manual mode = one draft;
+  // a Smart scan can yield several (one per detected reservation).
+  const active = drafts[activeIdx] ?? drafts[0];
+  const form = active.form;
+  const aiFields = active.aiFields;
+  const setForm = (updater: Form | ((f: Form) => Form)) =>
+    setDrafts((ds) =>
+      ds.map((d, i) =>
+        i === activeIdx
+          ? {
+              ...d,
+              form:
+                typeof updater === "function" ? (updater as (f: Form) => Form)(d.form) : updater,
+            }
+          : d,
+      ),
+    );
+  const patchDraft = (idx: number, p: Partial<Draft>) =>
+    setDrafts((ds) => ds.map((d, i) => (i === idx ? { ...d, ...p } : d)));
+
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const addFiles = (files: FileList | File[]) => {
-    setSmartErr(null);
+    const arr = Array.from(files);
+    const imgs = arr.filter((f) => f.type.startsWith("image/"));
+    const room = SMART_MAX_IMAGES - shots.length;
+    if (room <= 0) {
+      setSmartErr("err_too_many");
+      return;
+    }
+    const accepted = imgs.slice(0, room);
     setShots((prev) => {
-      const room = SMART_MAX_IMAGES - prev.length;
-      if (room <= 0) return prev;
-      const next = Array.from(files)
-        .filter((f) => f.type.startsWith("image/"))
-        .slice(0, room)
-        .map((file) => ({ file, url: URL.createObjectURL(file) }));
-      return [...prev, ...next];
+      const r = SMART_MAX_IMAGES - prev.length;
+      if (r <= 0) return prev;
+      return [
+        ...prev,
+        ...accepted.slice(0, r).map((file) => ({ file, url: URL.createObjectURL(file) })),
+      ];
     });
+    // Tell the driver why some files didn't land, instead of silently dropping them.
+    if (imgs.length > room) setSmartErr("err_too_many");
+    else if (imgs.length < arr.length) setSmartErr("err_not_image");
+    else setSmartErr(null);
   };
   const removeShot = (i: number) =>
     setShots((prev) => {
@@ -222,14 +289,14 @@ export function AddRide() {
       return [];
     });
   const reset = () => {
-    setForm(BV_BLANK);
-    setAiFields({});
+    setDrafts([blankDraft()]);
+    setActiveIdx(0);
     setAiRan(false);
     clearShots();
     setSmartDemo(false);
     setSmartErr(null);
     setNoRead(false);
-    setCreated(false);
+    setSubmitting(false);
     setSuggested(null);
     setSmartStage("capture");
   };
@@ -279,40 +346,80 @@ export function AddRide() {
 
   // Persist the reservation, then show the confirmation screen. A backend error
   // still advances to the success view (the confirmation SMS is the artifact).
-  const submit = async () => {
+  const rideInputFrom = (f: Form, scheduledAt: string) => ({
+    pickup: f.pickup,
+    dropoff: f.dropoff,
+    pax: f.passengers ? Number(f.passengers) : null,
+    scheduled_at: scheduledAt,
+    flight_number: f.flight || null,
+    lang: (f.lang || "EN").toUpperCase(),
+    notes: f.notes || null,
+    passenger_name: f.name || null,
+    passenger_phone: f.phone || null,
+    client_id: f.client_id ? Number(f.client_id) : null,
+    fare_override: f.fare ? Number(f.fare) : null,
+    confirm: true,
+  });
+
+  // Persist one draft (the active one by default). The result lives on the draft
+  // (createdId / createErr) so the queue can show per-reservation status.
+  const submit = async (idx: number = activeIdx) => {
     if (submitting) return;
+    const d = drafts[idx];
+    if (!d || d.createdId != null) return;
     // Never save a ride without a usable scheduled time — that's what kept rides
     // off the calendar. Block early with a clear message instead of failing silently.
-    const scheduledAt = buildScheduledAt(form.date, form.time);
+    const scheduledAt = buildScheduledAt(d.form.date, d.form.time);
     if (!scheduledAt) {
-      setSubmitErr(t.errDateTime);
+      patchDraft(idx, { createErr: t.errDateTime });
       return;
     }
     setSubmitting(true);
-    setSubmitErr(null);
+    patchDraft(idx, { createErr: null });
     try {
-      const res = await createRide({
-        pickup: form.pickup,
-        dropoff: form.dropoff,
-        pax: form.passengers ? Number(form.passengers) : null,
-        scheduled_at: scheduledAt,
-        flight_number: form.flight || null,
-        lang: (form.lang || "EN").toUpperCase(),
-        notes: form.notes || null,
-        passenger_name: form.name || null,
-        passenger_phone: form.phone || null,
-        client_id: form.client_id ? Number(form.client_id) : null,
-        fare_override: form.fare ? Number(form.fare) : null,
-        confirm: true,
-      });
-      // Only celebrate if the ride was actually persisted (a real id back).
-      if (res && typeof res.id === "number") setCreated(true);
-      else setSubmitErr(t.createErr);
+      const res = await createRide(rideInputFrom(d.form, scheduledAt));
+      if (res && typeof res.id === "number") patchDraft(idx, { createdId: res.id, createErr: null });
+      else patchDraft(idx, { createErr: t.createErr });
     } catch (e) {
-      setSubmitErr(e instanceof Error && e.message ? e.message : t.createErr);
+      patchDraft(idx, { createErr: e instanceof Error && e.message ? e.message : t.createErr });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Create every complete, not-yet-created draft in one pass; incomplete ones stay
+  // flagged in the queue for the driver to finish.
+  const createAllReady = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    const snapshot = drafts;
+    const updates: Record<number, Partial<Draft>> = {};
+    for (let i = 0; i < snapshot.length; i++) {
+      const d = snapshot[i];
+      if (d.createdId != null) continue;
+      if (BV_REQUIRED.some((k) => !String(d.form[k] || "").trim())) continue;
+      const scheduledAt = buildScheduledAt(d.form.date, d.form.time);
+      if (!scheduledAt) {
+        updates[i] = { createErr: t.errDateTime };
+        continue;
+      }
+      try {
+        const res = await createRide(rideInputFrom(d.form, scheduledAt));
+        updates[i] =
+          res && typeof res.id === "number"
+            ? { createdId: res.id, createErr: null }
+            : { createErr: t.createErr };
+      } catch (e) {
+        updates[i] = { createErr: e instanceof Error && e.message ? e.message : t.createErr };
+      }
+    }
+    setDrafts((ds) => ds.map((d, i) => (updates[i] ? { ...d, ...updates[i] } : d)));
+    setSubmitting(false);
+  };
+
+  const discardDraft = (idx: number) => {
+    setDrafts((ds) => (ds.length <= 1 ? ds : ds.filter((_, i) => i !== idx)));
+    setActiveIdx((cur) => (idx <= cur ? Math.max(0, cur - 1) : cur));
   };
 
   useEffect(() => {
@@ -328,27 +435,48 @@ export function AddRide() {
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, smartStage]);
 
   // Free object URLs on unmount.
   useEffect(() => () => shots.forEach((s) => URL.revokeObjectURL(s.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Turn one extracted reservation object into a ready-to-edit draft.
+  function draftFromObj(obj: Record<string, unknown>): Draft {
+    const f: Form = { ...BV_BLANK };
+    const ai: Record<string, boolean> = {};
+    Object.keys(BV_BLANK).forEach((k) => {
+      const v = obj ? obj[k] : null;
+      if (v !== null && v !== undefined && String(v).trim() !== "") {
+        f[k] = String(v);
+        ai[k] = true;
+      }
+    });
+    // Coerce extracted date/time into the formats the native pickers require.
+    f.date = normDate(f.date);
+    f.time = normTime(f.time);
+    if (!f.lang) f.lang = "EN";
+    if (!f.fare) {
+      const s = bvSuggestFare(f.pickup, f.dropoff);
+      if (s) f.fare = String(s);
+    }
+    return { form: f, aiFields: ai, createdId: null, createErr: null };
+  }
+
   async function runExtract(useSample: boolean) {
     setSmartStage("scanning");
     setSmartErr(null);
     setNoRead(false);
-    let obj: Record<string, unknown> = {};
+    let objs: Record<string, unknown>[] = [];
     if (useSample) {
       await new Promise((r) => setTimeout(r, 1200));
-      obj = BV_SAMPLE_EXTRACTION;
+      objs = [BV_SAMPLE_EXTRACTION];
       setSmartDemo(false);
     } else {
       try {
-        const res = await extractReservation(shots.map((s) => s.file));
-        obj = res.fields || {};
+        const res = await extractReservations(shots.map((s) => s.file));
+        objs = res.reservations || [];
         setSmartDemo(res.simulated);
-        // Read OK but nothing usable → proceed to the form with a clear notice.
-        if (!hasAnyField(obj)) setNoRead(true);
       } catch (e) {
         // Hard failure (bad format / too large / service down): stay on the
         // capture screen and tell the driver exactly why, instead of a blank form.
@@ -359,33 +487,36 @@ export function AddRide() {
         return;
       }
     }
-    const next: Form = { ...BV_BLANK };
-    const ai: Record<string, boolean> = {};
-    Object.keys(BV_BLANK).forEach((k) => {
-      const v = obj ? obj[k] : null;
-      if (v !== null && v !== undefined && String(v).trim() !== "") {
-        next[k] = String(v);
-        ai[k] = true;
-      }
-    });
-    // Coerce extracted date/time into the formats the native pickers require.
-    next.date = normDate(next.date);
-    next.time = normTime(next.time);
-    if (!next.lang) next.lang = "EN";
-    if (!next.fare) {
-      const s = bvSuggestFare(next.pickup, next.dropoff);
-      if (s) next.fare = String(s);
-    }
-    setForm(next);
-    setAiFields(ai);
+    const usable = objs.filter((o) => hasAnyField(o));
+    // Read OK but nothing usable → one blank draft + a clear notice.
+    setDrafts(usable.length ? usable.map(draftFromObj) : [blankDraft()]);
+    setActiveIdx(0);
+    if (!usable.length) setNoRead(true);
     setAiRan(true);
     setSmartStage("form");
   }
 
   const missing = BV_REQUIRED.filter((k) => !String(form[k] || "").trim());
-  const canCreate = missing.length === 0;
+  const canCreate = missing.length === 0 && active.createdId == null;
+  const single = drafts.length === 1;
+  const createdDrafts = drafts.filter((d) => d.createdId != null);
+  const readyCount = drafts.filter(
+    (d) => d.createdId == null && BV_REQUIRED.every((k) => String(d.form[k] || "").trim()),
+  ).length;
+  const showDone = single ? active.createdId != null : createdDrafts.length === drafts.length;
 
-  if (created) {
+  if (showDone && !single) {
+    return (
+      <MultiDone
+        drafts={createdDrafts}
+        t={t}
+        onReset={reset}
+        onView={() => router.push("/dashboard/rides")}
+      />
+    );
+  }
+
+  if (showDone) {
     return (
       <div style={{ padding: 28, maxWidth: 620, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
         <div style={{ background: "var(--obsidian)", border: "1px solid var(--volt-border)", borderRadius: "var(--radius-lg)", padding: "32px 32px 28px", textAlign: "center", boxShadow: "var(--shadow-volt)" }}>
@@ -473,6 +604,10 @@ export function AddRide() {
             onFiles={addFiles}
             onRemove={removeShot}
             onExtract={() => runExtract(false)}
+            onStartOver={() => {
+              clearShots();
+              setSmartErr(null);
+            }}
             onSample={() => {
               clearShots();
               runExtract(true);
@@ -480,7 +615,17 @@ export function AddRide() {
           />
         </div>
       ) : (
-        <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1.65fr 1fr", gap: 22, alignItems: "start" }}>
+        <>
+          {!single && (
+            <QueueStrip
+              drafts={drafts}
+              activeIdx={activeIdx}
+              onPick={setActiveIdx}
+              onDiscard={discardDraft}
+              t={t}
+            />
+          )}
+          <div className="bv-dash-grid" style={{ display: "grid", gridTemplateColumns: "1.65fr 1fr", gap: 22, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {mode === "smart" && aiRan && <ReviewBanner t={t} missing={missing} form={form} demo={smartDemo} noRead={noRead} onBack={reset} />}
 
@@ -568,13 +713,36 @@ export function AddRide() {
                 <p style={{ fontSize: 13, color: "var(--fg3)", lineHeight: 1.55, margin: 0 }}>{t.previewEmpty}</p>
               )}
               <div style={{ height: 1, background: "var(--line)", margin: "18px 0" }} />
-              <Button variant="solid" full icon="check" disabled={!canCreate || submitting} onClick={() => canCreate && submit()}>
-                {submitting ? t.creating : t.create}
-              </Button>
-              {submitErr && (
+              {single ? (
+                <Button variant="solid" full icon="check" disabled={!canCreate || submitting} onClick={() => canCreate && submit()}>
+                  {submitting ? t.creating : t.create}
+                </Button>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <Button
+                    variant="solid"
+                    full
+                    icon="check"
+                    disabled={!canCreate || submitting}
+                    onClick={() => canCreate && submit()}
+                  >
+                    {active.createdId != null ? t.createdTag : submitting ? t.creating : t.createThis}
+                  </Button>
+                  <Button
+                    variant="plain"
+                    full
+                    icon="check"
+                    disabled={readyCount === 0 || submitting}
+                    onClick={createAllReady}
+                  >
+                    {t.createAll(readyCount)}
+                  </Button>
+                </div>
+              )}
+              {active.createErr && (
                 <div style={{ fontSize: 12.5, color: "var(--danger)", marginTop: 10, display: "flex", alignItems: "flex-start", gap: 6 }}>
                   <Icon name="alert-circle" size={14} color="var(--danger)" />
-                  <span>{submitErr}</span>
+                  <span>{active.createErr}</span>
                 </div>
               )}
               {!canCreate ? (
@@ -590,8 +758,131 @@ export function AddRide() {
               )}
             </div>
           </div>
-        </div>
+          </div>
+        </>
       )}
+    </div>
+  );
+}
+
+function QueueStrip({
+  drafts,
+  activeIdx,
+  onPick,
+  onDiscard,
+  t,
+}: {
+  drafts: { form: Form; createdId: number | null }[];
+  activeIdx: number;
+  onPick: (i: number) => void;
+  onDiscard: (i: number) => void;
+  t: any;
+}) {
+  return (
+    <div style={{ marginBottom: 18, display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t.queueHint}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {drafts.map((d, i) => {
+          const miss = BV_REQUIRED.filter((k) => !String(d.form[k] || "").trim()).length;
+          const done = d.createdId != null;
+          const isActive = i === activeIdx;
+          const label = String(d.form.name || "").trim() || t.reservationN(i + 1);
+          return (
+            <div
+              key={i}
+              onClick={() => onPick(i)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "7px 10px 7px 12px",
+                borderRadius: "var(--radius-full)",
+                border: `1px solid ${isActive ? "var(--volt-border)" : "var(--line-strong)"}`,
+                background: isActive ? "var(--volt-bg-20)" : "var(--obsidian)",
+                cursor: "pointer",
+              }}
+            >
+              <Icon
+                name={done ? "circle-check" : miss ? "alert-circle" : "user"}
+                size={13}
+                color={done ? "var(--volt)" : miss ? "var(--warning)" : "var(--silver)"}
+              />
+              <span
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: isActive ? "var(--volt)" : "var(--silver)",
+                  maxWidth: 140,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+              </span>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: done ? "var(--volt)" : miss ? "var(--warning)" : "var(--fg3)",
+                }}
+              >
+                {done ? t.createdTag : miss ? t.missingTag(miss) : t.readyTag}
+              </span>
+              {!done && drafts.length > 1 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDiscard(i);
+                  }}
+                  title={t.discard}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--fg3)",
+                    display: "flex",
+                    padding: 0,
+                    marginLeft: 2,
+                  }}
+                >
+                  <Icon name="x" size={13} color="currentColor" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MultiDone({
+  drafts,
+  t,
+  onReset,
+  onView,
+}: {
+  drafts: { form: Form }[];
+  t: any;
+  onReset: () => void;
+  onView: () => void;
+}) {
+  return (
+    <div style={{ padding: 28, maxWidth: 620, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ background: "var(--obsidian)", border: "1px solid var(--volt-border)", borderRadius: "var(--radius-lg)", padding: "32px 32px 28px", textAlign: "center", boxShadow: "var(--shadow-volt)" }}>
+        <div style={{ display: "inline-flex", width: 56, height: 56, borderRadius: "50%", background: "var(--volt-bg)", border: "1px solid var(--volt-border)", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+          <Icon name="circle-check" size={28} color="var(--volt)" />
+        </div>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 23, color: "var(--arctic)", marginBottom: 6 }}>{t.multiDoneTitle(drafts.length)}</div>
+        <p style={{ fontSize: 14, color: "var(--silver)", margin: "0 auto 20px" }}>{t.multiDoneSub}</p>
+      </div>
+      {drafts.map((d, i) => (
+        <ConfirmationCard key={i} form={d.form} t={t} />
+      ))}
+      <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+        <Button variant="ghost" icon="plus" onClick={onReset}>{t.addAnother}</Button>
+        <Button variant="plain" icon="navigation" onClick={onView}>{t.viewRides}</Button>
+      </div>
     </div>
   );
 }
@@ -692,6 +983,7 @@ function SmartCapture({
   onFiles,
   onRemove,
   onExtract,
+  onStartOver,
   onSample,
 }: {
   t: any;
@@ -703,6 +995,7 @@ function SmartCapture({
   onFiles: (files: FileList | File[]) => void;
   onRemove: (i: number) => void;
   onExtract: () => void;
+  onStartOver: () => void;
   onSample: () => void;
 }) {
   const full = shots.length >= SMART_MAX_IMAGES;
@@ -771,7 +1064,8 @@ function SmartCapture({
               </button>
             )}
           </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "space-between", alignItems: "center" }}>
+            <Button variant="ghost" icon="x" onClick={onStartOver}>{t.startOver}</Button>
             <Button variant="solid" icon="sparkles" onClick={onExtract}>{t.extract}</Button>
           </div>
           {hidden}

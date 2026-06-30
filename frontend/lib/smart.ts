@@ -4,10 +4,20 @@
    vision-friendly format) so it works the same from Android, iPhone, Mac or
    Linux regardless of the original format/size. */
 
-export interface SmartExtraction {
-  fields: Record<string, unknown>;
+export type ReservationFields = Record<string, unknown>;
+
+// Multi-reservation result: the API groups screenshots by client into one or more
+// reservations.
+export interface SmartExtractionMulti {
+  reservations: ReservationFields[];
   simulated: boolean;
-  image_count: number;
+  count: number;
+}
+
+// Single-reservation result (used when filling ONE existing ride — RideDetail).
+export interface SmartExtraction {
+  fields: ReservationFields;
+  simulated: boolean;
 }
 
 // Carries a stable `code` so the UI can show an actionable message.
@@ -80,7 +90,7 @@ export function hasAnyField(fields: Record<string, unknown>): boolean {
   return Object.values(fields).some((v) => v != null && String(v).trim() !== "");
 }
 
-export async function extractReservation(files: File[]): Promise<SmartExtraction> {
+async function postExtract(files: File[], merge: boolean): Promise<SmartExtractionMulti> {
   const fd = new FormData();
   for (const f of files) {
     let out = f;
@@ -91,6 +101,7 @@ export async function extractReservation(files: File[]): Promise<SmartExtraction
     }
     fd.append("files", out);
   }
+  if (merge) fd.append("merge", "true");
   const r = await fetch("/api/v1/rides/extract", {
     method: "POST",
     credentials: "include",
@@ -101,4 +112,17 @@ export async function extractReservation(files: File[]): Promise<SmartExtraction
     throw new SmartError(typeof d.detail === "string" ? d.detail : `http_${r.status}`);
   }
   return r.json();
+}
+
+// Upload screenshots → one or more reservations, grouped by client. For the
+// Add-ride batch flow.
+export async function extractReservations(files: File[]): Promise<SmartExtractionMulti> {
+  return postExtract(files, false);
+}
+
+// Single-reservation convenience: forces a merged result and returns the first
+// (or empty) reservation. Used by RideDetail to fill ONE existing ride.
+export async function extractReservation(files: File[]): Promise<SmartExtraction> {
+  const res = await postExtract(files, true);
+  return { fields: res.reservations[0] ?? {}, simulated: res.simulated };
 }

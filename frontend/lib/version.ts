@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.58.0";
+export const CURRENT_VERSION = "0.59.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.59.0",
+    date: "2026-06-30",
+    title: "Smart reservation: batch multiple requests + recoverable scans",
+    changes: [
+      "Add ride → Smart now reads several clients' requests at once: drop up to 6 screenshots and it groups them by client into separate draft reservations.",
+      "Review them in a queue and create them individually or all at once — nothing is saved until you confirm.",
+      "Failed scans are recoverable: a clear 'Start over' button plus messages when a file isn't an image or you hit the screenshot limit (no more silent failures).",
+    ],
+  },
   {
     version: "0.58.0",
     date: "2026-06-29",

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.59.0 — 2026-06-30 — Smart reservation: multi-reservation batch + recoverable scans
+
+- **Batch extraction**: `Add ride → Smart` reads several requests at once. The backend now runs one
+  vision call per screenshot and **groups results by client** (phone, else name; a key-less
+  follow-up bubble continues the most recent reservation), returning a LIST of reservations instead
+  of one merged result. `extract_reservation(..., merge=True)` keeps the single-reservation behavior
+  for filling one existing ride (RideDetail).
+- **Review queue**: when a scan yields more than one reservation, `AddRide` shows a chip queue (one
+  draft per client, with ready/missing/created status), lets the driver edit each, and create them
+  individually or via **Create all ready**. Nothing is saved until confirmed; a summary screen lists
+  every created ride.
+- **Recoverable retry**: a **Start over** button on the capture screen, and explicit messages when a
+  file isn't an image or the screenshot limit is hit — instead of silently dropping files.
+- **Limit**: `SMART_MAX_IMAGES` raised 5 → 6 (compose default + `.env.example`).
+- API: `POST /rides/extract` now returns `{reservations, simulated, count}` (was `{fields, ...}`) and
+  accepts a `merge` form field. Backend `test_smart.py` updated + grouping cases (16 tests).
+
 ## v0.58.0 — 2026-06-29 — Reviews: centralized cross-tenant moderation + driver attribution
 
 - **Cross-tenant moderation**: the platform owner's review panel (`/dashboard/reviews`) now lists,

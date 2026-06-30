@@ -1,8 +1,11 @@
 """Smart reservation: read screenshots of a client's message → reservation fields.
 
 Two modes (settings.smart_live):
-- **Live** — MiniMax-M3 vision via `llm.vision_complete`. Multiple screenshots are
-  treated as ONE conversation and merged into a single reservation.
+- **Live** — MiniMax-M3 vision via `llm.vision_complete`. Screenshots are read one
+  per call (concurrent) and then GROUPED by client (name/phone): bubbles from the
+  same client/thread merge into one reservation, different clients split into
+  separate reservations. Pass `merge=True` to force everything into a single
+  reservation (used when filling one existing ride).
 - **Simulated** — default; returns a deterministic sample so the Smart tab works
   end-to-end without a vision key/billing. Extraction is best-effort: any failure
   degrades to an empty result (the UI then asks the driver to fill it by hand).
@@ -11,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from app.config import get_settings
 from app.services import llm
@@ -127,8 +131,74 @@ def _has(v) -> bool:
     return v is not None and str(v).strip() != ""
 
 
-async def _extract_anthropic(images: list[tuple[str, bytes]]) -> dict:
-    """MiniMax-M3 over the anthropic endpoint: all images in one call."""
+def _client_key(d: dict) -> str | None:
+    """Identity used to decide which images belong to the same reservation. Phone
+    wins (most reliable — normalized to its last 10 digits); else the lowercased
+    name; else None (a key-less continuation bubble)."""
+    phone = d.get("phone")
+    if _has(phone):
+        digits = re.sub(r"\D", "", str(phone))
+        if len(digits) >= 7:
+            return "p:" + digits[-10:]
+    name = d.get("name")
+    if _has(name):
+        return "n:" + " ".join(str(name).split()).lower()
+    return None
+
+
+def _empty() -> dict:
+    return {k: None for k in RESERVATION_KEYS}
+
+
+def _merge_into(target: dict, fields: dict) -> None:
+    """Merge fields into target in place; later (present) values override earlier."""
+    for k, v in fields.items():
+        if k in target and _has(v):
+            target[k] = v
+
+
+def _merge_all(dicts: list[dict]) -> list[dict]:
+    """Collapse every image into ONE reservation (merge=True path / RideDetail)."""
+    merged = _empty()
+    for fields in dicts:
+        _merge_into(merged, fields)
+    return [merged]
+
+
+def _group_by_client(dicts: list[dict]) -> list[dict]:
+    """Group per-image results (in image order) into distinct reservations: same
+    client key → same reservation; a new key → a new reservation; a key-less
+    image continues the most recent reservation (e.g. a follow-up bubble that
+    repeats no name). Empty results are dropped."""
+    groups: list[dict] = []
+    keys: list[str | None] = []
+    for fields in dicts:
+        if not any(_has(v) for v in fields.values()):
+            continue
+        key = _client_key(fields)
+        idx: int | None = None
+        if key is not None:
+            for i, k in enumerate(keys):
+                if k == key:
+                    idx = i
+                    break
+        if idx is None:
+            if key is None and groups:  # key-less continuation → latest group
+                idx = len(groups) - 1
+            else:
+                groups.append(_empty())
+                keys.append(key)
+                idx = len(groups) - 1
+        _merge_into(groups[idx], fields)
+        if keys[idx] is None and key is not None:  # group adopts the first key it sees
+            keys[idx] = key
+    return groups
+
+
+async def _extract_anthropic(images: list[tuple[str, bytes]]) -> list[dict]:
+    """MiniMax-M3 over the anthropic endpoint: all images in one call. This path
+    always yields a single merged reservation (grouping lives in the coding-VLM
+    product path)."""
     import base64
 
     settings = get_settings()
@@ -141,7 +211,7 @@ async def _extract_anthropic(images: list[tuple[str, bytes]]) -> dict:
         api_key=settings.SMART_VISION_API_KEY,
         max_tokens=1024,
     )
-    return _coerce(_parse_json(text))
+    return [_coerce(_parse_json(text))]
 
 
 async def _vlm_one(media_type: str, raw: bytes, attempts: int = 2) -> dict | None:
@@ -170,45 +240,45 @@ async def _vlm_one(media_type: str, raw: bytes, attempts: int = 2) -> dict | Non
     return None
 
 
-async def _extract_coding_vlm(images: list[tuple[str, bytes]]) -> dict:
-    """MiniMax Coding Plan VLM: one (concurrent) call per image, merged into one
-    reservation in order — later images override earlier (newer messages win). A
-    single image failing is skipped, not fatal, so partial input still yields
-    fields."""
+async def _extract_coding_vlm(
+    images: list[tuple[str, bytes]], *, merge: bool
+) -> list[dict]:
+    """MiniMax Coding Plan VLM: one (concurrent) call per image. A single image
+    failing is skipped, not fatal, so partial input still yields fields. Results
+    are then grouped by client into one or more reservations (or all into one
+    when `merge`)."""
     import asyncio
 
     results = await asyncio.gather(
         *(_vlm_one(mt, raw) for mt, raw in images), return_exceptions=True
     )
-    merged: dict = {k: None for k in RESERVATION_KEYS}
-    ok = 0
-    for fields in results:
-        if not isinstance(fields, dict):  # None, or an Exception from gather
-            continue
-        ok += 1
-        for k, v in fields.items():
-            if _has(v):
-                merged[k] = v
-    if ok == 0 and images:
+    valid = [f for f in results if isinstance(f, dict)]
+    if not valid and images:
         raise llm.LLMError("vlm:all_images_failed")
-    if not any(_has(v) for v in merged.values()):
+    if merge:
+        return _merge_all(valid)
+    groups = _group_by_client(valid)
+    if not groups:
         logger.warning("vlm returned no fields from %d image(s)", len(images))
-    return merged
+    return groups
 
 
-async def extract_reservation(images: list[tuple[str, bytes]]) -> dict:
-    """Read screenshots → reservation fields. `images` is (media_type, raw_bytes).
+async def extract_reservation(
+    images: list[tuple[str, bytes]], *, merge: bool = False
+) -> list[dict]:
+    """Read screenshots → a LIST of reservations. `images` is (media_type, raw_bytes).
 
-    Best-effort: returns the canonical-key dict (values may be null). In simulated
-    mode returns SAMPLE_EXTRACTION; on a live failure returns all-null so the
-    caller can prompt for manual entry."""
+    Best-effort: returns canonical-key dicts (values may be null). With `merge`
+    every image is collapsed into a single reservation. In simulated mode returns
+    one SAMPLE_EXTRACTION; on a live failure returns [] so the caller can prompt
+    for manual entry."""
     settings = get_settings()
     if not settings.smart_live:
-        return _coerce(dict(SAMPLE_EXTRACTION))
+        return [_coerce(dict(SAMPLE_EXTRACTION))]
     try:
         if settings.SMART_VISION_PROVIDER == "minimax_anthropic":
             return await _extract_anthropic(images)
-        return await _extract_coding_vlm(images)
+        return await _extract_coding_vlm(images, merge=merge)
     except Exception as e:  # safety net — extraction must never 500 the endpoint
         logger.warning("smart extract failed: %s", e)
-        return {k: None for k in RESERVATION_KEYS}
+        return []

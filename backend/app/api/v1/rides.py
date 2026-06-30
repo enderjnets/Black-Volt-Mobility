@@ -7,7 +7,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -256,12 +266,15 @@ async def put_rate_config(
 @router.post("/rides/extract")
 async def extract_reservation(
     files: list[UploadFile] = File(...),
+    merge: bool = Form(False),
     db: AsyncSession = Depends(get_db),
     payload: dict = Depends(require_staff),
 ):
-    """Read 1..N screenshots of a client's message and return reservation fields
-    to pre-fill the form. Staff only. Best-effort: a vision failure returns
-    all-null fields (the driver then types them). No ride is persisted here."""
+    """Read 1..N screenshots of a client's message and return a LIST of
+    reservations to pre-fill the form. Staff only. Screenshots are grouped by
+    client (different clients → separate reservations); pass merge=true to force a
+    single merged reservation. Best-effort: a vision failure returns [] (the
+    driver then types it). No ride is persisted here."""
     tenant_id = await resolve_tenant_id(db, payload)
     if not await subscriptions.tenant_has_entitlements(db, tenant_id=tenant_id):
         raise HTTPException(
@@ -290,8 +303,12 @@ async def extract_reservation(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="image_too_large"
             )
         images.append((media_type, raw))
-    fields = await smart.extract_reservation(images)
-    return {"fields": fields, "simulated": not settings.smart_live, "image_count": len(images)}
+    reservations = await smart.extract_reservation(images, merge=merge)
+    return {
+        "reservations": reservations,
+        "simulated": not settings.smart_live,
+        "count": len(reservations),
+    }
 
 
 # ─── Rides ────────────────────────────────────────────────────────────────────

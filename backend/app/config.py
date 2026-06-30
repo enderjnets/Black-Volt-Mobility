@@ -253,7 +253,7 @@ class Settings(BaseSettings):
     SMART_SIMULATED: bool = True
     SMART_VISION_PROVIDER: str = "minimax_coding_vlm"  # | "minimax_anthropic"
     SMART_VISION_API_KEY: str = ""
-    SMART_MAX_IMAGES: int = 5
+    SMART_MAX_IMAGES: int = 6
     SMART_VISION_TIMEOUT: float = 90.0  # vision is slower than chat
     # Coding-plan VLM
     SMART_VISION_HOST: str = "https://api.minimax.io"  # | https://api.minimaxi.com
