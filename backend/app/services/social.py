@@ -984,10 +984,13 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
         mode = "customScheduled" if row.scheduled_at else "shareNow"
         due_at = row.scheduled_at
         ext = dict(row.external_ids or {})
+        had_prior = bool(ext)
         published_any = False
         transient_failure = False
         if media_url:
             for platform in targets:
+                if ext.get(platform):
+                    continue  # already published here — idempotent retry, no duplicate
                 acct = accounts.get(platform)
                 if not acct or acct.status != "connected" or not acct.external_account_id:
                     continue
@@ -1011,10 +1014,11 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
         if published_any:
             row.status = "published"
             row.published_at = _now()
-        elif transient_failure:
-            # Transient Buffer/transport error — leave the post in its current
-            # status so the scheduler retries on the next tick, rather than
-            # burning an approved post to a terminal `failed`.
+        elif transient_failure or had_prior:
+            # Transient Buffer/transport error, or the post already published to
+            # some platform earlier (a per-platform retry that didn't add any new
+            # one) — leave the post in its current status rather than burning it to
+            # a terminal `failed`. The scheduler retries transient cases next tick.
             pass
         else:
             row.status = "failed"

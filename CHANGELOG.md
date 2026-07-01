@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.62.5 — 2026-07-01 — Publishing: idempotent per-platform retry (no duplicates)
+
+- `_do_publish` now skips any platform already present in `external_ids` (`if ext.get(platform):
+  continue`), so re-publishing only fills in the networks that haven't posted yet — no duplicate
+  Instagram/TikTok posts on retry. A post that already published to some platform is never downgraded
+  to `failed` when a remaining platform fails terminally (`had_prior` guard). Enables recovering a
+  partially-published post (e.g. live on Instagram, missing TikTok) by resetting it to `approved` and
+  publishing again. +1 test.
+
 ## v0.62.4 — 2026-07-01 — Fix: image posts to TikTok (downscale oversized uploads)
 
 - **Bugfix**: image posts published to Instagram but TikTok rejected them with `UnexpectedError:

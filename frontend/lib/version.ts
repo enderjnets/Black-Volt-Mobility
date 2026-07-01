@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.62.4";
+export const CURRENT_VERSION = "0.62.5";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.62.5",
+    date: "2026-07-01",
+    title: "Publishing: no duplicate posts on retry",
+    changes: [
+      "Re-publishing a post now only fills in the platforms that haven't posted yet — it no longer re-posts to a network it already published to.",
+    ],
+  },
   {
     version: "0.62.4",
     date: "2026-07-01",

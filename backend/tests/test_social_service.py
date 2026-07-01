@@ -525,6 +525,50 @@ async def test_do_publish_image_post_via_buffer(db, monkeypatch, _approved_ig_po
 
 
 @pytest.mark.asyncio
+async def test_do_publish_skips_already_published_platform(db, monkeypatch):
+    # Idempotent retry: a post already live on Instagram, re-published to fill in
+    # TikTok, must NOT re-post to Instagram (no duplicate).
+    from app.services import social_buffer
+    t = Tenant(slug=f"t-{uuid.uuid4().hex[:8]}", name="Dup Test")
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    tid = t.id
+    post = await S.create_post(
+        db, tenant_id=tid, content={"caption": "hi", "hashtags": "#x"},
+        lang="en", targets=["instagram", "tiktok"],
+    )
+    pid = post["id"]
+    row = await S._get_post(db, tenant_id=tid, post_id=pid)
+    row.media_path = "tenants/1/social/image-9.png"
+    row.media_kind = "image"
+    # Approved post that already has an Instagram id (e.g. reset to retry the
+    # platform that didn't go through) — publishing again must only fill TikTok.
+    row.status = "approved"
+    row.external_ids = {"instagram": "ig-existing"}
+    for plat in ("instagram", "tiktok"):
+        db.add(S.SocialAccount(
+            tenant_id=tid, platform=plat, external_account_id=f"ch-{plat}",
+            display_name="bv", status="connected",
+        ))
+    await db.commit()
+    calls = []
+
+    async def fake_create(**kw):
+        calls.append(kw["service"])
+        return {"id": f"buf-{kw['service']}", "status": "queued", "due_at": None}
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", fake_create)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert calls == ["tiktok"]  # instagram skipped, only tiktok published
+    assert out["external_ids"]["instagram"] == "ig-existing"  # unchanged
+    assert out["external_ids"]["tiktok"] == "buf-tiktok"
+    assert out["status"] == "published"
+
+
+@pytest.mark.asyncio
 async def test_do_publish_buffer_no_channel_marks_failed(db, monkeypatch, _approved_ig_post):
     from app.services import social_buffer
     tid, pid = _approved_ig_post
