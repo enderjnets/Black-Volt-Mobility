@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.63.2 — 2026-07-01 — TikTok: pad non-9:16 photos so they publish
+
+- **Bugfix**: TikTok rejected uploaded photos with `Invalid post` because they weren't 9:16 (verified
+  live: a 9:16 image is `sent` on TikTok, a 0.68-aspect one is rejected; Buffer re-hosts the image so
+  it isn't a fetch issue). New `_tiktok_safe_media` produces a padded **1080×1920** variant (photo
+  contained + centered on a blurred copy of itself — nothing cropped) saved as `<stem>-tt916.jpg`;
+  images already ~9:16 (e.g. AI renders) pass through untouched. `_do_publish` sends this variant to
+  **TikTok only** — Instagram/Facebook keep the original framing (owner chose "only adjust when
+  needed"). Reuses Pillow (v0.62.4); best-effort (falls back to the original on any error). +3 tests
+  (535 total). No migration.
+
 ## v0.63.1 — 2026-07-01 — Social: retry a missing network on already-published posts
 
 - `publish_post` now also accepts a `published` post for retry (idempotent skip means it only hits

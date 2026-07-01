@@ -200,3 +200,37 @@ def test_downscale_keeps_small_image_untouched():
     _Img.new("RGB", (768, 1344), (0, 0, 0)).save(buf, format="PNG")
     # Within limits → None means "use the original bytes unchanged".
     assert S._downscale_for_social(buf.getvalue(), "png") is None
+
+
+def _write_media(rel: str, size: tuple[int, int]) -> None:
+    from PIL import Image as _Img
+
+    from app.config import get_settings
+
+    p = os.path.join(get_settings().MEDIA_DIR, rel)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    _Img.new("RGB", size, (40, 80, 120)).save(p, format="JPEG")
+
+
+def test_tiktok_safe_media_pads_non_9x16():
+    from PIL import Image as _Img
+
+    from app.config import get_settings
+
+    rel = f"tenants/1/social/refs/tt-{uuid.uuid4().hex[:8]}.jpg"
+    _write_media(rel, (1080, 1578))  # aspect 0.684 → TikTok rejects
+    out = S._tiktok_safe_media(rel)
+    assert out != rel and out.endswith("-tt916.jpg")
+    w, h = _Img.open(os.path.join(get_settings().MEDIA_DIR, out)).size
+    assert (w, h) == (1080, 1920)  # padded to 9:16, not cropped
+
+
+def test_tiktok_safe_media_passes_9x16_through():
+    rel = f"tenants/1/social/refs/tt-{uuid.uuid4().hex[:8]}.jpg"
+    _write_media(rel, (1080, 1920))  # already 9:16
+    assert S._tiktok_safe_media(rel) == rel
+
+
+def test_tiktok_safe_media_ignores_video():
+    rel = "tenants/1/social/video-x.mp4"
+    assert S._tiktok_safe_media(rel) == rel  # non-image → untouched, no crash

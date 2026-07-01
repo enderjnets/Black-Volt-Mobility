@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.63.1";
+export const CURRENT_VERSION = "0.63.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.63.2",
+    date: "2026-07-01",
+    title: "TikTok: fit non-vertical photos so they publish",
+    changes: [
+      "Photos that aren't 9:16 now publish to TikTok — they're automatically fitted onto a vertical frame (with a soft blurred background, nothing cropped) just for TikTok, while Instagram keeps your original photo.",
+    ],
+  },
   {
     version: "0.63.1",
     date: "2026-07-01",

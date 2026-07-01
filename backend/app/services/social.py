@@ -28,10 +28,11 @@ import secrets
 import time
 from datetime import UTC, datetime
 
-try:  # Pillow: downscale oversized uploads so TikTok photo posts don't reject them.
-    from PIL import Image
+try:  # Pillow: normalize uploads so TikTok photo posts don't reject them.
+    from PIL import Image, ImageFilter
 except ImportError:  # pragma: no cover - Pillow ships in requirements
     Image = None
+    ImageFilter = None
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -162,6 +163,58 @@ def _downscale_for_social(raw: bytes, ext: str) -> tuple[bytes, str, str] | None
         im = im.convert("RGB")
     im.save(buf, format="JPEG", quality=85, optimize=True)
     return buf.getvalue(), "jpg", "image/jpeg"
+
+
+# TikTok photo posts want ~9:16; other aspect ratios get rejected as "Invalid post"
+# (a 9:16 image publishes fine, a 0.68 one does not). 1080x1920 is the canonical frame.
+_TIKTOK_AR = 1080 / 1920  # 0.5625
+_TIKTOK_AR_TOL = 0.05
+
+
+def _tiktok_safe_media(media_path: str | None) -> str | None:
+    """Return a media rel-path safe for a TikTok photo post. An image already near
+    9:16 passes through untouched; any other aspect gets a padded 1080x1920 variant
+    (the photo *contained* and centered on a blurred copy of itself — nothing is
+    cropped) saved alongside as `<stem>-tt916.jpg`. Best-effort: returns the original
+    path for videos, near-9:16 images, or on any Pillow failure."""
+    if not media_path or Image is None:
+        return media_path
+    ext = os.path.splitext(media_path)[1].lower().lstrip(".")
+    if ext not in _IMAGE_EXTS:
+        return media_path  # video → untouched
+    settings = get_settings()
+    abs_src = os.path.join(settings.MEDIA_DIR, media_path)
+    stem = os.path.splitext(media_path)[0]
+    rel_variant = f"{stem}-tt916.jpg"
+    abs_variant = os.path.join(settings.MEDIA_DIR, rel_variant)
+    if os.path.exists(abs_variant):
+        return rel_variant
+    try:
+        im = Image.open(abs_src)
+        im.load()
+        w, h = im.size
+        if abs((w / h) - _TIKTOK_AR) <= _TIKTOK_AR_TOL:
+            return media_path  # already ~9:16
+        if im.mode not in ("RGB", "L"):
+            im = im.convert("RGB")
+        cw, ch = 1080, 1920
+        try:
+            bs = max(cw / w, ch / h)
+            bg = im.resize((max(1, round(w * bs)), max(1, round(h * bs))), Image.LANCZOS)
+            bx, by = (bg.width - cw) // 2, (bg.height - ch) // 2
+            bg = bg.crop((bx, by, bx + cw, by + ch))
+            if ImageFilter is not None:
+                bg = bg.filter(ImageFilter.GaussianBlur(40))
+        except Exception:
+            bg = Image.new("RGB", (cw, ch), (10, 10, 15))
+        fs = min(cw / w, ch / h)
+        fg = im.resize((max(1, round(w * fs)), max(1, round(h * fs))), Image.LANCZOS)
+        bg.paste(fg, ((cw - fg.width) // 2, (ch - fg.height) // 2))
+        os.makedirs(os.path.dirname(abs_variant), exist_ok=True)
+        bg.save(abs_variant, format="JPEG", quality=88, optimize=True)
+        return rel_variant
+    except Exception:
+        return media_path
 
 
 def save_reference_image(tenant_id: int, *, raw: bytes) -> tuple[str, str] | None:
@@ -993,10 +1046,15 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
                 acct = accounts.get(platform)
                 if not acct or acct.status != "connected" or not acct.external_account_id:
                     continue
+                # TikTok rejects non-9:16 photos; send it a padded 9:16 variant while
+                # Instagram/Facebook keep the original framing. Images only (videos untouched).
+                plat_media = media_url
+                if platform == "tiktok" and row.media_kind == "image":
+                    plat_media = _public_media_url(_tiktok_safe_media(row.media_path)) or media_url
                 try:
                     res = await social_buffer.create_post(
                         channel_id=acct.external_account_id, service=platform,
-                        text=text, media_url=media_url, media_kind=row.media_kind,
+                        text=text, media_url=plat_media, media_kind=row.media_kind,
                         mode=mode, due_at=due_at,
                     )
                 except social_buffer.BufferError as e:
