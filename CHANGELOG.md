@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.62.2 — 2026-07-01 — Fix: publishing AI image posts to Buffer
+
+- **Bugfix**: image posts (media_kind=image) rendered fine but flipped to **FAILED** on publish —
+  the Buffer publish path was video-only, sending the image URL as a `video` asset. Buffer rejected
+  it (`Video URL returned unsupported content-type: image/png`). `social_buffer.create_post` now
+  takes `media_kind` and ships an `image` asset (`{image:{url}}`) with Instagram `type: "post"`
+  instead of `reel` (image asset shape + PostType verified via live Buffer GraphQL introspection).
+  `_do_publish` forwards `row.media_kind`. Video publishing unchanged.
+
 ## v0.62.1 — 2026-07-01 — Fix: AI-generated image posts no longer fail
 
 - **Bugfix**: AI-generated image posts landed as **FAILED** even though the ROG worker rendered a

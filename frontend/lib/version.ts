@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.62.1";
+export const CURRENT_VERSION = "0.62.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.62.2",
+    date: "2026-07-01",
+    title: "Fix: publishing AI image posts",
+    changes: [
+      "Fixed image posts failing when published — they're now sent to Instagram/Facebook/TikTok as a photo post instead of a video (Buffer was rejecting the image as \"not a video\").",
+    ],
+  },
   {
     version: "0.62.1",
     date: "2026-07-01",

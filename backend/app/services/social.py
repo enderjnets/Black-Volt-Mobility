@@ -936,14 +936,14 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
                 )
             ).scalars().all()
         }
-        video_url = _public_media_url(row.media_path)
+        media_url = _public_media_url(row.media_path)
         text = _compose_text(row.caption, row.hashtags)
         mode = "customScheduled" if row.scheduled_at else "shareNow"
         due_at = row.scheduled_at
         ext = dict(row.external_ids or {})
         published_any = False
         transient_failure = False
-        if video_url:
+        if media_url:
             for platform in targets:
                 acct = accounts.get(platform)
                 if not acct or acct.status != "connected" or not acct.external_account_id:
@@ -951,7 +951,8 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
                 try:
                     res = await social_buffer.create_post(
                         channel_id=acct.external_account_id, service=platform,
-                        text=text, video_url=video_url, mode=mode, due_at=due_at,
+                        text=text, media_url=media_url, media_kind=row.media_kind,
+                        mode=mode, due_at=due_at,
                     )
                 except social_buffer.BufferError as e:
                     if getattr(e, "transient", False):

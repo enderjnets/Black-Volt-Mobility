@@ -56,7 +56,7 @@ async def test_create_post_builds_ig_reel_sharenow(monkeypatch):
     monkeypatch.setattr(B, "_gql", fake_gql)
     res = await B.create_post(
         channel_id="ch1", service="instagram", text="hi #x",
-        video_url="https://app.blackvoltmobility.com/media/a.mp4", mode="shareNow",
+        media_url="https://app.blackvoltmobility.com/media/a.mp4", mode="shareNow",
     )
     assert res["id"] == "bufpost1"
     inp = captured["v"]["input"]
@@ -66,6 +66,31 @@ async def test_create_post_builds_ig_reel_sharenow(monkeypatch):
     assert inp["assets"] == [{"video": {"url": "https://app.blackvoltmobility.com/media/a.mp4"}}]
     assert inp["metadata"]["instagram"] == {"type": "reel", "shouldShareToFeed": True}
     assert "dueAt" not in inp
+
+
+@pytest.mark.asyncio
+async def test_create_post_builds_ig_image_post(monkeypatch):
+    # An image post must ship an `image` asset and publish as a feed post
+    # (type "post"), not a Reel — Buffer rejects an image sent as a video/Reel.
+    captured = {}
+
+    async def fake_gql(query, variables):
+        captured["v"] = variables
+        return {"createPost": {
+            "__typename": "PostActionSuccess",
+            "post": {"id": "imgpost1", "status": "queued", "dueAt": None},
+        }}
+
+    monkeypatch.setattr(B, "_gql", fake_gql)
+    res = await B.create_post(
+        channel_id="ch1", service="instagram", text="hi",
+        media_url="https://app.blackvoltmobility.com/media/a.png",
+        media_kind="image", mode="shareNow",
+    )
+    assert res["id"] == "imgpost1"
+    inp = captured["v"]["input"]
+    assert inp["assets"] == [{"image": {"url": "https://app.blackvoltmobility.com/media/a.png"}}]
+    assert inp["metadata"]["instagram"] == {"type": "post"}
 
 
 @pytest.mark.asyncio
@@ -83,7 +108,7 @@ async def test_create_post_scheduled_sets_dueat(monkeypatch):
     dt = datetime(2030, 1, 1, 12, 0, tzinfo=UTC)
     await B.create_post(
         channel_id="ch1", service="instagram", text="x",
-        video_url="https://h/m.mp4", mode="customScheduled", due_at=dt,
+        media_url="https://h/m.mp4", mode="customScheduled", due_at=dt,
     )
     assert captured["v"]["input"]["dueAt"] == dt.isoformat()
 
@@ -97,7 +122,7 @@ async def test_create_post_raises_on_union_error(monkeypatch):
     with pytest.raises(B.BufferError) as ei:
         await B.create_post(
             channel_id="ch1", service="instagram", text="x",
-            video_url="https://h/m.mp4", mode="shareNow",
+            media_url="https://h/m.mp4", mode="shareNow",
         )
     assert "bad video" in str(ei.value)
     assert ei.value.transient is False

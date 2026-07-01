@@ -489,8 +489,39 @@ async def test_do_publish_via_buffer(db, monkeypatch, _approved_ig_post):
     assert out["status"] == "published"
     assert out["external_ids"]["instagram"] == "buf-instagram"
     assert calls[0]["mode"] == "shareNow"
-    assert "/media/social/test.mp4" in calls[0]["video_url"]
+    assert "/media/social/test.mp4" in calls[0]["media_url"]
+    assert calls[0]["media_kind"] == "video"
     assert calls[0]["text"] == "Ride in style\n\n#blackvolt"
+
+
+@pytest.mark.asyncio
+async def test_do_publish_image_post_via_buffer(db, monkeypatch, _approved_ig_post):
+    # Regression: image posts were published as video → Buffer rejected the
+    # image/png content-type and the post flipped to FAILED. The publish path must
+    # forward media_kind="image" so Buffer ships an image asset.
+    from app.services import social_buffer
+    tid, pid = _approved_ig_post
+    row = await S._get_post(db, tenant_id=tid, post_id=pid)
+    row.media_kind = "image"
+    row.media_path = "tenants/1/social/image-123.png"
+    db.add(S.SocialAccount(
+        tenant_id=tid, platform="instagram", external_account_id="ch-ig",
+        display_name="bv", status="connected",
+    ))
+    await db.commit()
+    calls = []
+
+    async def fake_create(**kw):
+        calls.append(kw)
+        return {"id": f"buf-{kw['service']}", "status": "queued", "due_at": None}
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", fake_create)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert out["status"] == "published"
+    assert calls[0]["media_kind"] == "image"
+    assert calls[0]["media_url"].endswith(".png")
 
 
 @pytest.mark.asyncio

@@ -44,9 +44,15 @@ mutation CreatePost($input: CreatePostInput!) {
 }
 """
 
-_NETWORK_META = {
-    "instagram": lambda: {"instagram": {"type": "reel", "shouldShareToFeed": True}},
-}
+def _network_meta(service: str, media_kind: str) -> dict | None:
+    """Per-network publish hints. Instagram video → Reel (shared to feed); an
+    image → a normal feed post (`type: "post"`) — sending an image as a Reel is
+    rejected. Other networks need no hint."""
+    if service == "instagram":
+        if media_kind == "image":
+            return {"instagram": {"type": "post"}}
+        return {"instagram": {"type": "reel", "shouldShareToFeed": True}}
+    return None
 
 
 class BufferError(Exception):
@@ -104,26 +110,31 @@ async def create_post(
     channel_id: str,
     service: str,
     text: str,
-    video_url: str,
+    media_url: str,
+    media_kind: str = "video",
     thumbnail_url: str | None = None,
     mode: str,
     due_at=None,
 ) -> dict:
-    video: dict = {"url": video_url}
+    # Image posts carry an `image` asset; everything else is a `video` asset. Buffer
+    # rejects a video asset whose URL serves image/* (and vice-versa), so this must
+    # match the actual media the render produced.
+    media: dict = {"url": media_url}
     if thumbnail_url:
-        video["thumbnailUrl"] = thumbnail_url
+        media["thumbnailUrl"] = thumbnail_url
+    asset = {"image": media} if media_kind == "image" else {"video": media}
     input_obj: dict = {
         "channelId": channel_id,
         "schedulingType": "automatic",
         "mode": mode,
         "text": text,
-        "assets": [{"video": video}],
+        "assets": [asset],
     }
     if mode == "customScheduled" and due_at is not None:
         input_obj["dueAt"] = due_at.isoformat() if hasattr(due_at, "isoformat") else due_at
-    meta_fn = _NETWORK_META.get(service)
-    if meta_fn:
-        input_obj["metadata"] = meta_fn()
+    meta = _network_meta(service, media_kind)
+    if meta:
+        input_obj["metadata"] = meta
     data = await _gql(_CREATE_POST_M, {"input": input_obj})
     result = data.get("createPost") or {}
     if result.get("__typename") == "PostActionSuccess":
