@@ -31,6 +31,11 @@ class RouteFacts:
     is_peak: bool | None = None  # explicit override; else derived from scheduled_at
     is_loyalty: bool = False
     discount_pct: float | None = None
+    # Flat-rate zone: when set, a fixed price replaces the metered calc + floor (and
+    # peak never applies). See services/zones.py. Extra stops / group / discount still apply.
+    zone_flat: float | None = None
+    zone_key: str | None = None
+    zone_name: str | None = None
 
 
 def is_peak_time(dt: datetime | None) -> bool:
@@ -53,28 +58,43 @@ def quote(rates: RateConfig, facts: RouteFacts) -> dict:
     miles = max(0.0, facts.distance_miles or 0.0)
     minutes = max(0.0, facts.duration_minutes or 0.0)
 
-    distance_charge = _round(miles * rates.per_mile)
-    time_charge = _round(minutes * rates.per_minute)
-    metered = _round(rates.base + distance_charge + time_charge)
-
-    floor = rates.airport_flat if facts.is_airport else rates.minimum
-    floored = max(metered, floor)
-    floor_applied = floored > metered
-
-    lines: list[dict] = [
-        {"label": "base", "amount": _round(rates.base)},
-        {"label": "distance", "amount": distance_charge, "qty": _round(miles)},
-        {"label": "time", "amount": time_charge, "qty": _round(minutes)},
-    ]
-    if floor_applied:
-        lines.append(
+    is_zone = facts.zone_flat is not None
+    if is_zone:
+        # Fixed flat price for a named zone: replaces the whole metered calc + the
+        # minimum/airport floor. Extra stops, group surcharge and discounts still apply
+        # below; peak surge never does (a fixed price stays fixed).
+        subtotal = _round(facts.zone_flat)
+        lines: list[dict] = [
             {
-                "label": "airport_flat" if facts.is_airport else "minimum",
-                "amount": _round(floored - metered),
+                "label": "zone_flat",
+                "zone": facts.zone_key,
+                "zone_name": facts.zone_name,
+                "amount": subtotal,
             }
-        )
+        ]
+    else:
+        distance_charge = _round(miles * rates.per_mile)
+        time_charge = _round(minutes * rates.per_minute)
+        metered = _round(rates.base + distance_charge + time_charge)
 
-    subtotal = floored
+        floor = rates.airport_flat if facts.is_airport else rates.minimum
+        floored = max(metered, floor)
+        floor_applied = floored > metered
+
+        lines = [
+            {"label": "base", "amount": _round(rates.base)},
+            {"label": "distance", "amount": distance_charge, "qty": _round(miles)},
+            {"label": "time", "amount": time_charge, "qty": _round(minutes)},
+        ]
+        if floor_applied:
+            lines.append(
+                {
+                    "label": "airport_flat" if facts.is_airport else "minimum",
+                    "amount": _round(floored - metered),
+                }
+            )
+
+        subtotal = floored
 
     extra_stops = max(0, facts.extra_stops or 0)
     if extra_stops and rates.extra_stop_fee:
@@ -87,7 +107,7 @@ def quote(rates: RateConfig, facts: RouteFacts) -> dict:
         lines.append({"label": "group_surcharge", "amount": _round(rates.group_surcharge)})
 
     peak = facts.is_peak if facts.is_peak is not None else is_peak_time(facts.scheduled_at)
-    peak = bool(peak) and rates.peak_enabled and rates.peak_multiplier > 1.0
+    peak = bool(peak) and rates.peak_enabled and rates.peak_multiplier > 1.0 and not is_zone
     if peak:
         bumped = _round(subtotal * rates.peak_multiplier)
         lines.append(
@@ -117,6 +137,8 @@ def quote(rates: RateConfig, facts: RouteFacts) -> dict:
         "distance_miles": _round(miles),
         "duration_minutes": _round(minutes),
         "is_airport": facts.is_airport,
+        "zone": facts.zone_key,
+        "zone_name": facts.zone_name,
         "is_peak": peak,
         "is_loyalty": facts.is_loyalty,
         "lines": lines,

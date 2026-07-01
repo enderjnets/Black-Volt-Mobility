@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Float,
@@ -69,6 +70,11 @@ class RateConfig(Base):
 
     # Loyalty discount (percent off the final fare for returning clients).
     loyalty_discount_pct: Mapped[float] = mapped_column(Float, default=10.0)
+
+    # Per-tenant flat-rate zone price overrides: {zone_key: flat_price}. NULL / missing
+    # keys fall back to services.zones.DEFAULT_ZONE_PRICES. Zone geography itself is
+    # global (defined in code); only the prices are editable per driver.
+    zone_prices: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

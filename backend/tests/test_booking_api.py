@@ -45,15 +45,17 @@ def test_quote_prices_trip():
     assert body["is_airport"] is False
 
 
-def test_quote_airport_uses_flat_floor():
+def test_quote_den_airport_is_metro_flat():
     c = _owner()
     r = c.post(
         "/api/v1/quote", json={"pickup": "Downtown Denver", "dropoff": "Denver Intl (DEN)"}
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["is_airport"] is True
-    assert body["total"] >= 74.0
+    # DEN now folds into the Denver-metro flat zone ($120), not the old airport floor.
+    assert body["is_airport"] is False
+    assert body["zone"] == "denver_metro"
+    assert body["total"] == 120.0
 
 
 def test_places_autocomplete():
@@ -101,7 +103,8 @@ def test_create_list_and_patch_ride_as_owner():
     ride = r.json()
     assert ride["status"] == "quoted"
     assert ride["fare_total"] > 0
-    assert ride["price_breakdown"]["is_airport"] is True
+    # Cherry Creek → DEN is now the Denver-metro flat zone ($120).
+    assert ride["price_breakdown"]["zone"] == "denver_metro"
     rid = ride["id"]
 
     lst = c.get("/api/v1/rides")

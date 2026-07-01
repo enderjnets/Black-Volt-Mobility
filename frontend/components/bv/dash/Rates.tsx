@@ -94,12 +94,15 @@ export function Rates() {
   const [base, setBase] = useState(12);
   const [perMile, setPerMile] = useState(2.4);
   const [perMin, setPerMin] = useState(0.55);
-  const [airport, setAirport] = useState(74);
   const [minimum, setMinimum] = useState(28);
   const [surge, setSurge] = useState(true);
   const [surgeX, setSurgeX] = useState(1.4);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [zonePrices, setZonePrices] = useState<Record<string, number>>({});
+  const [zoneDefs, setZoneDefs] = useState<{ key: string; name: string; default_flat: number }[]>(
+    [],
+  );
 
   // Load the tenant's live rate config; falls back to the defaults above.
   useEffect(() => {
@@ -108,17 +111,19 @@ export function Rates() {
         setBase(rc.base);
         setPerMile(rc.per_mile);
         setPerMin(rc.per_minute);
-        setAirport(rc.airport_flat);
         setMinimum(rc.minimum);
         setSurge(rc.peak_enabled);
         setSurgeX(rc.peak_multiplier);
+        setZonePrices(rc.zone_prices || {});
+        setZoneDefs(rc.zones || []);
       })
       .catch(() => {});
   }, []);
 
   const SAMPLE_MI = 18.4;
   const SAMPLE_MIN = 28;
-  const fare = Math.max(minimum, airport);
+  const meteredSample = +(base + perMile * SAMPLE_MI + perMin * SAMPLE_MIN).toFixed(2);
+  const fare = Math.max(minimum, meteredSample);
 
   const save = async () => {
     setSaving(true);
@@ -127,10 +132,10 @@ export function Rates() {
         base,
         per_mile: perMile,
         per_minute: perMin,
-        airport_flat: airport,
         minimum,
         peak_enabled: surge,
         peak_multiplier: surgeX,
+        zone_prices: zonePrices,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
@@ -153,7 +158,6 @@ export function Rates() {
         <RateInput icon="dollar-sign" label={t("dash.rates.base")} hint={t("dash.rates.baseHint")} value={base} setValue={setBase} step={1} prefix="$" />
         <RateInput icon="navigation" label={t("dash.rates.perMile")} hint={t("dash.rates.perMileHint")} value={perMile} setValue={setPerMile} step={0.1} prefix="$" />
         <RateInput icon="clock" label={t("dash.rates.perMin")} hint={t("dash.rates.perMinHint")} value={perMin} setValue={setPerMin} step={0.05} prefix="$" />
-        <RateInput icon="plane" label={t("dash.rates.airport")} hint={t("dash.rates.airportHint")} value={airport} setValue={setAirport} step={1} prefix="$" />
         <RateInput icon="shield-check" label={t("dash.rates.min")} hint={t("dash.rates.minHint")} value={minimum} setValue={setMinimum} step={1} prefix="$" />
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 0 4px" }}>
@@ -208,6 +212,43 @@ export function Rates() {
           )}
           <Toggle on={surge} setOn={setSurge} />
         </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            margin: "20px 0 2px",
+          }}
+        >
+          <span
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 600,
+              fontSize: 15,
+              color: "var(--arctic)",
+            }}
+          >
+            {t("dash.rates.zones")}
+          </span>
+          <Pill tone="muted" icon="map-pin">
+            {t("dash.rates.flat")}
+          </Pill>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 2 }}>
+          {t("dash.rates.zonesHint")}
+        </div>
+        {zoneDefs.map((z) => (
+          <RateInput
+            key={z.key}
+            icon="map-pin"
+            label={z.name}
+            value={zonePrices[z.key] ?? z.default_flat}
+            setValue={(v) => setZonePrices((p) => ({ ...p, [z.key]: v }))}
+            step={5}
+            prefix="$"
+          />
+        ))}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -229,8 +270,8 @@ export function Rates() {
               </div>
             ))}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--fg3)" }}>
-              <span>{t("dash.rates.denFlat")}</span>
-              <span>${airport}</span>
+              <span>{t("dash.rates.min")}</span>
+              <span>${minimum}</span>
             </div>
           </div>
         </div>

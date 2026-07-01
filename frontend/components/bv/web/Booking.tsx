@@ -500,6 +500,22 @@ export function Booking() {
                   <Stat icon="dollar-sign" label={t("book.fare")} value={fareText} accent />
                 </div>
 
+                {quote?.zone_name && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 12.5,
+                      color: "var(--volt)",
+                    }}
+                  >
+                    <Icon name="map-pin" size={13} color="var(--volt)" />
+                    {t("book.flatRate")} · {quote.zone_name}
+                  </div>
+                )}
+
                 {/* Discount code */}
                 <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
                   <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>{t("book.discount.label")}</div>

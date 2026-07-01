@@ -36,6 +36,7 @@ from app.services import (
     profile,
     smart,
     subscriptions,
+    zones,
 )
 from app.services import (
     legal as legal_svc,
@@ -131,6 +132,25 @@ class RateConfigBody(BaseModel):
     peak_enabled: bool | None = None
     peak_multiplier: float | None = Field(default=None, ge=1.0, le=5.0)
     loyalty_discount_pct: float | None = Field(default=None, ge=0, le=90)
+    # Per-tenant flat-rate zone price overrides {zone_key: price}. Keys must be known
+    # zones; the client sends the full effective map on save.
+    zone_prices: dict[str, float] | None = None
+
+    @field_validator("zone_prices")
+    @classmethod
+    def _check_zone_prices(cls, v: dict | None) -> dict | None:
+        if v is None:
+            return v
+        cleaned: dict[str, float] = {}
+        for key, price in v.items():
+            if key not in zones.DEFAULT_ZONE_PRICES:
+                raise ValueError(f"unknown zone: {key}")
+            if price is None:
+                continue
+            if price < 0:
+                raise ValueError("zone price must be >= 0")
+            cleaned[key] = float(price)
+        return cleaned
 
 
 # Statuses a passenger may self-cancel from (before the driver is en route).
@@ -198,6 +218,10 @@ def _rate_out(rc) -> dict:
         "peak_enabled": rc.peak_enabled,
         "peak_multiplier": rc.peak_multiplier,
         "loyalty_discount_pct": rc.loyalty_discount_pct,
+        # Effective per-zone flat prices (global defaults overlaid with tenant overrides)
+        # plus the static zone descriptors the dashboard renders its editor from.
+        "zone_prices": {**zones.DEFAULT_ZONE_PRICES, **(rc.zone_prices or {})},
+        "zones": zones.ZONE_DESCRIPTORS,
     }
 
 

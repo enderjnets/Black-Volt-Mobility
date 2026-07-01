@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.60.0 — 2026-06-30 — Flat-rate zones (Denver metro, Boulder, mountains, COS, N. Colorado)
+
+- **Fixed zone pricing**: rides whose pickup **or** dropoff falls in a named zone are now charged a
+  fixed flat price instead of the metered fare — Aspen $790, Vail/Beaver Creek/Eagle $390, Summit
+  County $349, Colorado Springs $359, Fort Collins/Wellington $280, Loveland/Greeley $249, Boulder
+  $190, Denver metro (incl. **DEN airport**) $120. Anything outside every zone is still metered by
+  distance + time (`services/zones.py`, wired into `booking.build_quote` before the legacy airport
+  floor). Zone match is symmetric and precedence-ordered (specific mountain/city zones beat the
+  Denver-metro catch-all, since the base is itself in the metro).
+- **Fixed means fixed**: peak/surge never applies to a zone flat; extra-stop fee, group surcharge and
+  discount codes still apply on top. Matching keys off the address's city component so a POI like
+  "Aspen Grove, Littleton" prices as metro, not Aspen.
+- **Per-driver zone prices**: new `rate_configs.zone_prices` JSON column (migration `0035`) + a "Flat
+  zones" section in the dashboard Rates screen; each driver can override any zone's price. The
+  customer quote shows a "Flat rate · <zone>" chip when a zone applies.
+
 ## v0.59.0 — 2026-06-30 — Smart reservation: multi-reservation batch + recoverable scans
 
 - **Batch extraction**: `Add ride → Smart` reads several requests at once. The backend now runs one

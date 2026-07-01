@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import Client, RateConfig, Ride, RideStatus
 from app.models.rate_config import DEFAULT_RATES
-from app.services import discounts, maps, pricing
+from app.services import discounts, maps, pricing, zones
 from app.services import profile as profile_svc
 
 logger = logging.getLogger("blackvolt.booking")
@@ -58,6 +58,7 @@ RATE_FIELDS = (
     "peak_enabled",
     "peak_multiplier",
     "loyalty_discount_pct",
+    "zone_prices",
 )
 
 
@@ -88,11 +89,9 @@ async def build_quote(
     route facts + the pricing breakdown."""
     rc = await get_or_create_rate_config(db, tenant_id=tenant_id)
     rr = await maps.route(pickup, dropoff, stops)
-    is_airport = pricing.looks_like_airport(pickup, dropoff)
     facts = pricing.RouteFacts(
         distance_miles=rr.distance_miles,
         duration_minutes=rr.duration_minutes,
-        is_airport=is_airport,
         pax=pax,
         extra_stops=len(stops) if stops else 0,
         scheduled_at=scheduled_at,
@@ -104,6 +103,16 @@ async def build_quote(
         facts.discount_pct = code_row.discount_pct
         # Re-resolve RateConfig using the code owner's tenant for correct base rates.
         rc = await get_or_create_rate_config(db, tenant_id=code_row.tenant_id)
+    # A flat-rate zone (fixed price, either endpoint) wins over the metered path; the
+    # legacy airport floor only kicks in when no zone matches. Uses the final rc's
+    # per-tenant zone price overrides.
+    hit = zones.match_zone(pickup, dropoff, rc.zone_prices)
+    if hit is not None:
+        facts.zone_flat = hit.flat
+        facts.zone_key = hit.key
+        facts.zone_name = hit.name
+    else:
+        facts.is_airport = pricing.looks_like_airport(pickup, dropoff)
     breakdown = pricing.quote(rc, facts)
     breakdown["route_simulated"] = rr.simulated
     return breakdown

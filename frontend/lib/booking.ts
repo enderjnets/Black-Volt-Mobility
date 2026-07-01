@@ -15,6 +15,8 @@ export interface Quote {
   distance_miles: number;
   duration_minutes: number;
   is_airport: boolean;
+  zone?: string | null;
+  zone_name?: string | null;
   is_peak: boolean;
   is_loyalty: boolean;
   lines: QuoteLine[];
@@ -34,6 +36,8 @@ export interface RateConfig {
   peak_enabled: boolean;
   peak_multiplier: number;
   loyalty_discount_pct: number;
+  zone_prices: Record<string, number>;
+  zones: { key: string; name: string; default_flat: number }[];
 }
 
 export interface RideInput {

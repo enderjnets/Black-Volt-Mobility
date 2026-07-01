@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.59.0";
+export const CURRENT_VERSION = "0.60.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.60.0",
+    date: "2026-06-30",
+    title: "Flat-rate zones: fixed prices for Denver metro, Boulder, the mountains, COS & N. Colorado",
+    changes: [
+      "Rides to/from named zones now charge a fixed flat price (Aspen $790, Vail $390, Summit $349, Colorado Springs $359, Fort Collins $280, Loveland/Greeley $249, Boulder $190, Denver metro & DEN airport $120).",
+      "A zone applies when either the pickup or the dropoff is in it; anything outside all zones is still metered by distance and time.",
+      "Flat zone prices ignore peak surge; extra stops, group surcharge and discount codes still apply.",
+      "Each driver can adjust their own zone prices from the dashboard Rates screen.",
+    ],
+  },
   {
     version: "0.59.0",
     date: "2026-06-30",
