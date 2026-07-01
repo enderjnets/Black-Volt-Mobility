@@ -108,6 +108,12 @@ async def generate_post(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="image_requires_photo"
         )
+    # AI image: an image post with no photo is still a draft here → kick off the Kling
+    # text→image render so the owner gets a progress bar and a rendered draft to approve.
+    if body.media_kind == "image" and isinstance(out, dict) and out.get("status") == "draft":
+        rendered = await social.request_render(db, tenant_id=tenant_id, post_id=out["id"])
+        if rendered is not None:
+            return rendered
     return out
 
 

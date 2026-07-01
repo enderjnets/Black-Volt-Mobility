@@ -487,7 +487,9 @@ async def generate_and_create(
         db, tenant_id=tenant_id, content={**brief, "topic": topic}, lang=lang,
         targets=targets, reference_paths=reference_paths, media_kind=kind,
     )
-    if kind == "image":
+    # With a photo, an image post is finalized instantly (the photo is the media). Without a
+    # photo it stays a draft so the caller can kick off the AI text→image render.
+    if kind == "image" and out.get("reference_image_paths"):
         fin = await finalize_image_post(db, tenant_id=tenant_id, post_id=out["id"])
         if fin is not None:
             fin["source"] = brief["source"]
@@ -784,8 +786,10 @@ async def request_render(db: AsyncSession, *, tenant_id: int, post_id: int) -> d
     row = await _get_post(db, tenant_id=tenant_id, post_id=post_id)
     if row is None:
         return None
-    # Image posts have no video render — the uploaded photo is the media.
-    if row.media_kind == "image":
+    # Image posts: an uploaded photo IS the media (finalize instantly, no worker). With no
+    # photo, fall through to submit an AI text→image render job (the script carries
+    # media_kind="image" so the worker produces one Kling image instead of a video).
+    if row.media_kind == "image" and (row.reference_image_paths or []):
         return await finalize_image_post(db, tenant_id=tenant_id, post_id=post_id)
     # When the owner attached a reference photo, derive a concrete description of THAT
     # vehicle so every generated shot depicts the same car (no mismatched vehicles). The
@@ -807,6 +811,7 @@ async def request_render(db: AsyncSession, *, tenant_id: int, post_id: int) -> d
         "type": "short",
         "lang": _clamp_locale(row.lang),
         "caption": row.caption or "",
+        "media_kind": row.media_kind,  # "image" → worker renders one still; else a video
         "video_prompts": prompts,
         "reference_images": ref_urls,
         # Concrete description of the uploaded vehicle so the worker keeps every AI shot
@@ -1082,6 +1087,8 @@ async def apply_render_callback(db: AsyncSession, *, payload: dict) -> str:
         await db.commit()
         return "rejected_asset"
     row.media_path = media_path
+    if row.media_kind == "image":
+        row.cover_path = media_path  # the image is its own cover
     row.status = "rendered"
     await db.commit()
     return "applied"

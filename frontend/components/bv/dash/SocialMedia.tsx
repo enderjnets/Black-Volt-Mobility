@@ -274,6 +274,7 @@ export function SocialMedia() {
   const [syncing, setSyncing] = useState(false);
   const [topic, setTopic] = useState("");
   const [mediaKind, setMediaKind] = useState<"video" | "image">("video");
+  const [photoSource, setPhotoSource] = useState<"upload" | "ai">("upload");
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const [replyEdits, setReplyEdits] = useState<Record<number, string>>({});
@@ -337,7 +338,8 @@ export function SocialMedia() {
 
   async function onGenerate() {
     if (isBusy("gen")) return;
-    if (mediaKind === "image" && !refs.length) {
+    const isAiImage = mediaKind === "image" && photoSource === "ai";
+    if (mediaKind === "image" && photoSource === "upload" && !refs.length) {
       setErr(t("dash.social.generate.needPhoto"));
       return;
     }
@@ -346,7 +348,8 @@ export function SocialMedia() {
       await generatePost({
         topic: topic.trim() || undefined,
         lang,
-        reference_paths: refs.length ? refs.map((r) => r.path) : undefined,
+        // AI image: send no photo so the backend renders one via Kling text→image.
+        reference_paths: isAiImage ? undefined : refs.length ? refs.map((r) => r.path) : undefined,
         media_kind: mediaKind,
       });
       setTopic("");
@@ -565,9 +568,51 @@ export function SocialMedia() {
               ))}
             </div>
             {mediaKind === "image" && (
-              <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 12 }}>
-                {t("dash.social.generate.photoHint")}
-              </div>
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 4,
+                    background: "var(--obsidian-3)",
+                    border: "1px solid var(--line-strong)",
+                    borderRadius: "var(--radius-full)",
+                    padding: 4,
+                    marginBottom: 8,
+                    width: "fit-content",
+                  }}
+                >
+                  {(["upload", "ai"] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setPhotoSource(s)}
+                      style={{
+                        padding: "5px 13px",
+                        borderRadius: "var(--radius-full)",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        border: "none",
+                        background: photoSource === s ? "var(--volt-bg-20)" : "transparent",
+                        color: photoSource === s ? "var(--volt)" : "var(--silver)",
+                        boxShadow: photoSource === s ? "inset 0 0 0 1px var(--volt-border)" : "none",
+                      }}
+                    >
+                      {t(
+                        s === "upload"
+                          ? "dash.social.generate.srcUpload"
+                          : "dash.social.generate.srcAi",
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 12 }}>
+                  {t(
+                    photoSource === "upload"
+                      ? "dash.social.generate.photoHint"
+                      : "dash.social.generate.aiHint",
+                  )}
+                </div>
+              </>
             )}
             <label style={{ display: "block" }}>
               <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>

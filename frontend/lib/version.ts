@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.61.0";
+export const CURRENT_VERSION = "0.62.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.62.0",
+    date: "2026-07-01",
+    title: "Social: AI-generated image posts",
+    changes: [
+      "Photo posts now have a \"My photo\" / \"AI image\" choice — pick AI image and the post's image is generated for you from your topic (Kling text→image), no upload needed.",
+      "AI images render in about a minute and land as a draft pending your approval, just like video posts.",
+    ],
+  },
   {
     version: "0.61.0",
     date: "2026-06-30",

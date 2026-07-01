@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.62.0 — 2026-07-01 — Social: AI-generated image posts
+
+- **AI image posts**: Photo mode gets a "My photo" / "AI image" sub-choice. "AI image" needs no
+  upload — the backend submits a Kling **text→image** job (the ROG worker's `produce_blackvolt_image`,
+  9:16, with a branded-gradient fallback) and the still comes back as the post's media. Renders in
+  ~1 min and lands as a draft pending approval, like video.
+- Design without a new field: an image post **with** a reference photo uses it directly (instant,
+  v0.61.0); **without** a photo it AI-generates. `request_render` branches on that;
+  `apply_render_callback` already writes assets by extension (`media_ext=jpg`) and now sets
+  `cover_path` for images. Daily auto-posts still use your uploaded photo library (AI-image stays a
+  manual, per-post creative choice to control Kling credit spend).
+
 ## v0.61.0 — 2026-06-30 — Social: photo or video posts + smarter daily auto-posts
 
 - **Photo OR video posts**: "Generate a post" gets a Video / Photo toggle. A photo post uses the

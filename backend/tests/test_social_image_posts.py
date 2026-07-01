@@ -84,13 +84,33 @@ async def test_request_render_is_noop_for_image_post(db):
 
 
 @pytest.mark.asyncio
-async def test_image_post_without_photo_errors(db):
+async def test_image_post_without_photo_stays_draft_for_ai_render(db):
+    # Phase 2: an image post with no photo is NOT finalized — it stays a draft so the
+    # caller can kick off the AI text→image render (the /generate API does that).
     tid = await _mk_tenant(db)
     out = await S.generate_and_create(
         db, tenant_id=tid, topic="t", angle=None, lang="en",
         reference_paths=None, media_kind="image",
     )
-    assert out.get("error") == "image_requires_photo"
+    assert "error" not in out
+    assert out["media_kind"] == "image"
+    assert out["status"] == "draft"
+    assert out["media_path"] is None
+
+
+@pytest.mark.asyncio
+async def test_request_render_submits_ai_image_when_no_photo(db):
+    # Phase 2: image post with no photo → request_render submits an AI text→image job
+    # (rather than finalizing to an uploaded photo). Simulated render returns immediately.
+    tid = await _mk_tenant(db)
+    out = await S.generate_and_create(
+        db, tenant_id=tid, topic="t", angle=None, lang="en", media_kind="image",
+    )
+    assert out["status"] == "draft"
+    res = await S.request_render(db, tenant_id=tid, post_id=out["id"])
+    assert res is not None
+    assert res["media_kind"] == "image"
+    assert res["status"] in ("rendered", "render_requested")
 
 
 @pytest.mark.asyncio
