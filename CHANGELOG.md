@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.62.3 — 2026-07-01 — Fix: publishing image posts to Instagram
+
+- **Bugfix**: "Publish now" silently did nothing on image posts — Instagram's Buffer call 400'd with
+  `Field "shouldShareToFeed" of required type "Boolean!" was not provided`. v0.62.2 sent only
+  `{"type": "post"}` for images; `InstagramPostMetadataInput` requires **both** `type` and
+  `shouldShareToFeed`. `_network_meta` now always sends `shouldShareToFeed: true` (image → `type:
+  "post"`, video → `type: "reel"`). With IG publishing succeeding, the post flips to PUBLISHED instead
+  of staying stuck APPROVED. (TikTok's separate per-image "Invalid post" rejection of some uploaded
+  photos is TikTok photo-mode format/aspect validation, not a schema bug — best-effort.) Verified
+  against the live Buffer GraphQL schema via introspection.
+
 ## v0.62.2 — 2026-07-01 — Fix: publishing AI image posts to Buffer
 
 - **Bugfix**: image posts (media_kind=image) rendered fine but flipped to **FAILED** on publish —

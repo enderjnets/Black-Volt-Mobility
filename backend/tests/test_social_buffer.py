@@ -90,7 +90,8 @@ async def test_create_post_builds_ig_image_post(monkeypatch):
     assert res["id"] == "imgpost1"
     inp = captured["v"]["input"]
     assert inp["assets"] == [{"image": {"url": "https://app.blackvoltmobility.com/media/a.png"}}]
-    assert inp["metadata"]["instagram"] == {"type": "post"}
+    # Instagram requires both `type` and `shouldShareToFeed` (Boolean!) on every post.
+    assert inp["metadata"]["instagram"] == {"type": "post", "shouldShareToFeed": True}
 
 
 @pytest.mark.asyncio

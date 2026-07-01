@@ -45,13 +45,13 @@ mutation CreatePost($input: CreatePostInput!) {
 """
 
 def _network_meta(service: str, media_kind: str) -> dict | None:
-    """Per-network publish hints. Instagram video → Reel (shared to feed); an
-    image → a normal feed post (`type: "post"`) — sending an image as a Reel is
-    rejected. Other networks need no hint."""
+    """Per-network publish hints. Instagram video → Reel; an image → a normal feed
+    post (`type: "post"`) — sending an image as a Reel is rejected. Instagram
+    requires BOTH `type` and `shouldShareToFeed` (Boolean!) on every post, so it's
+    always sent. Other networks need no hint."""
     if service == "instagram":
-        if media_kind == "image":
-            return {"instagram": {"type": "post"}}
-        return {"instagram": {"type": "reel", "shouldShareToFeed": True}}
+        post_type = "post" if media_kind == "image" else "reel"
+        return {"instagram": {"type": post_type, "shouldShareToFeed": True}}
     return None
 
 

@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.62.2";
+export const CURRENT_VERSION = "0.62.3";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.62.3",
+    date: "2026-07-01",
+    title: "Fix: publishing image posts to Instagram",
+    changes: [
+      "Fixed \"Publish now\" appearing to do nothing on image posts — Instagram was rejecting them for a missing required field; image posts now publish to Instagram correctly.",
+    ],
+  },
   {
     version: "0.62.2",
     date: "2026-07-01",
