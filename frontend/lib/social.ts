@@ -18,6 +18,7 @@ export interface SocialPost {
   script: string | null;
   caption: string | null;
   hashtags: string | null;
+  media_kind: "video" | "image";
   media_path: string | null;
   cover_path: string | null;
   simulated_render: boolean;
@@ -104,6 +105,7 @@ export async function generatePost(body: {
   lang: string;
   targets?: SocialPlatform[];
   reference_paths?: string[];
+  media_kind?: "video" | "image";
 }): Promise<SocialPost> {
   return jsend<SocialPost>("/v1/social/posts/generate", "POST", body);
 }
@@ -134,12 +136,13 @@ export async function uploadReferenceImage(file: File): Promise<UploadedRef> {
 // around it, and the image is attached so the render is built around it.
 export async function generateFromImage(
   file: File,
-  opts: { lang: string; topic?: string },
+  opts: { lang: string; topic?: string; media_kind?: "video" | "image" },
 ): Promise<SocialPost> {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("lang", opts.lang);
   if (opts.topic) fd.append("topic", opts.topic);
+  if (opts.media_kind) fd.append("media_kind", opts.media_kind);
   const r = await fetch("/api/v1/social/posts/generate-from-image", {
     method: "POST",
     credentials: "include",

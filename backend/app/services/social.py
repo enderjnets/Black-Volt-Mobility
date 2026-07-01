@@ -89,6 +89,11 @@ def _sanitize_topic(topic: str | None) -> str:
     return t[:_MAX_TOPIC]
 
 
+def _clean_media_kind(kind: str | None) -> str:
+    """Only 'image' or 'video' (default). Governs the render-vs-photo-direct path."""
+    return "image" if str(kind or "").strip().lower() == "image" else "video"
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -168,6 +173,7 @@ def _post_out(p: SocialPost) -> dict:
         "script": p.script,
         "caption": p.caption,
         "hashtags": p.hashtags,
+        "media_kind": p.media_kind,
         "media_path": media,
         "cover_path": p.cover_path,
         "simulated_render": media == render_client.SIMULATED_MEDIA,
@@ -447,6 +453,7 @@ async def _get_post(db: AsyncSession, *, tenant_id: int, post_id: int) -> Social
 async def create_post(
     db: AsyncSession, *, tenant_id: int, content: dict, lang: str = "en",
     targets: list | None = None, reference_paths: list | None = None,
+    media_kind: str = "video",
 ) -> dict:
     """Persist a new draft from already-generated content."""
     row = SocialPost(
@@ -455,6 +462,7 @@ async def create_post(
         script=content.get("script"),
         caption=content.get("caption"),
         hashtags=content.get("hashtags"),
+        media_kind=_clean_media_kind(media_kind),
         targets=_clean_targets(targets),
         reference_image_paths=_clean_ref_paths(tenant_id, reference_paths),
         status="draft",
@@ -469,13 +477,21 @@ async def create_post(
 async def generate_and_create(
     db: AsyncSession, *, tenant_id: int, topic: str | None, angle: str | None,
     lang: str, targets: list | None = None, reference_paths: list | None = None,
+    media_kind: str = "video",
 ) -> dict:
-    """Generate a brief and persist it as a draft in one step (the /generate route)."""
+    """Generate a brief and persist it as a draft in one step (the /generate route).
+    For an image post the uploaded photo IS the media, so it's finalized here (no render)."""
     brief = await generate_brief(db, tenant_id=tenant_id, topic=topic, angle=angle, lang=lang)
+    kind = _clean_media_kind(media_kind)
     out = await create_post(
         db, tenant_id=tenant_id, content={**brief, "topic": topic}, lang=lang,
-        targets=targets, reference_paths=reference_paths,
+        targets=targets, reference_paths=reference_paths, media_kind=kind,
     )
+    if kind == "image":
+        fin = await finalize_image_post(db, tenant_id=tenant_id, post_id=out["id"])
+        if fin is not None:
+            fin["source"] = brief["source"]
+            return fin
     out["source"] = brief["source"]
     return out
 
@@ -561,6 +577,7 @@ async def _vehicle_match_from_ref(rel_path: str) -> str | None:
 async def generate_from_image(
     db: AsyncSession, *, tenant_id: int, raw: bytes,
     lang: str = "en", topic: str | None = None, targets: list | None = None,
+    media_kind: str = "video",
 ) -> dict | None:
     """Persist an uploaded image as a reference, derive a subject from it via vision
     (unless the owner gave a topic), then run the normal brief→draft flow with that
@@ -576,7 +593,7 @@ async def generate_from_image(
         subject = await _describe_image_subject(raw, sniffed_ctype, locale) or ""
     return await generate_and_create(
         db, tenant_id=tenant_id, topic=subject or None, angle=None, lang=lang,
-        targets=targets, reference_paths=[rel_path],
+        targets=targets, reference_paths=[rel_path], media_kind=media_kind,
     )
 
 
@@ -739,11 +756,37 @@ async def _video_prompts(
     return _ensure_vehicle(template, vehicle_match)
 
 
+async def finalize_image_post(db: AsyncSession, *, tenant_id: int, post_id: int) -> dict | None:
+    """Image posts skip the video render entirely: the owner's uploaded photo IS the media.
+    Sets media/cover to the first reference image and marks the post 'rendered' (approvable).
+    Returns {'error': 'image_requires_photo', ...} when no photo is attached."""
+    row = await _get_post(db, tenant_id=tenant_id, post_id=post_id)
+    if row is None:
+        return None
+    refs = row.reference_image_paths or []
+    if not refs:
+        return {"error": "image_requires_photo", "post": _post_out(row)}
+    img = refs[0]
+    row.media_kind = "image"
+    row.media_path = img
+    row.cover_path = img
+    row.status = "rendered"
+    row.render_progress = 100
+    row.render_stage = "done"
+    row.render_job_id = None
+    await db.commit()
+    await db.refresh(row)
+    return _post_out(row)
+
+
 async def request_render(db: AsyncSession, *, tenant_id: int, post_id: int) -> dict | None:
     """Kick off the (simulated or live) render for a post."""
     row = await _get_post(db, tenant_id=tenant_id, post_id=post_id)
     if row is None:
         return None
+    # Image posts have no video render — the uploaded photo is the media.
+    if row.media_kind == "image":
+        return await finalize_image_post(db, tenant_id=tenant_id, post_id=post_id)
     # When the owner attached a reference photo, derive a concrete description of THAT
     # vehicle so every generated shot depicts the same car (no mismatched vehicles). The
     # first photo is the matching anchor (the common case is a single inspiration photo).
@@ -1348,6 +1391,89 @@ def _daily_angle(seed: int) -> str:
     return _DAILY_ANGLES[seed % len(_DAILY_ANGLES)]
 
 
+def _season_hint(month: int) -> str:
+    """Denver seasonal demand — a lightweight 'trend' signal (no external API) fed to the
+    brief so the daily post rides the season's highest-intent travel."""
+    if month in (12, 1, 2, 3):
+        return "ski season — premium mountain-resort transfers to Vail, Breckenridge and Aspen"
+    if month in (4, 5):
+        return "spring — Red Rocks concert season opening and steady DEN airport travel"
+    if month in (6, 7, 8):
+        return "summer — Red Rocks concerts, mountain day-trips and peak DEN airport travel"
+    if month in (9, 10):
+        return "fall — foliage mountain trips and DEN business travel"
+    return "holiday travel — DEN airport runs and year-end demand"
+
+
+def _daily_media_kind(pref: str | None, day_index: int) -> str:
+    """Resolve a tenant's daily media preference to this run's kind. 'mixed' alternates."""
+    p = str(pref or "video").strip().lower()
+    if p == "image":
+        return "image"
+    if p == "mixed":
+        return "image" if day_index % 2 == 0 else "video"
+    return "video"
+
+
+def _pick_brand_photo(tenant_id: int) -> str | None:
+    """Newest photo from the tenant's uploaded social/refs library, for image auto-posts
+    (which have no owner upload at generation time). None when the library is empty →
+    the daily job falls back to a video post so it never breaks."""
+    settings = get_settings()
+    rel_dir = _refs_rel_dir(tenant_id)
+    abs_dir = os.path.join(settings.MEDIA_DIR, rel_dir)
+    try:
+        names = sorted(
+            n
+            for n in os.listdir(abs_dir)
+            if os.path.splitext(n)[1].lower() in (".jpg", ".jpeg", ".png", ".gif", ".webp")
+        )
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    if not names:
+        return None
+    return os.path.join(rel_dir, names[-1])  # ref-<epoch_ms>.ext → newest last
+
+
+async def _smart_daily_brief(
+    db: AsyncSession, *, tenant_id: int, seed: int
+) -> tuple[str | None, str]:
+    """Pick the daily topic + angle from what actually converts (own analytics: the
+    best-performing UTM campaign / route) plus a seasonal demand hint — the goal is
+    traffic → reservations. Falls back to the static rotation when there's no signal yet.
+    Best-effort: never raises."""
+    hook = _daily_angle(seed)
+    season = _season_hint(_now().month)
+    topic: str | None = None
+    cta = "Close with a clear call to book a ride on the site."
+    try:
+        from app.services import analytics
+
+        data = await analytics.summary(db, tenant_id=tenant_id, days=30)
+        camps = [
+            c
+            for c in (data.get("campaigns") or [])
+            if str(c.get("campaign") or "").strip() not in ("", "(none)")
+        ]
+        camps.sort(key=lambda c: (c.get("confirmed") or 0, c.get("starts") or 0), reverse=True)
+        winner = next(
+            (c for c in camps if (c.get("confirmed") or 0) > 0),
+            camps[0] if camps else None,
+        )
+        if winner:
+            label = str(winner["campaign"]).replace("-", " ").replace("_", " ").strip()
+            if label:
+                topic = label
+                cta = (
+                    f"This route ({label}) converts best right now — feature it and drive "
+                    "bookings. Close with a clear call to book on the site."
+                )
+    except Exception as e:  # analytics is a nice-to-have; never block the daily post
+        logger.debug("smart daily brief: analytics unavailable (%s)", e)
+    angle = f"{hook}. Seasonal focus: {season}. {cta}"
+    return topic, angle
+
+
 async def _generated_today(db: AsyncSession, *, tenant_id: int, since: datetime) -> bool:
     """Idempotency guard: has ANY post already been created for this tenant since the
     given cutoff? Prevents a double-post if the worker restarts the same day."""
@@ -1371,21 +1497,37 @@ async def generate_daily_for_all_tenants(db: AsyncSession) -> int:
 
     now = _now()
     since = now - timedelta(hours=24)
-    tenant_ids = (await db.execute(select(Tenant.id))).scalars().all()
+    day_index = now.timetuple().tm_yday
+    tenants = (await db.execute(select(Tenant))).scalars().all()
     created = 0
-    for i, tid in enumerate(tenant_ids):
+    for i, tenant in enumerate(tenants):
+        tid = tenant.id
         try:
             if await _generated_today(db, tenant_id=tid, since=since):
                 continue
+            # Smart topic: what converts (own analytics) + seasonal demand → traffic/bookings.
+            topic, angle = await _smart_daily_brief(db, tenant_id=tid, seed=day_index + i)
+            kind = _daily_media_kind(tenant.social_daily_media, day_index)
+            ref_paths = None
+            if kind == "image":
+                photo = _pick_brand_photo(tid)
+                if photo:
+                    ref_paths = [photo]
+                else:
+                    kind = "video"  # empty photo library → keep the video post (never breaks)
             post = await generate_and_create(
                 db,
                 tenant_id=tid,
-                topic=None,
-                angle=_daily_angle(now.timetuple().tm_yday + i),
+                topic=topic,
+                angle=angle,
                 lang="en",
                 targets=None,
+                reference_paths=ref_paths,
+                media_kind=kind,
             )
-            await request_render(db, tenant_id=tid, post_id=post["id"])
+            # Image posts are finalized inside generate_and_create; only video needs a render.
+            if kind == "video":
+                await request_render(db, tenant_id=tid, post_id=post["id"])
             created += 1
         except Exception as e:  # isolate per-tenant failure
             logger.warning("daily auto-post failed for tenant %s: %s", tid, e)

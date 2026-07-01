@@ -40,4 +40,8 @@ class Tenant(Base):
     review_reminder_hours: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="3"
     )
+    # Daily auto-post media preference: "video" (default), "image", or "mixed" (alternate).
+    social_daily_media: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default="video"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

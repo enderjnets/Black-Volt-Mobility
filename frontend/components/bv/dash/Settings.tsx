@@ -40,6 +40,7 @@ type Form = {
   since_year: string;
   review_reminders_enabled: boolean;
   review_reminder_hours: string;
+  social_daily_media: "video" | "image" | "mixed";
 };
 
 function toForm(d: TenantSettings): Form {
@@ -57,6 +58,7 @@ function toForm(d: TenantSettings): Form {
     since_year: d.since_year != null ? String(d.since_year) : "",
     review_reminders_enabled: d.review_reminders_enabled ?? true,
     review_reminder_hours: d.review_reminder_hours != null ? String(d.review_reminder_hours) : "3",
+    social_daily_media: d.social_daily_media ?? "video",
   };
 }
 
@@ -110,6 +112,7 @@ export function Settings() {
         since_year: yearNum != null && !Number.isNaN(yearNum) ? yearNum : null,
         review_reminders_enabled: form.review_reminders_enabled,
         review_reminder_hours: hoursNum,
+        social_daily_media: form.social_daily_media,
       });
       setData(d);
       setForm(toForm(d));
@@ -203,6 +206,48 @@ export function Settings() {
               />
             </div>
           )}
+        </Section>
+
+        <Section title={t("dash.settings.socialSection")} icon="sparkles">
+          <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>
+            {t("dash.settings.dailyMedia")}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              background: "var(--obsidian-3)",
+              border: "1px solid var(--line-strong)",
+              borderRadius: "var(--radius-full)",
+              padding: 4,
+              width: "fit-content",
+            }}
+          >
+            {(["video", "image", "mixed"] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setForm((f) => (f ? { ...f, social_daily_media: k } : f))}
+                style={{
+                  padding: "6px 15px",
+                  borderRadius: "var(--radius-full)",
+                  cursor: "pointer",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  border: "none",
+                  background:
+                    form.social_daily_media === k ? "var(--volt-bg-20)" : "transparent",
+                  color: form.social_daily_media === k ? "var(--volt)" : "var(--silver)",
+                  boxShadow:
+                    form.social_daily_media === k ? "inset 0 0 0 1px var(--volt-border)" : "none",
+                }}
+              >
+                {t(`dash.settings.dailyMedia.${k}`)}
+              </button>
+            ))}
+          </div>
+          <p style={{ fontSize: 13, color: "var(--silver)", margin: "8px 0 0", lineHeight: 1.5 }}>
+            {t("dash.settings.dailyMediaHint")}
+          </p>
         </Section>
 
         <Section title={t("dash.settings.brandSection")} icon="wand">

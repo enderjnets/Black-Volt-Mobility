@@ -45,6 +45,15 @@ class TenantSettingsBody(BaseModel):
     since_year: int | None = Field(default=None, ge=1950, le=2100)
     review_reminders_enabled: bool | None = None
     review_reminder_hours: int | None = Field(default=None, ge=1, le=72)
+    social_daily_media: str | None = Field(default=None, max_length=8)
+
+    @field_validator("social_daily_media")
+    @classmethod
+    def _norm_daily_media(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = str(v).strip().lower()
+        return v if v in ("video", "image", "mixed") else "video"
 
     @field_validator(
         "tagline", "bio", "instagram", "website", "vehicle", "city", "phone", mode="before"

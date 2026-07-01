@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.60.1";
+export const CURRENT_VERSION = "0.61.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.61.0",
+    date: "2026-06-30",
+    title: "Social: photo OR video posts + smarter daily auto-posts",
+    changes: [
+      "Generate a post now has a Video / Photo toggle — a photo post uses your uploaded image directly (AI writes the caption & hashtags, no video render).",
+      "Daily auto-posts can create photo posts too (Settings → Social auto-posts: Video / Photo / Mixed); photo days pull from your uploaded photo library and fall back to video if it's empty.",
+      "Daily auto-posts are now smarter: they pick the topic from the route/campaign that actually converts to bookings, plus the season's demand, and always end with a call to book — you still approve before anything publishes.",
+    ],
+  },
   {
     version: "0.60.1",
     date: "2026-06-30",

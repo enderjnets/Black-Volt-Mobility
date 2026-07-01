@@ -34,6 +34,7 @@ export interface TenantSettings {
   since_year: number | null;
   review_reminders_enabled: boolean;
   review_reminder_hours: number;
+  social_daily_media: "video" | "image" | "mixed";
   logo_url: string | null;
   photo_url: string | null;
   payments: PaymentsStatus;
@@ -74,6 +75,7 @@ export type TenantSettingsInput = {
   since_year?: number | null;
   review_reminders_enabled?: boolean;
   review_reminder_hours?: number;
+  social_daily_media?: "video" | "image" | "mixed";
 };
 
 async function jget<T>(path: string): Promise<T> {

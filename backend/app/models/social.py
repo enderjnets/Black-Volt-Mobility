@@ -97,6 +97,9 @@ class SocialPost(Base):
     script: Mapped[str | None] = mapped_column(Text, nullable=True)
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     hashtags: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # "video" (default — Kling render on the ROG worker) or "image" (the owner's uploaded
+    # photo used directly, no render). Governs the render + publish path.
+    media_kind: Mapped[str] = mapped_column(String(8), nullable=False, server_default="video")
     # Rendered asset, relative to the public /media mount.
     media_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     cover_path: Mapped[str | None] = mapped_column(String(500), nullable=True)

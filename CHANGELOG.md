@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.61.0 — 2026-06-30 — Social: photo or video posts + smarter daily auto-posts
+
+- **Photo OR video posts**: "Generate a post" gets a Video / Photo toggle. A photo post uses the
+  owner's uploaded image directly — no Kling video render — with AI-written caption + hashtags
+  (`SocialPost.media_kind`, migration `0036`; `social.finalize_image_post`; `request_render`
+  no-ops for image posts). AI-generated images remain a Phase-2 follow-up (needs the ROG worker
+  extended to an image mode).
+- **Daily auto-posts, image option**: per-tenant `social_daily_media` preference (Settings → Social
+  auto-posts: Video / Photo / Mixed, default **Video** = opt-in). Photo days pull the newest photo
+  from the tenant's uploaded `social/refs` library and **fall back to video** when it's empty.
+- **Smarter daily topic**: `_smart_daily_brief` replaces the static angle rotation — it picks the
+  topic from the best-converting UTM campaign / route (own analytics) plus a Denver seasonal demand
+  hint, and always closes with a booking CTA (traffic → reservations). Still never auto-publishes;
+  the owner approves every post.
+
 ## v0.60.1 — 2026-06-30 — Popular routes: teaser prices synced to flat zones
 
 - Updated the `priceFrom` "from $X" teasers in `lib/seoRoutes.ts` (home Popular routes cards +

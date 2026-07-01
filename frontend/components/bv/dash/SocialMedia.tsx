@@ -135,6 +135,10 @@ function MediaPreview({ post }: { post: SocialPost }) {
     border: "1px solid var(--line-strong)",
     overflow: "hidden",
   };
+  if (src && post.media_kind === "image") {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt={post.topic ?? ""} style={{ ...box, objectFit: "cover", display: "block" }} />;
+  }
   if (src) {
     return (
       <video
@@ -269,6 +273,7 @@ export function SocialMedia() {
   const [stats, setStats] = useState<SocialAnalytics | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [topic, setTopic] = useState("");
+  const [mediaKind, setMediaKind] = useState<"video" | "image">("video");
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const [replyEdits, setReplyEdits] = useState<Record<number, string>>({});
@@ -332,12 +337,17 @@ export function SocialMedia() {
 
   async function onGenerate() {
     if (isBusy("gen")) return;
+    if (mediaKind === "image" && !refs.length) {
+      setErr(t("dash.social.generate.needPhoto"));
+      return;
+    }
     setBusyKey("gen", true);
     try {
       await generatePost({
         topic: topic.trim() || undefined,
         lang,
         reference_paths: refs.length ? refs.map((r) => r.path) : undefined,
+        media_kind: mediaKind,
       });
       setTopic("");
       setRefs([]);
@@ -518,6 +528,47 @@ export function SocialMedia() {
       {tab === "create" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <Panel title={t("dash.social.generate.title")} icon="sparkles">
+            <div
+              style={{
+                display: "flex",
+                gap: 4,
+                background: "var(--obsidian-3)",
+                border: "1px solid var(--line-strong)",
+                borderRadius: "var(--radius-full)",
+                padding: 4,
+                marginBottom: 12,
+                width: "fit-content",
+              }}
+            >
+              {(["video", "image"] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setMediaKind(k)}
+                  style={{
+                    padding: "6px 15px",
+                    borderRadius: "var(--radius-full)",
+                    cursor: "pointer",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    border: "none",
+                    background: mediaKind === k ? "var(--volt-bg-20)" : "transparent",
+                    color: mediaKind === k ? "var(--volt)" : "var(--silver)",
+                    boxShadow: mediaKind === k ? "inset 0 0 0 1px var(--volt-border)" : "none",
+                  }}
+                >
+                  {t(
+                    k === "video"
+                      ? "dash.social.generate.kindVideo"
+                      : "dash.social.generate.kindPhoto",
+                  )}
+                </button>
+              ))}
+            </div>
+            {mediaKind === "image" && (
+              <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 12 }}>
+                {t("dash.social.generate.photoHint")}
+              </div>
+            )}
             <label style={{ display: "block" }}>
               <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 7 }}>
                 {t("dash.social.generate.topic")}

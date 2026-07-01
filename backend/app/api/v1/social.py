@@ -56,6 +56,8 @@ class GenerateBody(BaseModel):
     # Rel paths of previously-uploaded reference images (POST /social/uploads).
     # Validated server-side to this tenant's own social/refs dir.
     reference_paths: list[str] | None = Field(default=None, max_length=4)
+    # "video" (default, Kling render) or "image" (the uploaded photo is the post, no render).
+    media_kind: str = Field(default="video", max_length=8)
 
 
 class CreatePostBody(BaseModel):
@@ -97,10 +99,16 @@ async def generate_post(
     payload: dict = Depends(require_admin),
 ):
     tenant_id = await resolve_tenant_id(db, payload)
-    return await social.generate_and_create(
+    out = await social.generate_and_create(
         db, tenant_id=tenant_id, topic=body.topic, angle=body.angle,
         lang=body.lang, targets=body.targets, reference_paths=body.reference_paths,
+        media_kind=body.media_kind,
     )
+    if isinstance(out, dict) and out.get("error") == "image_requires_photo":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="image_requires_photo"
+        )
+    return out
 
 
 # ── reference-image uploads + generate-from-image ─────────────────────────────
@@ -138,6 +146,7 @@ async def generate_from_image(
     file: UploadFile = File(...),
     lang: str = Form("en"),
     topic: str | None = Form(None),
+    media_kind: str = Form("video"),
     db: AsyncSession = Depends(get_db),
     payload: dict = Depends(require_admin),
 ):
@@ -145,7 +154,7 @@ async def generate_from_image(
     raw = await _read_upload(file)
     out = await social.generate_from_image(
         db, tenant_id=tenant_id, raw=raw,
-        lang=(lang or "en")[:5], topic=(topic or None),
+        lang=(lang or "en")[:5], topic=(topic or None), media_kind=media_kind,
     )
     if out is None:
         raise HTTPException(
