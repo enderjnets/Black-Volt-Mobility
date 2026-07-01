@@ -20,12 +20,18 @@ import base64
 import binascii
 import hashlib
 import hmac
+import io
 import logging
 import os
 import re
 import secrets
 import time
 from datetime import UTC, datetime
+
+try:  # Pillow: downscale oversized uploads so TikTok photo posts don't reject them.
+    from PIL import Image
+except ImportError:  # pragma: no cover - Pillow ships in requirements
+    Image = None
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,6 +130,40 @@ def _refs_rel_dir(tenant_id: int) -> str:
     return os.path.join("tenants", str(int(tenant_id)), "social", "refs")
 
 
+# TikTok photo posts reject images larger than 1920x1080 (long edge x short edge)
+# with a generic "Invalid post". Instagram accepts the downscaled size fine, and
+# 1080px is plenty for mobile social — so we normalize every upload to fit.
+_SOCIAL_MAX_LONG = 1920
+_SOCIAL_MAX_SHORT = 1080
+
+
+def _downscale_for_social(raw: bytes, ext: str) -> tuple[bytes, str, str] | None:
+    """Downscale an oversized image to fit TikTok's 1920x1080 photo limit. Returns
+    (bytes, ext, content_type), or None to keep the original (already within limits,
+    animated gif, or Pillow unavailable / decode failure — best effort, never raises)."""
+    if Image is None or ext == "gif":
+        return None
+    try:
+        im = Image.open(io.BytesIO(raw))
+        im.load()
+    except Exception:
+        return None
+    w, h = im.size
+    long_edge, short_edge = max(w, h), min(w, h)
+    if long_edge <= _SOCIAL_MAX_LONG and short_edge <= _SOCIAL_MAX_SHORT:
+        return None
+    scale = min(_SOCIAL_MAX_LONG / long_edge, _SOCIAL_MAX_SHORT / short_edge)
+    im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+    buf = io.BytesIO()
+    if ext == "png" and im.mode in ("RGBA", "LA", "P"):
+        im.save(buf, format="PNG", optimize=True)
+        return buf.getvalue(), "png", "image/png"
+    if im.mode not in ("RGB", "L"):
+        im = im.convert("RGB")
+    im.save(buf, format="JPEG", quality=85, optimize=True)
+    return buf.getvalue(), "jpg", "image/jpeg"
+
+
 def save_reference_image(tenant_id: int, *, raw: bytes) -> tuple[str, str] | None:
     """Validate + persist an uploaded reference image under the tenant's social/refs
     dir. Returns (rel_path, content_type) or None if the bytes aren't a supported
@@ -132,6 +172,9 @@ def save_reference_image(tenant_id: int, *, raw: bytes) -> tuple[str, str] | Non
     if sniffed is None:
         return None
     ext, ctype = sniffed
+    resized = _downscale_for_social(raw, ext)
+    if resized is not None:
+        raw, ext, ctype = resized
     settings = get_settings()
     rel_dir = _refs_rel_dir(tenant_id)
     abs_dir = os.path.join(settings.MEDIA_DIR, rel_dir)

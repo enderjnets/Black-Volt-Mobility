@@ -3,6 +3,7 @@
 """
 
 import base64
+import io
 import os
 import uuid
 
@@ -174,3 +175,28 @@ async def test_render_callback_rejects_junk_as_image(db):
     row = await S._get_post(db, tenant_id=tid, post_id=pid)
     assert row.status == "failed"
     assert not row.media_path
+
+
+def test_downscale_oversized_image_for_tiktok():
+    # Uploaded photos bigger than TikTok's 1920x1080 photo limit must be shrunk to
+    # publish (post 63 was 2252x3290 → TikTok "Invalid post").
+    from PIL import Image as _Img
+
+    buf = io.BytesIO()
+    _Img.new("RGB", (2252, 3290), (10, 20, 30)).save(buf, format="JPEG")
+    out = S._downscale_for_social(buf.getvalue(), "jpg")
+    assert out is not None
+    data, ext, ctype = out
+    assert ext == "jpg" and ctype == "image/jpeg"
+    w, h = _Img.open(io.BytesIO(data)).size
+    assert max(w, h) <= 1920 and min(w, h) <= 1080
+    assert abs((w / h) - (2252 / 3290)) < 0.01  # aspect preserved
+
+
+def test_downscale_keeps_small_image_untouched():
+    from PIL import Image as _Img
+
+    buf = io.BytesIO()
+    _Img.new("RGB", (768, 1344), (0, 0, 0)).save(buf, format="PNG")
+    # Within limits → None means "use the original bytes unchanged".
+    assert S._downscale_for_social(buf.getvalue(), "png") is None

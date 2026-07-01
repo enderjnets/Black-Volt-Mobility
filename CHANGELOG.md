@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.62.4 — 2026-07-01 — Fix: image posts to TikTok (downscale oversized uploads)
+
+- **Bugfix**: image posts published to Instagram but TikTok rejected them with `UnexpectedError:
+  "Invalid post"`. Root cause: TikTok's photo API caps images at **1920×1080** (long×short edge);
+  an uploaded photo was 2252×3290 (the AI-rendered 768×1344 image published fine, proving it wasn't
+  a schema/carousel issue). Uploads are now downscaled on save to fit 1080×1920 via Pillow
+  (`_downscale_for_social` in `save_reference_image`) — JPEG q85, aspect preserved, alpha-PNG kept;
+  best-effort (animated gif / decode failure keeps the original). Instagram is unaffected (accepts
+  the smaller size), and 1080px is plenty for mobile. Added `pillow==11.0.0`. TikTok photo limits
+  confirmed against the official Content Posting API docs.
+
 ## v0.62.3 — 2026-07-01 — Fix: publishing image posts to Instagram
 
 - **Bugfix**: "Publish now" silently did nothing on image posts — Instagram's Buffer call 400'd with

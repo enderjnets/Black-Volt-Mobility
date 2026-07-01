@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.62.3";
+export const CURRENT_VERSION = "0.62.4";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.62.4",
+    date: "2026-07-01",
+    title: "Fix: image posts to TikTok",
+    changes: [
+      "Fixed image posts not publishing to TikTok — large uploaded photos are now automatically resized to TikTok's supported size so they post successfully.",
+    ],
+  },
   {
     version: "0.62.3",
     date: "2026-07-01",
