@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.60.1 — 2026-06-30 — Popular routes: teaser prices synced to flat zones
+
+- Updated the `priceFrom` "from $X" teasers in `lib/seoRoutes.ts` (home Popular routes cards +
+  `/rides/[slug]` landing pages) to match the v0.60.0 flat zones: Aurora/Cherry Creek/DTC/Red Rocks
+  → DEN **$120**, Boulder → DEN **$190**, Denver → Vail **$390**, Breckenridge **$349**, Aspen
+  **$790**. Bumped the Booking pre-quote placeholder from $74 → $120 (metro default).
+
 ## v0.60.0 — 2026-06-30 — Flat-rate zones (Denver metro, Boulder, mountains, COS, N. Colorado)
 
 - **Fixed zone pricing**: rides whose pickup **or** dropoff falls in a named zone are now charged a

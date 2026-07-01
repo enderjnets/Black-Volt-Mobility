@@ -60,7 +60,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Aurora → DEN",
     prefillFrom: "Aurora, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 110,
+    priceFrom: 120,
     distanceMi: 12,
     durationMin: 20,
     lede:
@@ -101,7 +101,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Cherry Creek → DEN",
     prefillFrom: "Cherry Creek, Denver, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 110,
+    priceFrom: 120,
     distanceMi: 20,
     durationMin: 31,
     lede:
@@ -138,7 +138,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "DTC → DEN",
     prefillFrom: "Denver Tech Center, Greenwood Village, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 110,
+    priceFrom: 120,
     distanceMi: 22,
     durationMin: 25,
     lede:
@@ -175,7 +175,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Boulder → DEN",
     prefillFrom: "Boulder, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 129,
+    priceFrom: 190,
     distanceMi: 39,
     durationMin: 45,
     lede:
@@ -212,7 +212,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Red Rocks concert rides",
     prefillFrom: "Downtown Denver, CO",
     prefillTo: "Red Rocks Amphitheatre, Morrison, CO",
-    priceFrom: 110,
+    priceFrom: 120,
     distanceMi: 15,
     durationMin: 25,
     lede:
@@ -249,7 +249,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Denver → Vail",
     prefillFrom: "Denver, CO",
     prefillTo: "Vail, CO",
-    priceFrom: 300,
+    priceFrom: 390,
     distanceMi: 97,
     durationMin: 105,
     lede:
@@ -290,7 +290,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Denver → Breckenridge",
     prefillFrom: "Denver, CO",
     prefillTo: "Breckenridge, CO",
-    priceFrom: 257,
+    priceFrom: 349,
     distanceMi: 81,
     durationMin: 95,
     lede:
@@ -327,7 +327,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Denver → Aspen",
     prefillFrom: "Denver, CO",
     prefillTo: "Aspen, CO",
-    priceFrom: 506,
+    priceFrom: 790,
     distanceMi: 159,
     durationMin: 205,
     lede:

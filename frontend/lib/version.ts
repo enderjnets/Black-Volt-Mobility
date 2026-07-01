@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.60.0";
+export const CURRENT_VERSION = "0.60.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.60.1",
+    date: "2026-06-30",
+    title: "Popular routes: teaser prices now match the flat zones",
+    changes: [
+      "Updated the \"from\" prices on the home Popular routes cards and the route landing pages to match the new flat-rate zones (Aurora/Cherry Creek/DTC/Red Rocks → DEN $120, Boulder → DEN $190, Denver → Vail $390, Breckenridge $349, Aspen $790).",
+    ],
+  },
   {
     version: "0.60.0",
     date: "2026-06-30",
