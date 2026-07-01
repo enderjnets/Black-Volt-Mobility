@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.62.1 — 2026-07-01 — Fix: AI-generated image posts no longer fail
+
+- **Bugfix**: AI-generated image posts landed as **FAILED** even though the ROG worker rendered a
+  valid jpg and the callback returned 200. `_write_render_asset` was video-only (`_VIDEO_EXTS` +
+  `_sniff_video`), so the incoming `media_ext=jpg` was rejected → `apply_render_callback` marked the
+  post `failed`. The helper now accepts images too (`_IMAGE_EXTS`, reusing the existing content-based
+  `_sniff_image`, saved as `image-<ts>.<ext>`). No schema change, no worker change; existing failed
+  image posts can be retried from the dashboard.
+
 ## v0.62.0 — 2026-07-01 — Social: AI-generated image posts
 
 - **AI image posts**: Photo mode gets a "My photo" / "AI image" sub-choice. "AI image" needs no

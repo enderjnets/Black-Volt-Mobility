@@ -1013,6 +1013,9 @@ def verify_render_callback(*, body: bytes, signature: str) -> bool:
 # Video container magic. mp4/mov carry an `ftyp` box at bytes 4..8; webm/mkv
 # open with the EBML header. Only these decode-and-write; anything else is junk.
 _VIDEO_EXTS = {"mp4", "mov", "webm"}
+# AI-generated image posts (media_kind="image", no uploaded photo) come back as
+# jpg; the actual bytes are content-sniffed by `_sniff_image` (png/jpg/gif/webp).
+_IMAGE_EXTS = {"jpg", "jpeg", "png", "gif", "webp"}
 
 
 def _sniff_video(raw: bytes, ext: str) -> bool:
@@ -1024,16 +1027,19 @@ def _sniff_video(raw: bytes, ext: str) -> bool:
 
 
 def _write_render_asset(tenant_id: int, *, b64: str, ext: str) -> str | None:
-    """Decode a base64 rendered video from a verified callback and write it under
-    the public /media mount. Returns the rel path (served at /media/<rel>) or None
-    if it's too big, not valid base64, or not a real video container.
+    """Decode a base64 rendered video *or image* from a verified callback and
+    write it under the public /media mount. Returns the rel path (served at
+    /media/<rel>) or None if it's too big, not valid base64, or not a real
+    video/image container.
 
     Security: the filename is server-generated (no caller-controlled path
     component) and the extension is allow-listed, so there's no path traversal;
-    the magic-byte sniff + size cap reject anything that isn't a small video."""
+    the magic-byte sniff + size cap reject anything that isn't a small
+    video/image."""
     settings = get_settings()
     ext = (ext or "mp4").lower().lstrip(".")
-    if ext not in _VIDEO_EXTS:
+    is_image = ext in _IMAGE_EXTS
+    if not is_image and ext not in _VIDEO_EXTS:
         return None
     try:
         raw = base64.b64decode(b64, validate=True)
@@ -1041,12 +1047,18 @@ def _write_render_asset(tenant_id: int, *, b64: str, ext: str) -> str | None:
         return None
     if not raw or len(raw) > settings.SOCIAL_RENDER_MAX_MB * 1024 * 1024:
         return None
-    if not _sniff_video(raw, ext):
+    if is_image:
+        sniffed = _sniff_image(raw)  # content-sniff → canonical (ext, ctype)
+        if sniffed is None:
+            return None
+        ext = sniffed[0]
+    elif not _sniff_video(raw, ext):
         return None
     rel_dir = os.path.join("tenants", str(int(tenant_id)), "social")
     abs_dir = os.path.join(settings.MEDIA_DIR, rel_dir)
     os.makedirs(abs_dir, exist_ok=True)
-    fname = f"video-{int(time.time() * 1000)}.{ext}"
+    kind = "image" if is_image else "video"
+    fname = f"{kind}-{int(time.time() * 1000)}.{ext}"
     rel_path = os.path.join(rel_dir, fname)
     # Write to a temp file then atomically rename → no truncated/half-written
     # asset is ever served if the write is interrupted.

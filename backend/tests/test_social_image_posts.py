@@ -122,3 +122,55 @@ async def test_video_post_is_unchanged(db):
     assert out["media_kind"] == "video"
     assert out["status"] == "draft"  # video still needs a separate render request
     assert out["media_path"] is None
+
+
+async def _mk_render_requested_image(db, tid: int) -> int:
+    out = await S.generate_and_create(
+        db, tenant_id=tid, topic="t", angle=None, lang="en", media_kind="image",
+    )
+    row = await S._get_post(db, tenant_id=tid, post_id=out["id"])
+    row.status = "render_requested"
+    await db.commit()
+    return out["id"]
+
+
+@pytest.mark.asyncio
+async def test_render_callback_writes_image_asset(db):
+    # Regression: the AI text→image render delivers a jpg/png; the callback must
+    # persist it (was rejected as "not a video" → post stuck FAILED).
+    tid = await _mk_tenant(db)
+    pid = await _mk_render_requested_image(db, tid)
+    result = await S.apply_render_callback(
+        db,
+        payload={
+            "post_id": pid,
+            "tenant_id": tid,
+            "media_b64": base64.b64encode(_PNG).decode(),
+            "media_ext": "png",
+        },
+    )
+    assert result == "applied"
+    row = await S._get_post(db, tenant_id=tid, post_id=pid)
+    assert row.status == "rendered"
+    assert row.media_path and row.media_path.endswith(".png")
+    assert "/image-" in "/" + row.media_path  # server-named image-<ts>.png
+    assert row.cover_path == row.media_path  # the image is its own cover
+
+
+@pytest.mark.asyncio
+async def test_render_callback_rejects_junk_as_image(db):
+    tid = await _mk_tenant(db)
+    pid = await _mk_render_requested_image(db, tid)
+    result = await S.apply_render_callback(
+        db,
+        payload={
+            "post_id": pid,
+            "tenant_id": tid,
+            "media_b64": base64.b64encode(b"not a real png").decode(),
+            "media_ext": "png",
+        },
+    )
+    assert result == "rejected_asset"
+    row = await S._get_post(db, tenant_id=tid, post_id=pid)
+    assert row.status == "failed"
+    assert not row.media_path

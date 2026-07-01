@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.62.0";
+export const CURRENT_VERSION = "0.62.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.62.1",
+    date: "2026-07-01",
+    title: "Fix: AI-generated image posts",
+    changes: [
+      "Fixed AI-generated image posts landing as FAILED — the finished image is now saved correctly instead of being rejected as \"not a video\".",
+    ],
+  },
   {
     version: "0.62.0",
     date: "2026-07-01",
