@@ -45,6 +45,7 @@ POST_STATUSES = (
     "approved",
     "scheduled",
     "published",
+    "partial",  # published to some target platforms; still owes others (retryable)
     "failed",
 )
 # Comment/DM reply lifecycle.

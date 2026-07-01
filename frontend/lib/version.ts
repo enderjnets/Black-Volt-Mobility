@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.62.5";
+export const CURRENT_VERSION = "0.63.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.63.0",
+    date: "2026-07-01",
+    title: "Social: retry a post on the platforms that failed",
+    changes: [
+      "When a post publishes to some networks but not all, it now shows \"Partly published\" with which networks are done and which are pending, plus a \"Publish remaining\" button that retries only the ones that didn't go through — no duplicate posts.",
+    ],
+  },
   {
     version: "0.62.5",
     date: "2026-07-01",

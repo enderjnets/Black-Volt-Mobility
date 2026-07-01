@@ -984,7 +984,6 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
         mode = "customScheduled" if row.scheduled_at else "shareNow"
         due_at = row.scheduled_at
         ext = dict(row.external_ids or {})
-        had_prior = bool(ext)
         published_any = False
         transient_failure = False
         if media_url:
@@ -1011,14 +1010,24 @@ async def _do_publish(db: AsyncSession, row: SocialPost) -> None:
                     ext[platform] = res["id"]
                     published_any = True
         row.external_ids = ext
+        # Only CONNECTED targets count toward "done": an unconnected target (e.g.
+        # Facebook the owner never linked) can't publish and shouldn't hold the post
+        # in `partial` forever.
+        connected = [
+            p
+            for p in targets
+            if (a := accounts.get(p)) and a.status == "connected" and a.external_account_id
+        ]
+        remaining = [p for p in connected if p not in ext]
         if published_any:
-            row.status = "published"
             row.published_at = _now()
-        elif transient_failure or had_prior:
-            # Transient Buffer/transport error, or the post already published to
-            # some platform earlier (a per-platform retry that didn't add any new
-            # one) — leave the post in its current status rather than burning it to
-            # a terminal `failed`. The scheduler retries transient cases next tick.
+        if ext and not remaining:
+            row.status = "published"  # every connected target is live
+        elif ext:
+            row.status = "partial"  # live on some, still owes others → retryable
+        elif transient_failure:
+            # Transient Buffer/transport error — leave the post in its current
+            # status so the scheduler retries next tick, not a terminal `failed`.
             pass
         else:
             row.status = "failed"
@@ -1036,7 +1045,8 @@ async def publish_post(db: AsyncSession, *, tenant_id: int, post_id: int) -> dic
     row = await _get_post(db, tenant_id=tenant_id, post_id=post_id)
     if row is None:
         return None
-    if row.status not in ("approved", "scheduled"):
+    # `partial` is retryable: it published to some platforms and still owes others.
+    if row.status not in ("approved", "scheduled", "partial"):
         return {"error": "not_approved", "post": _post_out(row)}
     await _do_publish(db, row)
     await db.commit()

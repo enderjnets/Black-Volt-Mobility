@@ -568,6 +568,81 @@ async def test_do_publish_skips_already_published_platform(db, monkeypatch):
     assert out["status"] == "published"
 
 
+async def _mk_multi_target_image_post(db):
+    t = Tenant(slug=f"t-{uuid.uuid4().hex[:8]}", name="Partial Test")
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    post = await S.create_post(
+        db, tenant_id=t.id, content={"caption": "hi", "hashtags": "#x"},
+        lang="en", targets=["instagram", "tiktok"],
+    )
+    row = await S._get_post(db, tenant_id=t.id, post_id=post["id"])
+    row.media_path = "tenants/1/social/image-7.png"
+    row.media_kind = "image"
+    row.status = "approved"
+    for plat in ("instagram", "tiktok"):
+        db.add(S.SocialAccount(
+            tenant_id=t.id, platform=plat, external_account_id=f"ch-{plat}",
+            display_name="bv", status="connected",
+        ))
+    await db.commit()
+    return t.id, post["id"]
+
+
+@pytest.mark.asyncio
+async def test_publish_partial_when_one_platform_fails(db, monkeypatch):
+    # IG succeeds, TikTok rejects terminally → the post is `partial` (not published,
+    # not failed) so it stays retryable.
+    from app.services import social_buffer
+    tid, pid = await _mk_multi_target_image_post(db)
+
+    async def fake_create(**kw):
+        if kw["service"] == "tiktok":
+            raise social_buffer.BufferError("buffer_create_rejected: Invalid post")
+        return {"id": "buf-ig", "status": "queued", "due_at": None}
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", fake_create)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert out["status"] == "partial"
+    assert out["external_ids"] == {"instagram": "buf-ig"}
+
+
+@pytest.mark.asyncio
+async def test_retry_partial_completes_to_published(db, monkeypatch):
+    # Retrying a partial post publishes only the missing platform → published.
+    from app.services import social_buffer
+    tid, pid = await _mk_multi_target_image_post(db)
+    fail_tiktok = {"on": True}
+
+    async def fake_create(**kw):
+        if kw["service"] == "tiktok" and fail_tiktok["on"]:
+            raise social_buffer.BufferError("Invalid post")
+        return {"id": f"buf-{kw['service']}", "status": "queued", "due_at": None}
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", fake_create)
+
+    first = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert first["status"] == "partial"
+
+    fail_tiktok["on"] = False  # TikTok now accepts (e.g. image was downscaled)
+    calls = []
+    orig = fake_create
+
+    async def tracking(**kw):
+        calls.append(kw["service"])
+        return await orig(**kw)
+
+    monkeypatch.setattr(social_buffer, "create_post", tracking)
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert calls == ["tiktok"]  # IG already done, only TikTok retried
+    assert out["status"] == "published"
+    assert set(out["external_ids"]) == {"instagram", "tiktok"}
+
+
 @pytest.mark.asyncio
 async def test_do_publish_buffer_no_channel_marks_failed(db, monkeypatch, _approved_ig_post):
     from app.services import social_buffer

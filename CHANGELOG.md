@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.63.0 — 2026-07-01 — Social: partial-publish state + per-platform retry
+
+- New `partial` post status: when a post publishes to some target platforms but still owes others
+  (only **connected** targets count), it's marked `partial` instead of a misleading full `published`.
+  `_do_publish` computes remaining connected targets; `publish_post` accepts `partial` for retry
+  (idempotent skip from v0.62.5 means a retry only hits the pending networks — no duplicates).
+- Dashboard: partial posts show a "Partly published" badge, a "Published to X · pending Y" line, and a
+  **Publish remaining** button. `PostStatus`/`POST_STATUSES` gain `partial`; i18n EN+ES. +2 tests
+  (531 total). No migration (status is a free String column).
+
 ## v0.62.5 — 2026-07-01 — Publishing: idempotent per-platform retry (no duplicates)
 
 - `_do_publish` now skips any platform already present in `external_ids` (`if ext.get(platform):

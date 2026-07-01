@@ -10,6 +10,7 @@ export type PostStatus =
   | "approved"
   | "scheduled"
   | "published"
+  | "partial"
   | "failed";
 
 export interface SocialPost {

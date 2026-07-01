@@ -113,6 +113,7 @@ const STATUS_TONE: Record<string, "volt" | "success" | "warning" | "muted"> = {
   approved: "volt",
   scheduled: "warning",
   published: "success",
+  partial: "warning",
   failed: "warning",
 };
 
@@ -437,7 +438,7 @@ export function SocialMedia() {
 
   // Posts awaiting the owner's decision (auto-generated daily + manual drafts alike).
   const pendingDaily = posts.filter((p) =>
-    ["draft", "render_requested", "rendered", "approved", "scheduled"].includes(p.status),
+    ["draft", "render_requested", "rendered", "approved", "scheduled", "partial"].includes(p.status),
   );
 
   return (
@@ -1185,6 +1186,19 @@ function PostCard({
         </div>
       )}
 
+      {s === "partial" && (
+        <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 12 }}>
+          {t("dash.social.partial.hint")
+            .replace("{done}", Object.keys(post.external_ids || {}).join(", ") || "—")
+            .replace(
+              "{pending}",
+              (post.targets || [])
+                .filter((tp) => !Object.keys(post.external_ids || {}).includes(tp))
+                .join(", ") || "—",
+            )}
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         {(s === "draft" || s === "failed") && (
           <Button variant="solid" size="sm" icon="video" onClick={onRender} disabled={anyBusy}>
@@ -1213,6 +1227,11 @@ function PostCard({
         {(s === "approved" || s === "scheduled") && (
           <Button variant="solid" size="sm" icon="send" onClick={onPublish} disabled={anyBusy}>
             {isBusy(`publish-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.publish")}
+          </Button>
+        )}
+        {s === "partial" && (
+          <Button variant="solid" size="sm" icon="send" onClick={onPublish} disabled={anyBusy}>
+            {isBusy(`publish-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.retry")}
           </Button>
         )}
         {(s === "rendered" || s === "approved" || s === "scheduled") && !rejecting && (
