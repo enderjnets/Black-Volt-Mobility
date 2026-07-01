@@ -1045,8 +1045,11 @@ async def publish_post(db: AsyncSession, *, tenant_id: int, post_id: int) -> dic
     row = await _get_post(db, tenant_id=tenant_id, post_id=post_id)
     if row is None:
         return None
-    # `partial` is retryable: it published to some platforms and still owes others.
-    if row.status not in ("approved", "scheduled", "partial"):
+    # `partial` and `published` are retryable: the idempotent skip in _do_publish
+    # only hits connected targets not yet in external_ids, so a retry can fill in a
+    # platform that failed earlier (e.g. TikTok) without duplicating the rest. A
+    # fully-published post with nothing pending is a harmless no-op.
+    if row.status not in ("approved", "scheduled", "partial", "published"):
         return {"error": "not_approved", "post": _post_out(row)}
     await _do_publish(db, row)
     await db.commit()

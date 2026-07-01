@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.63.1 — 2026-07-01 — Social: retry a missing network on already-published posts
+
+- `publish_post` now also accepts a `published` post for retry (idempotent skip means it only hits
+  connected targets missing from `external_ids` — safe no-op when nothing's pending). The dashboard
+  computes pending **connected** platforms client-side (from the accounts list, so an unconnected
+  target like Facebook never counts) and shows the "Publish remaining" button + "published to X ·
+  pending Y" line on any post with a pending connected network — including legacy `published` ones
+  (e.g. post 63: live on Instagram, missing TikTok). +1 test (532 total). No migration.
+
 ## v0.63.0 — 2026-07-01 — Social: partial-publish state + per-platform retry
 
 - New `partial` post status: when a post publishes to some target platforms but still owes others

@@ -644,6 +644,31 @@ async def test_retry_partial_completes_to_published(db, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_retry_published_post_fills_missing_platform(db, monkeypatch):
+    # A legacy `published` post that only reached Instagram can still be retried to
+    # add the connected platform it never published to (e.g. TikTok, post 63).
+    from app.services import social_buffer
+    tid, pid = await _mk_multi_target_image_post(db)
+    row = await S._get_post(db, tenant_id=tid, post_id=pid)
+    row.status = "published"
+    row.external_ids = {"instagram": "ig-old"}
+    await db.commit()
+    calls = []
+
+    async def fake_create(**kw):
+        calls.append(kw["service"])
+        return {"id": "buf-tiktok", "status": "queued", "due_at": None}
+
+    monkeypatch.setattr(social_buffer, "is_live", lambda: True)
+    monkeypatch.setattr(social_buffer, "create_post", fake_create)
+
+    out = await S.publish_post(db, tenant_id=tid, post_id=pid)
+    assert calls == ["tiktok"]
+    assert out["status"] == "published"
+    assert set(out["external_ids"]) == {"instagram", "tiktok"}
+
+
+@pytest.mark.asyncio
 async def test_do_publish_buffer_no_channel_marks_failed(db, monkeypatch, _approved_ig_post):
     from app.services import social_buffer
     tid, pid = _approved_ig_post

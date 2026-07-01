@@ -440,6 +440,7 @@ export function SocialMedia() {
   const pendingDaily = posts.filter((p) =>
     ["draft", "render_requested", "rendered", "approved", "scheduled", "partial"].includes(p.status),
   );
+  const connectedPlatforms = accounts.filter((a) => a.connected).map((a) => a.platform);
 
   return (
     <div style={{ padding: "20px 16px 120px", maxWidth: 920, margin: "0 auto" }}>
@@ -776,6 +777,7 @@ export function SocialMedia() {
                   <PostCard
                     key={p.id}
                     post={p}
+                    connectedPlatforms={connectedPlatforms}
                     isBusy={isBusy}
                     onRender={() => postAction(`render-${p.id}`, () => renderPost(p.id))}
                     onApprove={() => postAction(`approve-${p.id}`, () => approvePost(p.id))}
@@ -802,6 +804,7 @@ export function SocialMedia() {
               <PostCard
                 key={p.id}
                 post={p}
+                connectedPlatforms={connectedPlatforms}
                 isBusy={isBusy}
                 onRender={() => postAction(`render-${p.id}`, () => renderPost(p.id))}
                 onApprove={() => postAction(`approve-${p.id}`, () => approvePost(p.id))}
@@ -913,6 +916,7 @@ function chipStyle(): CSSProperties {
 
 function PostCard({
   post,
+  connectedPlatforms,
   isBusy,
   onRender,
   onApprove,
@@ -922,6 +926,7 @@ function PostCard({
   onDelete,
 }: {
   post: SocialPost;
+  connectedPlatforms: string[];
   isBusy: (k: string) => boolean;
   onRender: () => void;
   onApprove: () => void;
@@ -932,6 +937,13 @@ function PostCard({
 }) {
   const { t } = useI18n();
   const s = post.status;
+  const donePlatforms = Object.keys(post.external_ids || {});
+  // Connected targets that still haven't published (e.g. TikTok failed once) — an
+  // unconnected target never counts, so it can't leave a post "pending" forever.
+  const pendingConnected = (post.targets || []).filter(
+    (tp) => connectedPlatforms.includes(tp) && !donePlatforms.includes(tp),
+  );
+  const canRetry = (s === "partial" || s === "published") && pendingConnected.length > 0;
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [editImgs, setEditImgs] = useState(false);
@@ -1186,16 +1198,11 @@ function PostCard({
         </div>
       )}
 
-      {s === "partial" && (
+      {canRetry && (
         <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 12 }}>
           {t("dash.social.partial.hint")
-            .replace("{done}", Object.keys(post.external_ids || {}).join(", ") || "—")
-            .replace(
-              "{pending}",
-              (post.targets || [])
-                .filter((tp) => !Object.keys(post.external_ids || {}).includes(tp))
-                .join(", ") || "—",
-            )}
+            .replace("{done}", donePlatforms.join(", ") || "—")
+            .replace("{pending}", pendingConnected.join(", "))}
         </div>
       )}
 
@@ -1229,7 +1236,7 @@ function PostCard({
             {isBusy(`publish-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.publish")}
           </Button>
         )}
-        {s === "partial" && (
+        {canRetry && (
           <Button variant="solid" size="sm" icon="send" onClick={onPublish} disabled={anyBusy}>
             {isBusy(`publish-${post.id}`) ? t("dash.social.action.working") : t("dash.social.action.retry")}
           </Button>

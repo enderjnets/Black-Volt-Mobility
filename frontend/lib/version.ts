@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.63.0";
+export const CURRENT_VERSION = "0.63.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.63.1",
+    date: "2026-07-01",
+    title: "Social: retry a network on already-published posts",
+    changes: [
+      "A post that already went live on one network but never made it to another connected one (e.g. Instagram done, TikTok pending) now shows a \"Publish remaining\" button to send it to the missing network — no need to recreate the post.",
+    ],
+  },
   {
     version: "0.63.0",
     date: "2026-07-01",
