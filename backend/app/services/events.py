@@ -209,6 +209,7 @@ async def dismiss_suggestion(db: AsyncSession, *, tenant_id: int, suggestion_id:
             select(EventSuggestion).where(
                 EventSuggestion.id == suggestion_id,
                 EventSuggestion.tenant_id == tenant_id,
+                EventSuggestion.status == "suggested",
             )
         )
     ).scalar_one_or_none()
