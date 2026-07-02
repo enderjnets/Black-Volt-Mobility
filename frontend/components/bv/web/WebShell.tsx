@@ -383,6 +383,47 @@ export function WebShell({ children }: { children: ReactNode }) {
               </Link>
             ))}
           </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: 14,
+              marginBottom: 16,
+            }}
+          >
+            {[
+              {
+                name: "instagram" as const,
+                label: "Instagram",
+                href: "https://instagram.com/blackvoltmobility",
+              },
+              {
+                name: "tiktok" as const,
+                label: "TikTok",
+                href: "https://www.tiktok.com/@blackvoltmobility",
+              },
+            ].map((s) => (
+              <a
+                key={s.name}
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={s.label}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "var(--radius-full)",
+                  border: "1px solid var(--line-strong)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--silver)",
+                }}
+              >
+                <Icon name={s.name} size={19} color="currentColor" />
+              </a>
+            ))}
+          </div>
           © {t("brand.name")} · {t("footer.area")}
         </footer>
       </div>
