@@ -9,7 +9,6 @@ import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
 export const dynamic = "force-dynamic";
 
 const API = process.env.INTERNAL_API_URL || "http://localhost:8012";
-const FLAT_PRICE = 120;
 
 interface VenueProfile {
   name: string;
@@ -78,7 +77,7 @@ export async function generateMetadata(
   if (!ev) return { title: "Event | Black Volt Mobility" };
   const desc =
     (ev.about_text || "").split("\n").filter(Boolean)[0]?.slice(0, 155) ||
-    `Book a flat $${FLAT_PRICE} ride to ${ev.venue_name} for ${ev.title} — door-to-door, no surge.`;
+    `Book a flat $${ev.flat_price} ride to ${ev.venue_name} for ${ev.title} — door-to-door, no surge.`;
   const title = `${ev.title} — Ride to ${ev.venue_name} | Black Volt Mobility`;
   const url = `${SITE_ORIGIN}/events/${ev.slug}`;
   return {

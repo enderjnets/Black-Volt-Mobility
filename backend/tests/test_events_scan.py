@@ -44,8 +44,19 @@ async def owner(db, monkeypatch):
     return t.id
 
 
+@pytest_asyncio.fixture
+async def noflush_db():
+    """A session with autoflush=False — matches the production session factory, so the
+    in-run dedup regression (pending rows invisible to in-loop SELECTs) is reproducible."""
+    engine = create_async_engine(get_settings().DATABASE_URL)
+    Session = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+    async with Session() as session:
+        yield session
+    await engine.dispose()
+
+
 def _sg(id_, title, venue, score, days_ahead=30, lat=39.74, lng=-105.02, performer=None):
-    when = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=days_ahead)
+    when = dt.datetime.now(dt.UTC) + dt.timedelta(days=days_ahead)
     return {
         "id": id_,
         "title": title,
@@ -69,7 +80,8 @@ def _fake_sg(events):
 
 
 async def _count(db, tid):
-    rows = (await db.execute(select(EventSuggestion).where(EventSuggestion.tenant_id == tid))).scalars().all()
+    rows = (await db.execute(
+        select(EventSuggestion).where(EventSuggestion.tenant_id == tid))).scalars().all()
     return rows
 
 
@@ -117,7 +129,7 @@ async def test_scan_upsert_updates_not_duplicates_and_respects_dismissed(db, own
 @pytest.mark.asyncio
 async def test_scan_prunes_past_suggested_keeps_approved(db, owner, monkeypatch):
     # Seed a past suggested + a past approved directly.
-    past = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=2)
+    past = dt.datetime.now(dt.UTC) - dt.timedelta(days=2)
     db.add(EventSuggestion(tenant_id=owner, source="seatgeek", source_id="old-s",
                            title="Old Suggested", venue_name="Ball Arena",
                            starts_at=past, status="suggested"))
@@ -226,3 +238,46 @@ async def test_enrich_adds_tm_only_watchlist_event(db, owner, monkeypatch):
     rows = await _count(db, owner)
     assert {r.source_id for r in rows} == {"tm-ball"}
     assert rows[0].source == "ticketmaster"
+
+
+@pytest.mark.asyncio
+async def test_scan_dedups_within_run_duplicate_no_integrityerror(noflush_db, monkeypatch):
+    # Regression: under autoflush=False (the prod session), a repeated (source,source_id)
+    # in one scan must NOT insert twice / raise IntegrityError on commit.
+    db = noflush_db
+    t = Tenant(slug=f"own-{uuid.uuid4().hex[:8]}", name="Owner")
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    monkeypatch.setattr(get_settings(), "OWNER_TENANT_ID", t.id)
+    dup = _sg("99", "Ed Sheeran", "Empower Field at Mile High", 0.9)
+    monkeypatch.setattr(events_scan, "_fetch_seatgeek", _fake_sg([dup, dict(dup)]))  # same twice
+    out = await events_scan.run_scan(db)  # must not raise
+    assert out["created"] == 1
+    rows = (await db.execute(select(EventSuggestion).where(
+        EventSuggestion.tenant_id == t.id))).scalars().all()
+    assert len([r for r in rows if r.source_id == "99"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_fuzzy_dedup_cross_source_different_venue_spelling(db, owner, monkeypatch):
+    # A TM-only watchlist event, then a SeatGeek run parses the same show with a different
+    # venue spelling and a different minute → must dedup (venue_key + day granularity).
+    # Pin to midday UTC so +1h never crosses a day boundary (fuzzy key is day-granular).
+    base = (dt.datetime.now(dt.UTC) + dt.timedelta(days=30)).replace(
+        hour=12, minute=0, second=0, microsecond=0)
+    tm = _tm_parsed("tm-ed", "Ed Sheeran", "Empower Field at Mile High",
+                    venue_key="empower_field")
+    tm["starts_at"] = base
+    monkeypatch.setattr(events_scan, "_fetch_seatgeek", _fake_sg([]))
+    monkeypatch.setattr(events_scan, "_fetch_ticketmaster", _fake_tm([tm]))
+    first = await events_scan.run_scan(db)
+    assert first["created"] == 1
+
+    # Later scan: SeatGeek now returns the same show, spelled "Empower Field", +1h.
+    sg = _sg("sg-ed", "Ed Sheeran", "Empower Field", 0.95)
+    sg["datetime_utc"] = (base + dt.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+    monkeypatch.setattr(events_scan, "_fetch_seatgeek", _fake_sg([sg]))
+    monkeypatch.setattr(events_scan, "_fetch_ticketmaster", _fake_tm([]))
+    second = await events_scan.run_scan(db)
+    assert second["created"] == 0  # deduped against the existing TM row

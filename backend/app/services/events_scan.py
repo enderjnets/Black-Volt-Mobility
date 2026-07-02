@@ -8,6 +8,7 @@ leaves the existing suggestions untouched (stale-but-present beats empty).
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 import math
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import EventSuggestion
+from app.services.tenancy import owner_tenant_id
 from app.services.venue_profiles import match_venue_key
 
 logger = logging.getLogger("blackvolt.events.scan")
@@ -26,10 +28,6 @@ _SG_URL = "https://api.seatgeek.com/2/events"
 _TM_URL = "https://app.ticketmaster.com/discovery/v2/events.json"
 _DENVER = (39.7392, -104.9903)  # downtown Denver, search center
 _WINDOW_DAYS = 90
-
-
-def _owner_tenant_id() -> int:
-    return get_settings().OWNER_TENANT_ID or 1
 
 
 def _haversine_mi(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -45,6 +43,15 @@ def _norm(s: str) -> str:
     return " ".join(
         "".join(c.lower() if c.isalnum() or c.isspace() else " " for c in (s or "")).split()
     )
+
+
+def _fuzzy_key(starts_at: dt.datetime, venue_key: str | None, venue_name: str, title: str) -> tuple:
+    """Source-independent identity for the same show: day + canonical venue + title.
+
+    Uses the watchlist venue_key when known (so 'Empower Field' and 'Empower Field at
+    Mile High' collapse) and day granularity (sources disagree on the exact minute).
+    """
+    return (starts_at.date(), venue_key or _norm(venue_name), _norm(title))
 
 
 # ── SeatGeek ────────────────────────────────────────────────────────────────
@@ -196,17 +203,19 @@ def _parse_ticketmaster(ev: dict) -> dict | None:
         return None
 
 
-async def _enrich_ticketmaster(items: list[dict]) -> list[dict]:
+async def _enrich_ticketmaster(items: list[dict], tm: list[dict] | None = None) -> list[dict]:
     """Merge Ticketmaster data into the SeatGeek-derived list.
 
     - A TM event matching a kept item (same normalized title + same UTC date) *enriches*
       it: official `event_url`, a better 16:9 image, and the TM payload in `raw`.
     - A TM event at a **watchlist venue** with no counterpart is *added* as its own
       suggestion (so the module is useful before the SeatGeek key exists).
-    Any error returns `items` unchanged.
+    `tm` may be pre-fetched (run_scan fetches it concurrently with SeatGeek); when None it
+    is fetched here. Any error returns `items` unchanged.
     """
     try:
-        tm = await _fetch_ticketmaster()
+        if tm is None:
+            tm = await _fetch_ticketmaster()
         if not tm:
             return items
         index: dict[tuple[str, dt.date], dict] = {
@@ -241,11 +250,30 @@ def _keep(item: dict) -> bool:
 async def run_scan(db: AsyncSession) -> dict:
     """Fetch, filter, dedup, rank and upsert event suggestions. Returns counters."""
     st = get_settings()
-    tid = _owner_tenant_id()
-    raw = await _fetch_seatgeek()
+    tid = await owner_tenant_id(db)
+    # Both providers are independent → fetch concurrently (the admin waits on this).
+    raw, tm = await asyncio.gather(_fetch_seatgeek(), _fetch_ticketmaster())
     items = [p for e in raw if (p := _parse_seatgeek(e))]
     kept = [i for i in items if _keep(i)]
-    kept = await _enrich_ticketmaster(kept)
+    kept = await _enrich_ticketmaster(kept, tm)
+
+    # Load this tenant's suggestions ONCE into memory. In-loop SELECTs would not see
+    # rows added earlier in the same run (the session runs autoflush=False), which both
+    # breaks in-run dedup and risks a unique-constraint IntegrityError that rolls back
+    # the whole scan. In-memory indexes also collapse the per-item N+1 to one query.
+    existing = (
+        await db.execute(select(EventSuggestion).where(EventSuggestion.tenant_id == tid))
+    ).scalars().all()
+    by_source: dict[tuple[str, str], EventSuggestion] = {
+        (r.source, r.source_id): r for r in existing
+    }
+    fuzzy_seen: set[tuple] = {
+        _fuzzy_key(r.starts_at, r.venue_key, r.venue_name, r.title) for r in existing
+    }
+    _UPDATABLE = (
+        "title", "performer", "starts_at", "score", "image_url",
+        "event_url", "venue_address", "distance_mi", "raw",
+    )
 
     created = updated = 0
     for it in kept:
@@ -255,38 +283,23 @@ async def run_scan(db: AsyncSession) -> dict:
                               it["venue_lat"], it["venue_lng"]),
                 1,
             )
-        row = (
-            await db.execute(
-                select(EventSuggestion).where(
-                    EventSuggestion.tenant_id == tid,
-                    EventSuggestion.source == it["source"],
-                    EventSuggestion.source_id == it["source_id"],
-                )
-            )
-        ).scalar_one_or_none()
-        if row is None:
-            # Cross-source fuzzy dedup: same date + venue + normalized title → skip.
-            same = (
-                await db.execute(
-                    select(EventSuggestion).where(
-                        EventSuggestion.tenant_id == tid,
-                        EventSuggestion.starts_at == it["starts_at"],
-                        EventSuggestion.venue_name == it["venue_name"],
-                    )
-                )
-            ).scalars().all()
-            if any(_norm(d.title) == _norm(it["title"]) for d in same):
-                continue
-            db.add(EventSuggestion(tenant_id=tid, **it))
-            created += 1
-        elif row.status == "suggested":  # never disturb approved/dismissed rows
-            for k in (
-                "title", "performer", "starts_at", "score", "image_url",
-                "event_url", "venue_address", "distance_mi", "raw",
-            ):
-                if it.get(k) is not None:
-                    setattr(row, k, it[k])
-            updated += 1
+        src_key = (it["source"], it["source_id"])
+        row = by_source.get(src_key)
+        if row is not None:
+            if row.status == "suggested":  # never disturb approved/dismissed rows
+                for k in _UPDATABLE:
+                    if it.get(k) is not None:
+                        setattr(row, k, it[k])
+                updated += 1
+            continue
+        fk = _fuzzy_key(it["starts_at"], it["venue_key"], it["venue_name"], it["title"])
+        if fk in fuzzy_seen:  # same show from another source or a paginated repeat
+            continue
+        new = EventSuggestion(tenant_id=tid, **it)
+        db.add(new)
+        by_source[src_key] = new  # a repeated (source,source_id) this run won't re-insert
+        fuzzy_seen.add(fk)
+        created += 1
 
     pruned = (
         await db.execute(

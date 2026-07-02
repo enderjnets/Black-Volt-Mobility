@@ -70,6 +70,19 @@ async def get_default_tenant(db: AsyncSession) -> Tenant:
     return t
 
 
+async def owner_tenant_id(db: AsyncSession) -> int:
+    """The tenant that owns platform-level, single-brand features (e.g. events).
+
+    Prefers the explicit OWNER_TENANT_ID override; otherwise resolves the canonical
+    owner tenant from the DB rather than assuming id 1, so a fresh/restored DB where
+    the seed tenant is not id 1 still works.
+    """
+    override = get_settings().OWNER_TENANT_ID
+    if override:
+        return override
+    return (await get_default_tenant(db)).id
+
+
 def _slugify(text: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", (text or "").strip().lower()).strip("-")
     return s or "driver"

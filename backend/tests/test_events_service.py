@@ -47,6 +47,14 @@ async def _mk_tenant(db) -> int:
     return t.id
 
 
+@pytest_asyncio.fixture
+async def owner(db, monkeypatch):
+    """A tenant registered as the events owner (public/archive queries resolve to it)."""
+    tid = await _mk_tenant(db)
+    monkeypatch.setattr(get_settings(), "OWNER_TENANT_ID", tid)
+    return tid
+
+
 async def _mk_suggestion(db, tid, **over) -> EventSuggestion:
     defaults = dict(
         tenant_id=tid, source="ticketmaster", source_id=f"s-{uuid.uuid4().hex[:8]}",
@@ -133,8 +141,8 @@ async def test_dismiss(db):
 
 
 @pytest.mark.asyncio
-async def test_archive_past_events(db):
-    tid = await _mk_tenant(db)
+async def test_archive_past_events(db, owner):
+    tid = owner
     past = dt.datetime.now(dt.UTC) - dt.timedelta(days=1)
     ev = Event(tenant_id=tid, slug=f"past-{uuid.uuid4().hex[:6]}", title="Past",
                venue_name="Ball Arena", venue_key="ball_arena", starts_at=past,
@@ -148,8 +156,8 @@ async def test_archive_past_events(db):
 
 
 @pytest.mark.asyncio
-async def test_public_endpoints_shape(db):
-    tid = await _mk_tenant(db)
+async def test_public_endpoints_shape(db, owner):
+    tid = owner
     s = await _mk_suggestion(db, tid)
     out = await events.approve_suggestion(db, tenant_id=tid, suggestion_id=s.id)
     slug = out["slug"]
@@ -174,8 +182,8 @@ async def test_public_endpoints_shape(db):
 
 
 @pytest.mark.asyncio
-async def test_update_event_and_generate_post(db):
-    tid = await _mk_tenant(db)
+async def test_update_event_and_generate_post(db, owner):
+    tid = owner
     s = await _mk_suggestion(db, tid)
     out = await events.approve_suggestion(db, tenant_id=tid, suggestion_id=s.id)
     eid = out["id"]
@@ -196,22 +204,44 @@ async def test_update_event_and_generate_post(db):
     }
 
 
-def test_ssrf_guard_rejects_unsafe_urls():
-    # Non-http schemes and private/loopback/metadata hosts are rejected.
-    assert events._is_safe_public_url("file:///etc/passwd") is False
-    assert events._is_safe_public_url("http://localhost/x") is False
-    assert events._is_safe_public_url("http://127.0.0.1/x") is False
-    assert events._is_safe_public_url("http://169.254.169.254/latest/meta-data/") is False
-    assert events._is_safe_public_url("http://10.0.0.5/x") is False
-    assert events._is_safe_public_url("http://192.168.1.1/x") is False
-    assert events._is_safe_public_url("not a url") is False
-    # A normal public https image URL is allowed.
-    assert events._is_safe_public_url("https://media.ticketmaster.com/img.jpg") is True
-
-
 @pytest.mark.asyncio
 async def test_scan_job_is_safe_without_key():
     # With no SeatGeek/Ticketmaster key the daily job must run to completion (no-op),
     # never raising — a keyless deployment stays healthy.
     from app.services import scheduler
     await scheduler._events_scan_job()
+
+
+@pytest.mark.asyncio
+async def test_passed_stays_false_during_show_and_grace(db, owner):
+    # Regression: an event that just started (or ended minutes ago) must NOT be marked
+    # passed — the post-show pickup CTA has to stay live through the archive grace window.
+    tid = owner
+    now = dt.datetime.now(dt.UTC)
+    during = Event(tenant_id=tid, slug=f"during-{uuid.uuid4().hex[:6]}", title="During",
+                   venue_name="Ball Arena", venue_key="ball_arena",
+                   starts_at=now - dt.timedelta(minutes=30), status="published")
+    old = Event(tenant_id=tid, slug=f"old-{uuid.uuid4().hex[:6]}", title="Old",
+                venue_name="Ball Arena", venue_key="ball_arena",
+                starts_at=now - dt.timedelta(hours=8), status="published")
+    db.add_all([during, old])
+    await db.commit()
+    d1 = await events.get_public_event(db, slug=during.slug)
+    d2 = await events.get_public_event(db, slug=old.slug)
+    assert d1["passed"] is False  # show in progress → CTA still live
+    assert d2["passed"] is True   # well past the 6h grace → retired
+
+
+@pytest.mark.asyncio
+async def test_public_queries_are_tenant_scoped(db, owner, monkeypatch):
+    # An event published under a DIFFERENT tenant must never surface on the owner's
+    # public surfaces (list + detail).
+    other = await _mk_tenant(db)
+    fut = dt.datetime.now(dt.UTC) + dt.timedelta(days=10)
+    foreign = Event(tenant_id=other, slug=f"foreign-{uuid.uuid4().hex[:6]}", title="Foreign",
+                    venue_name="V", starts_at=fut, status="published")
+    db.add(foreign)
+    await db.commit()
+    pub = await events.list_public_events(db)
+    assert all(e["slug"] != foreign.slug for e in pub)
+    assert await events.get_public_event(db, slug=foreign.slug) is None

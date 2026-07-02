@@ -13,6 +13,7 @@ os.environ["MINIMAX_API_KEY"] = ""
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
+from sqlalchemy.exc import IntegrityError  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
@@ -50,7 +51,7 @@ async def test_models_roundtrip(db):
         performer="Ed Sheeran",
         venue_name="Empower Field at Mile High",
         venue_key="empower_field",
-        starts_at=dt.datetime(2026, 8, 14, 19, 0, tzinfo=dt.timezone.utc),
+        starts_at=dt.datetime(2026, 8, 14, 19, 0, tzinfo=dt.UTC),
         score=0.9,
     )
     db.add(s)
@@ -80,11 +81,11 @@ async def test_unique_source_constraint(db):
     sid = f"dup-{uuid.uuid4().hex[:8]}"
     common = dict(
         tenant_id=tid, source="seatgeek", source_id=sid, title="X",
-        venue_name="V", starts_at=dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc),
+        venue_name="V", starts_at=dt.datetime(2026, 9, 1, tzinfo=dt.UTC),
     )
     db.add(EventSuggestion(**common))
     await db.commit()
     db.add(EventSuggestion(**common))
-    with pytest.raises(Exception):  # unique (source, source_id)
+    with pytest.raises(IntegrityError):  # unique (source, source_id)
         await db.commit()
     await db.rollback()

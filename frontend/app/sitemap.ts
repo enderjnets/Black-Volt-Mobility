@@ -23,7 +23,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Published upcoming events (best-effort — a fetch failure keeps the static map).
   let eventPages: { path: string; priority: 0.6; changeFrequency: "daily" }[] = [];
   try {
-    const r = await fetch(`${API}/api/v1/events/public`, { cache: "no-store" });
+    // Timeout so /sitemap.xml never blocks on backend health (it was a static asset).
+    const r = await fetch(`${API}/api/v1/events/public`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(3000),
+    });
     if (r.ok) {
       const events = (await r.json()) as { slug: string }[];
       eventPages = events.map((e) => ({

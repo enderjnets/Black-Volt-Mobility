@@ -14,6 +14,7 @@ import os
 import socket
 import time
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import select
@@ -22,16 +23,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import Event, EventSuggestion
 from app.services import llm, social
+from app.services.tenancy import owner_tenant_id
 from app.services.venue_profiles import get_profile
+from app.services.zones import DEFAULT_ZONE_PRICES
 
 logger = logging.getLogger("blackvolt.events")
 
 _ARCHIVE_GRACE = dt.timedelta(hours=6)  # keep a landing live a bit past showtime
-FLAT_PRICE = 120
+_DENVER_TZ = ZoneInfo("America/Denver")
+# Single source of truth: the metered engine's flat Denver-metro fare (owner-editable
+# default), not a magic number. Events fall in the denver_metro zone.
+FLAT_PRICE = int(DEFAULT_ZONE_PRICES.get("denver_metro", 120))
 
 
 def _now() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
+
+
+def _local(when: dt.datetime) -> dt.datetime:
+    """A UTC event time rendered in Denver local time (for human-facing copy)."""
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt.UTC)
+    return when.astimezone(_DENVER_TZ)
 
 
 # ── serialization ─────────────────────────────────────────────────────────────
@@ -121,24 +134,36 @@ def _is_safe_public_url(url: str) -> bool:
 async def _download_image(url: str) -> tuple[bytes, str] | None:
     """Fetch a remote event image; sniff/normalize it. None on any error.
 
-    Only public http(s) hosts are fetched (SSRF guard); a redirect to a private host
-    is rejected too. The bytes must sniff as a real image or they are discarded.
+    SSRF guard: redirects are followed manually and EVERY hop (including the initial
+    URL) is validated to a public http(s) host BEFORE the request is issued, so an
+    attacker cannot bounce us through a public host into an internal one. The bytes must
+    sniff as a real image or they are discarded.
     """
     if not _is_safe_public_url(url):
         logger.warning("event hero URL rejected (unsafe/non-public): %s", url)
         return None
     try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True, max_redirects=3) as client:
-            r = await client.get(url)
-            r.raise_for_status()
-            # A redirect chain must also land on a public host.
-            if str(r.url) != url and not _is_safe_public_url(str(r.url)):
-                logger.warning("event hero redirect rejected: %s", r.url)
-                return None
-        sniffed = social._sniff_image(r.content)
-        if sniffed is None:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+            current = url
+            for _ in range(4):  # initial request + up to 3 redirects
+                r = await client.get(current)
+                if r.is_redirect:
+                    loc = r.headers.get("location")
+                    if not loc:
+                        return None
+                    nxt = str(httpx.URL(current).join(loc))
+                    if not _is_safe_public_url(nxt):  # validate BEFORE following
+                        logger.warning("event hero redirect rejected: %s", nxt)
+                        return None
+                    current = nxt
+                    continue
+                r.raise_for_status()
+                sniffed = social._sniff_image(r.content)
+                if sniffed is None:
+                    return None
+                return r.content, sniffed[0]
+            logger.warning("event hero too many redirects: %s", url)
             return None
-        return r.content, sniffed[0]
     except Exception as e:
         logger.warning("event hero download failed: %s", e)
         return None
@@ -181,7 +206,7 @@ _ABOUT_FALLBACK = (
 async def _about_text(sug: EventSuggestion) -> str:
     prompt = (
         "Write 2 short paragraphs (max 120 words total) for a premium ride service's "
-        f"event page about: {sug.title} at {sug.venue_name} on {sug.starts_at:%B %d, %Y}. "
+        f"event page about: {sug.title} at {sug.venue_name} on {_local(sug.starts_at):%B %d, %Y}. "
         "Paragraph 1: who's playing and why this show is a big deal. Paragraph 2: a "
         "practical rider tip (arrive early, book the ride ahead of time). Be factual, "
         "avoid hype adjectives, no hashtags, plain text only."
@@ -199,13 +224,14 @@ async def _about_text(sug: EventSuggestion) -> str:
         except Exception as e:
             logger.warning("event about-text provider %s failed: %s", model, e)
     return _ABOUT_FALLBACK.format(
-        title=sug.title, venue=sug.venue_name, date=f"{sug.starts_at:%B %d, %Y}", price=FLAT_PRICE
+        title=sug.title, venue=sug.venue_name,
+        date=f"{_local(sug.starts_at):%B %d, %Y}", price=FLAT_PRICE
     )
 
 
 def _event_topic(ev: Event) -> str:
     return (
-        f"Event ride: {ev.title} at {ev.venue_name} on {ev.starts_at:%B %d} — flat "
+        f"Event ride: {ev.title} at {ev.venue_name} on {_local(ev.starts_at):%B %d} — flat "
         f"${FLAT_PRICE} each way, no surge, door-to-door and prepaid. Book at "
         f"https://blackvoltmobility.com/events/{ev.slug}"
     )
@@ -278,7 +304,7 @@ async def approve_suggestion(
     hero = await _download_image(sug.image_url) if sug.image_url else None
     base = _slugify(
         f"{sug.performer or sug.title}-{(sug.venue_key or 'denver').replace('_', '-')}"
-        f"-{sug.starts_at:%Y}"
+        f"-{_local(sug.starts_at):%Y}"
     )
     slug = await _unique_slug(db, base)
     ev = Event(
@@ -376,9 +402,14 @@ async def generate_event_post(
 
 async def archive_past_events(db: AsyncSession) -> int:
     cutoff = _now() - _ARCHIVE_GRACE
+    tid = await owner_tenant_id(db)
     rows = (
         await db.execute(
-            select(Event).where(Event.status == "published", Event.starts_at < cutoff)
+            select(Event).where(
+                Event.tenant_id == tid,
+                Event.status == "published",
+                Event.starts_at < cutoff,
+            )
         )
     ).scalars().all()
     for ev in rows:
@@ -392,10 +423,15 @@ async def archive_past_events(db: AsyncSession) -> int:
 
 
 async def list_public_events(db: AsyncSession) -> list[dict]:
+    tid = await owner_tenant_id(db)
     rows = (
         await db.execute(
             select(Event)
-            .where(Event.status == "published", Event.starts_at >= _now())
+            .where(
+                Event.tenant_id == tid,
+                Event.status == "published",
+                Event.starts_at >= _now(),
+            )
             .order_by(Event.starts_at.asc())
         )
     ).scalars().all()
@@ -403,13 +439,18 @@ async def list_public_events(db: AsyncSession) -> list[dict]:
 
 
 async def get_public_event(db: AsyncSession, *, slug: str) -> dict | None:
+    tid = await owner_tenant_id(db)
     ev = (
-        await db.execute(select(Event).where(Event.slug == slug))
+        await db.execute(
+            select(Event).where(Event.tenant_id == tid, Event.slug == slug)
+        )
     ).scalar_one_or_none()
     if ev is None or ev.status == "draft":
         return None
     data = _event_dict(ev)
     data["venue_profile"] = get_profile(ev.venue_key)
-    data["passed"] = ev.status == "archived" or ev.starts_at < _now()
+    # "passed" only once the landing is actually retired (archive grace window), so the
+    # post-show pickup CTA stays live during and just after the show.
+    data["passed"] = ev.status == "archived" or ev.starts_at < _now() - _ARCHIVE_GRACE
     data["flat_price"] = FLAT_PRICE
     return data

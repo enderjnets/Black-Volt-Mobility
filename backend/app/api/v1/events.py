@@ -14,17 +14,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
-from app.config import get_settings
 from app.db.base import get_db
 from app.services import events, events_scan
-from app.services.tenancy import media_url
+from app.services.tenancy import media_url, owner_tenant_id
 
 router = APIRouter(prefix="/events", tags=["events"])
-
-
-def _owner_tid() -> int:
-    """Owner tenant that owns all events (matches the scanner's target tenant)."""
-    return get_settings().OWNER_TENANT_ID or 1
 
 
 # ─── Schemas ───────────────────────────────────────────────────────────────────
@@ -128,7 +122,8 @@ async def list_suggestions(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[SuggestionOut]:
-    rows = await events.list_suggestions(db, tenant_id=_owner_tid(), venue_key=venue_key)
+    tid = await owner_tenant_id(db)
+    rows = await events.list_suggestions(db, tenant_id=tid, venue_key=venue_key)
     return [SuggestionOut(**r) for r in rows]
 
 
@@ -139,7 +134,7 @@ async def approve(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     out = await events.approve_suggestion(
-        db, tenant_id=_owner_tid(), suggestion_id=suggestion_id
+        db, tenant_id=await owner_tenant_id(db), suggestion_id=suggestion_id
     )
     if out is None:
         raise HTTPException(
@@ -154,7 +149,8 @@ async def dismiss(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    ok = await events.dismiss_suggestion(db, tenant_id=_owner_tid(), suggestion_id=suggestion_id)
+    tid = await owner_tenant_id(db)
+    ok = await events.dismiss_suggestion(db, tenant_id=tid, suggestion_id=suggestion_id)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     return {"ok": True}
@@ -173,7 +169,7 @@ async def list_admin_events(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[AdminEventOut]:
-    rows = await events.list_events(db, tenant_id=_owner_tid())
+    rows = await events.list_events(db, tenant_id=await owner_tenant_id(db))
     return [_admin_event_out(r) for r in rows]
 
 
@@ -185,7 +181,7 @@ async def patch_event(
     db: AsyncSession = Depends(get_db),
 ) -> AdminEventOut:
     out = await events.update_event(
-        db, tenant_id=_owner_tid(), event_id=event_id,
+        db, tenant_id=await owner_tenant_id(db), event_id=event_id,
         patch=body.model_dump(exclude_unset=True),
     )
     if out is None:
@@ -201,7 +197,7 @@ async def generate_post(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     out = await events.generate_event_post(
-        db, tenant_id=_owner_tid(), event_id=event_id, kind=body.kind
+        db, tenant_id=await owner_tenant_id(db), event_id=event_id, kind=body.kind
     )
     if out.get("error") == "not_found":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")

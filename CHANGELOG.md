@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.64.1 — 2026-07-01 — Featured events: hardening & fixes (code-review follow-up)
+
+Fixes the 10 findings from the high-effort review of v0.64.0.
+
+- **Scanner robustness (`events_scan.py`):** `run_scan` now bulk-loads the tenant's
+  suggestions once and dedups in memory. Fixes a latent bug where the production session
+  (`autoflush=False`) hid rows added earlier in the same run from the in-loop dedup SELECTs —
+  a within-run duplicate `(source, source_id)` could raise IntegrityError and roll back the
+  whole scan (0 saved). Also removes the per-item N+1 (1 query vs ~200) and runs the SeatGeek
+  and Ticketmaster fetches concurrently. Cross-source dedup now keys on venue_key + day +
+  title (robust to venue-name/time spelling differences across sources).
+- **Post-show CTA (`events.py`):** an event is only `passed` once it's actually retired
+  (archive grace window), so the "Book your post-show pickup" button stays live during and
+  just after the show instead of vanishing at showtime.
+- **Timezone (`events.py`):** AI blurb, fallback copy, social topic, and the slug year now
+  render `starts_at` in America/Denver, so evening shows no longer show the next day.
+- **Tenant scoping (`events.py`):** `list_public_events`, `get_public_event`, and
+  `archive_past_events` now scope to the owner tenant (CLAUDE.md anti-pattern #6) — no
+  cross-tenant leak on the SaaS path.
+- **Single source of truth:** the flat fare is read from the metered zone engine
+  (`zones.DEFAULT_ZONE_PRICES['denver_metro']`) instead of a hardcoded 120 in three places;
+  the frontend uses the API's `flat_price`.
+- **Owner-tenant resolution:** one shared `tenancy.owner_tenant_id(db)` resolver (DB-backed,
+  no `or 1` magic) used by the scanner and the API, so writer and reader can't diverge.
+- **SSRF:** the hero download validates **every** redirect hop before following it (not just
+  the final URL); `/sitemap.xml` fetch now has a 3s timeout so it can't hang on backend health.
+- 8 new regression tests (571 backend total): autoflush in-run dedup, passed-during-show,
+  tenant isolation, cross-source fuzzy dedup, and per-hop SSRF rejection.
+
 ## v0.64.0 — 2026-07-01 — Featured events: concert & big-event ride pages
 
 New end-to-end module that turns big Denver events into ride-booking landing pages.

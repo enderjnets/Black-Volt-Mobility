@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.64.0";
+export const CURRENT_VERSION = "0.64.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.64.1",
+    date: "2026-07-01",
+    title: "Featured events: hardening & fixes",
+    changes: [
+      "Event pages now keep the \"book your ride home\" button live during and just after the show (it was disappearing the moment the show started).",
+      "Event dates in the AI copy and social posts now use Denver time (evening shows were showing the next day).",
+      "The event price shown always matches the live Denver-metro fare, and the daily scanner is faster and more reliable (no duplicate events, no rare failure).",
+    ],
+  },
   {
     version: "0.64.0",
     date: "2026-07-01",
