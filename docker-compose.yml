@@ -125,6 +125,13 @@ services:
       BUFFER_ORG_ID: ${BUFFER_ORG_ID:-}
       SOCIAL_PUBLISH_VIA_BUFFER: ${SOCIAL_PUBLISH_VIA_BUFFER:-false}
       OWNER_TENANT_ID: ${OWNER_TENANT_ID:-}
+      # Featured events scanner (free dev keys; empty = that source is skipped).
+      SEATGEEK_CLIENT_ID: ${SEATGEEK_CLIENT_ID:-}
+      TICKETMASTER_API_KEY: ${TICKETMASTER_API_KEY:-}
+      EVENTS_MIN_SCORE: ${EVENTS_MIN_SCORE:-0.6}
+      EVENTS_SCAN_ENABLED: ${EVENTS_SCAN_ENABLED:-true}
+      EVENTS_BASE_LAT: ${EVENTS_BASE_LAT:-39.6005}
+      EVENTS_BASE_LNG: ${EVENTS_BASE_LNG:--104.7926}
     volumes:
       # Service-account JSON for Google Calendar (gitignored; absent in dev).
       - ./secrets:/secrets:ro
