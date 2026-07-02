@@ -146,3 +146,83 @@ async def test_scan_computes_distance(db, owner, monkeypatch):
     row = (await db.execute(select(EventSuggestion).where(
         EventSuggestion.source_id == "20"))).scalar_one()
     assert row.distance_mi is not None and row.distance_mi > 0
+
+
+# ── Ticketmaster (T5) ─────────────────────────────────────────────────────────
+
+
+def _tm_parsed(id_, title, venue, days_ahead=30, venue_key=None, url=None, image=None):
+    when = dt.datetime.now(dt.UTC) + dt.timedelta(days=days_ahead)
+    return {
+        "source": "ticketmaster", "source_id": id_, "title": title, "performer": title,
+        "venue_name": venue, "venue_key": venue_key, "venue_address": "Denver, CO",
+        "venue_lat": 39.75, "venue_lng": -105.0, "starts_at": when, "score": None,
+        "image_url": image, "event_url": url,
+        "raw": {"ticketmaster": {"id": id_}},
+    }
+
+
+def _fake_tm(items):
+    async def _f():
+        return list(items)
+    return _f
+
+
+def test_tm_best_image_prefers_widest_real_16_9():
+    imgs = [
+        {"ratio": "16_9", "width": 640, "url": "small", "fallback": False},
+        {"ratio": "16_9", "width": 2048, "url": "big", "fallback": False},
+        {"ratio": "16_9", "width": 4096, "url": "fallbackbig", "fallback": True},
+        {"ratio": "3_2", "width": 3000, "url": "wrongratio", "fallback": False},
+    ]
+    assert events_scan._tm_best_image(imgs) == "big"
+    assert events_scan._tm_best_image([]) is None
+
+
+@pytest.mark.asyncio
+async def test_enrich_no_key_returns_items_unchanged(db, owner, monkeypatch):
+    # No TICKETMASTER_API_KEY → _fetch_ticketmaster returns [], enrichment is a no-op.
+    calls = {"n": 0}
+
+    async def _spy():
+        calls["n"] += 1
+        return []
+    monkeypatch.setattr(events_scan, "_fetch_ticketmaster", _spy)
+    items = [_tm_parsed("x", "Show", "Ball Arena", venue_key="ball_arena")]
+    items[0]["source"] = "seatgeek"
+    out = await events_scan._enrich_ticketmaster(items)
+    assert out == items and calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_enrich_merges_matching_event(db, owner, monkeypatch):
+    monkeypatch.setattr(events_scan, "_fetch_seatgeek", _fake_sg([
+        _sg("30", "Ed Sheeran", "Empower Field at Mile High", 0.9),
+    ]))
+    # Same title + same date → enrich the SeatGeek item with TM url/image.
+    when = dt.datetime.now(dt.UTC) + dt.timedelta(days=30)
+    tm = _tm_parsed("tm-30", "Ed Sheeran", "Empower Field at Mile High",
+                    venue_key="empower_field", url="https://ticketmaster.com/ed",
+                    image="https://tm/ed.jpg")
+    tm["starts_at"] = when
+    monkeypatch.setattr(events_scan, "_fetch_ticketmaster", _fake_tm([tm]))
+    out = await events_scan.run_scan(db)
+    assert out["created"] == 1  # merged, not a second row
+    row = (await db.execute(select(EventSuggestion).where(
+        EventSuggestion.source_id == "30"))).scalar_one()
+    assert row.event_url == "https://ticketmaster.com/ed"
+    assert row.image_url == "https://tm/ed.jpg"
+    assert row.raw.get("ticketmaster") is not None
+
+
+@pytest.mark.asyncio
+async def test_enrich_adds_tm_only_watchlist_event(db, owner, monkeypatch):
+    monkeypatch.setattr(events_scan, "_fetch_seatgeek", _fake_sg([]))  # SeatGeek key absent
+    tm_watchlist = _tm_parsed("tm-ball", "Nuggets Game", "Ball Arena", venue_key="ball_arena")
+    tm_other = _tm_parsed("tm-club", "Tiny Show", "Some Bar", venue_key=None)
+    monkeypatch.setattr(events_scan, "_fetch_ticketmaster", _fake_tm([tm_watchlist, tm_other]))
+    out = await events_scan.run_scan(db)
+    assert out["created"] == 1  # only the watchlist TM event is added
+    rows = await _count(db, owner)
+    assert {r.source_id for r in rows} == {"tm-ball"}
+    assert rows[0].source == "ticketmaster"
