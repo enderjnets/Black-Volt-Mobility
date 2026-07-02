@@ -194,3 +194,11 @@ async def test_update_event_and_generate_post(db):
     assert await events.generate_event_post(db, tenant_id=tid, event_id=99999, kind="video") == {
         "error": "not_found"
     }
+
+
+@pytest.mark.asyncio
+async def test_scan_job_is_safe_without_key():
+    # With no SeatGeek/Ticketmaster key the daily job must run to completion (no-op),
+    # never raising — a keyless deployment stays healthy.
+    from app.services import scheduler
+    await scheduler._events_scan_job()

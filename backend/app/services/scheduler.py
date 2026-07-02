@@ -60,6 +60,20 @@ async def _review_reminders_job() -> None:
         logger.warning("review_reminders job failed: %s", e)
 
 
+async def _events_scan_job() -> None:
+    """Daily 06:00 Denver: pull big upcoming events into suggestions; archive past events."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import events, events_scan
+
+        async with get_session_factory()() as db:
+            out = await events_scan.run_scan(db)
+            n = await events.archive_past_events(db)
+            logger.info("events scan: %s, archived=%d", out, n)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("events_scan job failed: %s", e)
+
+
 def start() -> None:
     """Start the scheduler. Best-effort: a missing APScheduler or any startup
     error degrades to 'no background publishing' rather than breaking the app."""
@@ -90,6 +104,14 @@ def start() -> None:
             _review_reminders_job, "interval", minutes=15, id="review_reminders",
             max_instances=1, coalesce=True,
         )
+        # Daily featured-events scan + archive (Denver local time). Gated so a
+        # deployment without event API keys simply never schedules it.
+        if get_settings().EVENTS_SCAN_ENABLED:
+            sched.add_job(
+                _events_scan_job,
+                CronTrigger(hour=6, minute=0, timezone="America/Denver"),
+                id="events_daily_scan", max_instances=1, coalesce=True,
+            )
         sched.start()
         _scheduler = sched
         logger.info("social scheduler started (simulated=%s)", get_settings().SOCIAL_SIMULATED)
