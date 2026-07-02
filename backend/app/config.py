@@ -336,6 +336,20 @@ class Settings(BaseSettings):
     # gate (single-tenant / test default).
     OWNER_TENANT_ID: int | None = None
 
+    # ── Featured events scanner ────────────────────────────────────────────────
+    # Free developer keys, read from .env only (never committed). Empty = that
+    # source is skipped; with neither key the daily scan is a harmless no-op.
+    SEATGEEK_CLIENT_ID: str = ""
+    TICKETMASTER_API_KEY: str = ""
+    # Keep an event even when it is not at a watchlist venue if its SeatGeek
+    # popularity score clears this bar (0..1). Big arena/stadium acts clear 0.6;
+    # club shows do not. Tunable via .env without a deploy.
+    EVENTS_MIN_SCORE: float = 0.6
+    EVENTS_SCAN_ENABLED: bool = True
+    # Driver home base (Aurora) — suggestions are ranked partly by distance to it.
+    EVENTS_BASE_LAT: float = 39.6005
+    EVENTS_BASE_LNG: float = -104.7926
+
     @field_validator("OWNER_TENANT_ID", mode="before")
     @classmethod
     def _blank_owner_tenant_to_none(cls, v):
