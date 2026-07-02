@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "../Icon";
 import { Button, Pill } from "../ui";
 import ReviewsStrip from "./ReviewsStrip";
+import UpcomingEvents from "./UpcomingEvents";
 import { useI18n } from "@/lib/i18n";
 import { SEO_ROUTES } from "@/lib/seoRoutes";
 import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
@@ -243,6 +244,8 @@ export function Landing() {
           ))}
         </div>
       </section>
+
+      <UpcomingEvents />
 
       <section
         className="bv-fleet"
