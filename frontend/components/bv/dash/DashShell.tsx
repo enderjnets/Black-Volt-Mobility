@@ -75,6 +75,7 @@ const NAV: { seg: string; href: string; icon: string; key: string }[] = [
 // Super-admin only (social management + the access list). Appended to the nav
 // when me.is_admin — regular drivers never see these.
 const ADMIN_NAV = [
+  { seg: "events", href: "/dashboard/events", icon: "calendar", key: "dash.nav.events" },
   { seg: "reviews", href: "/dashboard/reviews", icon: "star", key: "dash.nav.reviews" },
   { seg: "social", href: "/dashboard/social", icon: "share-2", key: "dash.nav.social" },
   { seg: "team", href: "/dashboard/team", icon: "shield-check", key: "dash.nav.team" },
