@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.63.2";
+export const CURRENT_VERSION = "0.64.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.64.0",
+    date: "2026-07-01",
+    title: "Featured events: concert & big-event ride pages",
+    changes: [
+      "New Events section in the dashboard: a daily scanner surfaces big Denver events (Empower Field, Red Rocks, Ball Arena, Coors Field, Fiddler's Green and any large metro show), ranked by date and distance from your base.",
+      "Approve an event and its public page goes live instantly at /events/… with artist info, the best drop-off spots before the show, pickup spots after, nearby bars & restaurants, and a flat-$120 booking button — plus two ready-to-review social posts (a video and a photo).",
+      "Home page now shows an \"Upcoming events\" strip linking to each event page.",
+      "Instagram and TikTok icons added to the public site footer.",
+    ],
+  },
   {
     version: "0.63.2",
     date: "2026-07-01",

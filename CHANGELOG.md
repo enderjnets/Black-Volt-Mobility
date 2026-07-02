@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.64.0 — 2026-07-01 — Featured events: concert & big-event ride pages
+
+New end-to-end module that turns big Denver events into ride-booking landing pages.
+
+- **Daily scanner** (`services/events_scan.py`, APScheduler 06:00 America/Denver): pulls upcoming
+  Denver-metro events from **SeatGeek** (base) + **Ticketmaster Discovery** (enrichment/source),
+  keeps those at watchlist venues (Empower Field, Red Rocks, Ball Arena, Coors Field, Fiddler's
+  Green) or above a popularity bar (`EVENTS_MIN_SCORE`, default 0.6), dedups across sources, ranks by
+  distance from the driver's Aurora base, and upserts into `event_suggestions`. Fails soft — a missing
+  key or network error leaves existing suggestions untouched; approved/dismissed rows are never
+  disturbed. Ticketmaster fetch **live-verified**: 300 events, 31 watchlist hits (Ed Sheeran at
+  Empower Field, Red Rocks, Coors Field) with images.
+- **Dashboard → Events** (owner-admin only): review suggestions ranked by date with venue/score/
+  distance, **Approve** / **Dismiss**, **Scan now**, edit published events (title/about, publish/
+  unpublish/archive), and generate extra video/photo posts per event.
+- **Approval pipeline** (`services/events.py`): creates a **published** event (landing live
+  instantly, no deploy), downloads the hero image, writes an AI "about the show" blurb (Kimi→MiniMax,
+  factual fallback), and spawns **two social-post drafts** (video + photo) into the existing
+  approve/edit/regenerate/publish flow. A post-generation failure never blocks the (already live)
+  landing.
+- **Public landing** `/events/[slug]` (DB-driven, server-rendered): hero, "Flat $120 each way — no
+  surge" badge, about, **curated per-venue** drop-off/pickup guidance + nearby bars & restaurants
+  (`services/venue_profiles.py`), trust bar, JSON-LD `Event`, dynamic sitemap entry, and dual booking
+  CTAs deep-linking to `/book` (to-the-show + post-show pickup, `utm_campaign=event-<slug>`). Past
+  events show a friendly "this event has passed" page (no 404).
+- **Home**: new "Upcoming events" strip linking to each event page (hidden when none).
+- **Footer**: Instagram + TikTok icons linking to the brand accounts.
+- Migration `0037_events` (`event_suggestions`, `events`). New settings (`.env`):
+  `SEATGEEK_CLIENT_ID`, `TICKETMASTER_API_KEY`, `EVENTS_MIN_SCORE`, `EVENTS_SCAN_ENABLED`,
+  `EVENTS_BASE_LAT/LNG`. Keys live in the gitignored `.env` only. 29 new tests (564 total). See
+  `docs/setup-events.md`.
+
 ## v0.63.2 — 2026-07-01 — TikTok: pad non-9:16 photos so they publish
 
 - **Bugfix**: TikTok rejected uploaded photos with `Invalid post` because they weren't 9:16 (verified

@@ -544,6 +544,7 @@ const EN: Record<string, string> = {
   "dash.title.analytics": "Insights",
   "dash.title.social": "Social Media",
   "dash.title.reviews": "Reviews",
+  "dash.title.events": "Events",
   // Social media module
   "dash.social.subtitle": "Create, approve and publish — your brand on autopilot, always on-brand.",
   "dash.social.error": "Couldn't load. Try again.",
@@ -1591,6 +1592,7 @@ const ES: Record<string, string> = {
   "dash.title.stats": "Mis Stats",
   "dash.title.social": "Redes Sociales",
   "dash.title.reviews": "Reseñas",
+  "dash.title.events": "Eventos",
   // Módulo de redes sociales
   "dash.social.subtitle": "Crea, aprueba y publica — tu marca en piloto automático, siempre fiel a tu estilo.",
   "dash.social.error": "No se pudo cargar. Intenta de nuevo.",
