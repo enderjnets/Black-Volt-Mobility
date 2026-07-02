@@ -156,7 +156,9 @@ export default async function EventPage({ params }: { params: { slug: string } }
     <main style={{ paddingBottom: 80 }}>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        // Escape "<" so dynamic values (title/venue from the events API or admin edits)
+        // can't break out of the script tag with a literal </script>.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
 
       {/* Hero */}

@@ -8,9 +8,12 @@ flow through the normal approve/edit/regenerate/publish path.
 from __future__ import annotations
 
 import datetime as dt
+import ipaddress
 import logging
 import os
+import socket
 import time
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
@@ -89,12 +92,49 @@ async def _unique_slug(db: AsyncSession, base: str) -> str:
     return slug
 
 
-async def _download_image(url: str) -> tuple[bytes, str] | None:
-    """Fetch a remote event image; sniff/normalize it. None on any error."""
+def _is_safe_public_url(url: str) -> bool:
+    """True only for http(s) URLs whose host resolves to public IPs.
+
+    Defense-in-depth against SSRF: the image URL comes from the events API, but we
+    never fetch file://, localhost, cloud-metadata (169.254.169.254), or private/
+    reserved ranges even if a source is compromised.
+    """
     try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 0, proto=socket.IPPROTO_TCP)
+        if not infos:
+            return False
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if (
+                ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+            ):
+                return False
+        return True
+    except Exception:
+        return False
+
+
+async def _download_image(url: str) -> tuple[bytes, str] | None:
+    """Fetch a remote event image; sniff/normalize it. None on any error.
+
+    Only public http(s) hosts are fetched (SSRF guard); a redirect to a private host
+    is rejected too. The bytes must sniff as a real image or they are discarded.
+    """
+    if not _is_safe_public_url(url):
+        logger.warning("event hero URL rejected (unsafe/non-public): %s", url)
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True, max_redirects=3) as client:
             r = await client.get(url)
             r.raise_for_status()
+            # A redirect chain must also land on a public host.
+            if str(r.url) != url and not _is_safe_public_url(str(r.url)):
+                logger.warning("event hero redirect rejected: %s", r.url)
+                return None
         sniffed = social._sniff_image(r.content)
         if sniffed is None:
             return None

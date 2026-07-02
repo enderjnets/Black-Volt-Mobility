@@ -196,6 +196,19 @@ async def test_update_event_and_generate_post(db):
     }
 
 
+def test_ssrf_guard_rejects_unsafe_urls():
+    # Non-http schemes and private/loopback/metadata hosts are rejected.
+    assert events._is_safe_public_url("file:///etc/passwd") is False
+    assert events._is_safe_public_url("http://localhost/x") is False
+    assert events._is_safe_public_url("http://127.0.0.1/x") is False
+    assert events._is_safe_public_url("http://169.254.169.254/latest/meta-data/") is False
+    assert events._is_safe_public_url("http://10.0.0.5/x") is False
+    assert events._is_safe_public_url("http://192.168.1.1/x") is False
+    assert events._is_safe_public_url("not a url") is False
+    # A normal public https image URL is allowed.
+    assert events._is_safe_public_url("https://media.ticketmaster.com/img.jpg") is True
+
+
 @pytest.mark.asyncio
 async def test_scan_job_is_safe_without_key():
     # With no SeatGeek/Ticketmaster key the daily job must run to completion (no-op),
