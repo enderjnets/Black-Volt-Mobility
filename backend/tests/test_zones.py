@@ -38,6 +38,8 @@ def test_prices_match_the_owner_map():
         "fort_collins": 280.0,
         "loveland_greeley": 249.0,
         "boulder": 190.0,
+        "metro_far": 165.0,
+        "metro_mid": 140.0,
         "denver_metro": 120.0,
     }
 
@@ -75,8 +77,24 @@ def test_tricky_aspen_grove_is_metro_not_aspen():
 
 
 def test_golden_is_metro_not_a_den_substring():
+    # Golden is a mid-ring metro zone (not the close-in denver_metro, and not a "den" match).
     hit = _hit("Aurora, CO, USA", "Golden, CO 80401, USA")
-    assert hit is not None and hit.key == "denver_metro"
+    assert hit is not None and hit.key == "metro_mid"
+
+
+def test_metro_tiers_by_distance():
+    # Close-in stays denver_metro; outer suburbs step up; far ring is highest.
+    assert _hit("Aurora, CO", "Cherry Hills Village, CO").key == "denver_metro"
+    assert _hit("Aurora, CO", "Greenwood Village, CO").key == "metro_mid"
+    assert _hit("Aurora, CO", "Highlands Ranch, CO").key == "metro_mid"
+    assert _hit("Aurora, CO", "Castle Pines, CO").key == "metro_far"
+    assert _hit("Aurora, CO", "Parker, CO").key == "metro_far"
+
+
+def test_far_pickup_beats_close_dropoff():
+    # A far-ring pickup to a downtown venue prices at the farther zone (precedence).
+    hit = _hit("Castle Pines, CO", "1701 Bryant St, Denver, CO")
+    assert hit is not None and hit.key == "metro_far" and hit.flat == 165.0
 
 
 def test_out_of_zone_returns_none():

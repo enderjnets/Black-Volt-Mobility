@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.65.1";
+export const CURRENT_VERSION = "0.65.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.65.2",
+    date: "2026-07-02",
+    title: "Distance-tiered metro pricing for events",
+    changes: [
+      "Denver metro is now split into distance tiers so farther premium suburbs pay a fairer rate: close-in stays the base price, the outer ring / DTC (Greenwood Village, Highlands Ranch, Lone Tree, Golden) steps up, and the far ring (Castle Pines, Castle Rock, Parker) is highest — while Boulder keeps its own rate.",
+    ],
+  },
   {
     version: "0.65.1",
     date: "2026-07-02",

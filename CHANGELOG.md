@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.65.2 — 2026-07-02 — Distance-tiered metro pricing
+
+Split the single flat Denver-metro zone into distance tiers so the far affluent suburbs
+pay a rate that reflects the longer drive (driver margin + willingness to pay), without
+sub-tiering the whole metro.
+
+- **`services/zones.py`:** two new zones ahead of `denver_metro` (precedence: farther pickup
+  wins on a mixed trip). `metro_mid` ($140/leg → ~$400 round trip): Greenwood Village / DTC,
+  Centennial, Highlands Ranch, Lone Tree, Golden. `metro_far` ($165/leg → ~$450 round trip):
+  Castle Pines, Castle Rock, Parker. Close-in metro (Denver, Aurora, Cherry Creek, Cherry
+  Hills, Englewood, Littleton…) stays the base rate (~$340 round trip); Boulder keeps $480.
+- The owner's custom close-in ($110) and Boulder ($180) rates are unchanged; the new tiers
+  use these defaults until tuned per-driver in Rates → Flat zones.
+
 ## v0.65.1 — 2026-07-02 — Event pricing calibration (real operator data)
 
 Tuned event pricing against real concert-transport field rates (one-way ≈ Uber Black,
