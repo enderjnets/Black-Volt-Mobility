@@ -680,6 +680,17 @@ export function Booking() {
                 ${(quote ? quote.total : 120).toFixed(2)}
               </span>
             </div>
+            {quote?.event ? (
+              <div
+                style={{
+                  fontSize: 12, color: "var(--silver)", background: "var(--obsidian-3)",
+                  border: "1px solid var(--line-strong)", borderRadius: "var(--radius-md)",
+                  padding: "10px 12px", marginBottom: 12, lineHeight: 1.5,
+                }}
+              >
+                {t("book.event.prepaid")}
+              </div>
+            ) : null}
             {/* Pay now (card) vs pay the driver at drop-off (cash, no online charge). */}
             <div
               role="tablist"
@@ -692,7 +703,7 @@ export function Booking() {
                 padding: 4,
               }}
             >
-              {(["now", "later"] as const).map((m) => {
+              {((quote?.event ? ["now"] : ["now", "later"]) as ("now" | "later")[]).map((m) => {
                 const active = payMode === m;
                 return (
                   <button
@@ -723,7 +734,7 @@ export function Booking() {
               })}
             </div>
 
-            {payMode === "now" ? (
+            {payMode === "now" || quote?.event ? (
               squareReady ? (
                 <SquareCard
                   applicationId={payCfg!.application_id!}

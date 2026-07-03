@@ -41,15 +41,18 @@ def _client():
 
 async def authorize(
     *, amount: int, currency: str, source_id: str, reference_id: str | None = None,
-    note: str | None = None,
+    note: str | None = None, capture: bool = False,
 ) -> PaymentResult:
-    """Authorize (hold) a card payment without capturing. `source_id` is the token
-    from the Web Payments SDK."""
+    """Charge a card via the Web Payments SDK token (`source_id`). By default this only
+    authorizes (holds) the funds for later capture; pass ``capture=True`` to charge in full
+    immediately (used for event rides so the hold cannot expire before the event)."""
     settings = get_settings()
     client = _client()
     if client is None:
         return PaymentResult(
-            square_payment_id=f"SIMUL-{uuid.uuid4().hex[:20]}", status="APPROVED", simulated=True
+            square_payment_id=f"SIMUL-{uuid.uuid4().hex[:20]}",
+            status="COMPLETED" if capture else "APPROVED",
+            simulated=True,
         )
     from square.core.api_error import ApiError
 
@@ -59,7 +62,7 @@ async def authorize(
             idempotency_key=str(uuid.uuid4()),
             amount_money={"amount": amount, "currency": currency},
             location_id=settings.SQUARE_LOCATION_ID,
-            autocomplete=False,  # authorize only — capture later
+            autocomplete=capture,  # False = authorize only; True = capture immediately
             reference_id=reference_id,
             note=note,
         )
