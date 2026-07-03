@@ -23,7 +23,7 @@ isn't running. Adjust these in the VPS `.env` and restart the backend:
 
 ```
 UBER_BLACK_BASE=15
-UBER_BLACK_PER_MILE=3.75
+UBER_BLACK_PER_MILE=5
 UBER_BLACK_PER_MINUTE=0.55
 UBER_BLACK_BOOKING_FEE=3
 UBER_BLACK_MINIMUM=35

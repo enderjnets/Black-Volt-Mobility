@@ -11,6 +11,7 @@ os.environ["KIMI_API_KEY"] = ""
 os.environ["MINIMAX_API_KEY"] = ""
 os.environ["PRICING_SCOUT_URL"] = ""
 os.environ["PRICING_SCOUT_SECRET"] = ""
+os.environ["UBER_BLACK_PER_MILE"] = "5"  # pin so the formula math is deterministic here
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
@@ -44,9 +45,10 @@ async def owner(db, monkeypatch):
 
 
 def test_estimate_formula_and_minimum():
+    # base 15 + 10*5 + 20*0.55 + booking 3 = 79.0
     long = uber_research.estimate_uber_formula(10, 20)
-    assert long["black"] == 66.5
-    assert long["black_suv"] == round(66.5 * 1.25, 2)
+    assert long["black"] == 79.0
+    assert long["black_suv"] == round(79.0 * 1.25, 2)
     short = uber_research.estimate_uber_formula(1, 2)
     assert short["black"] == 35.0  # minimum floor
 

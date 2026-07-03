@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.65.1 — 2026-07-02 — Event pricing calibration (real operator data)
+
+Tuned event pricing against real concert-transport field rates (one-way ≈ Uber Black,
+round trip prices the whole-evening commitment).
+
+- **Uber Black formula** `UBER_BLACK_PER_MILE` 3.75 → **5.0** (config.py + compose + VPS
+  `.env`). The old rate under-predicted long premium routes (Boulder → Empower ≈ $152 vs a
+  real ~$200), which made the Research tool's "cap under Uber Black" slash high-value far
+  origins and understate our margin. Re-run *Research prices* on an event to refresh.
+- **Ed Sheeran event** wait fee $70/h → **$40/h** (data), so the Boulder round trip lands at
+  **$500** (2 × $190 legs + $120 wait), matching the market instead of $590.
+
 ## v0.65.0 — 2026-07-02 — Event pricing: fees, round trips & Uber research
 
 Layers per-event pricing on top of the featured-events module: event/night/wait fees, a

@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.65.0";
+export const CURRENT_VERSION = "0.65.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.65.1",
+    date: "2026-07-02",
+    title: "Event pricing calibration (real operator data)",
+    changes: [
+      "Round-trip wait pricing tuned against real concert-transport rates so event round trips land competitively (e.g. Boulder → Empower ≈ $500, matching the market).",
+      "The Uber Black comparison used in Research now reflects real Denver rates on long premium routes, so the tool no longer under-prices high-value far origins like Boulder.",
+    ],
+  },
   {
     version: "0.65.0",
     date: "2026-07-02",

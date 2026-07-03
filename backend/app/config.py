@@ -354,7 +354,9 @@ class Settings(BaseSettings):
     # Used to estimate a comparable Uber Black / Black SUV fare when the live scout is
     # unavailable. Tunable via .env without a deploy.
     UBER_BLACK_BASE: float = 15.0
-    UBER_BLACK_PER_MILE: float = 3.75
+    # $5/mi calibrated to real Denver Uber Black on long premium routes (Boulder→Empower
+    # ≈ $200 one-way per operator field data); the earlier $3.75 under-predicted long trips.
+    UBER_BLACK_PER_MILE: float = 5.0
     UBER_BLACK_PER_MINUTE: float = 0.55
     UBER_BLACK_BOOKING_FEE: float = 3.0
     UBER_BLACK_MINIMUM: float = 35.0
