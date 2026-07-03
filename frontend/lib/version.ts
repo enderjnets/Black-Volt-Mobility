@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.66.0";
+export const CURRENT_VERSION = "0.66.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.66.1",
+    date: "2026-07-03",
+    title: "Ad measurement (Meta Pixel + Conversions API)",
+    changes: [
+      "Added Meta Pixel and the server-side Conversions API so Instagram/Facebook ads can optimize for real bookings, not just clicks. Booking value is reported on quote view, payment start, and confirmation, with browser and server events deduplicated.",
+      "Customer contact details are hashed (SHA-256) before being sent for ad matching; no raw email or phone leaves the server. Measurement stays off until an ad account pixel is configured, and only the owner's bookings are reported.",
+    ],
+  },
   {
     version: "0.66.0",
     date: "2026-07-02",

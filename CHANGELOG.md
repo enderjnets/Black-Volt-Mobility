@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.66.1 — 2026-07-03 — Ad measurement (Meta Pixel + Conversions API)
+
+The Instagram/Facebook ads run on a *Traffic* objective, so Meta was optimizing for
+cheap clickers, not bookers — and there was no Pixel, so it had no booking signal at all.
+This wires up first-party ad measurement so a *Conversions* campaign can find people who
+actually book. Ships dormant: no pixel is loaded and no events are sent until an ad-account
+pixel id + CAPI token are configured, so the default build is unchanged.
+
+- **Browser Pixel (`components/bv/MetaPixel.tsx`, `app/layout.tsx`):** base pixel loads only
+  when `NEXT_PUBLIC_META_PIXEL_ID` is set (build arg). The booking flow fires `QuoteViewed`
+  (custom) when a fare is shown, `InitiateCheckout` at the payment step, and `Purchase` on
+  confirmation (`lib/analytics.ts` + `Booking.tsx`).
+- **Conversions API (`services/meta_capi.py`, `api/v1/payments.py`):** on a card
+  authorization the server sends a `Purchase` to Meta's Graph API in a background task
+  (never blocks the booking). It carries the same `event_id` (`purchase_<ride_id>`) as the
+  browser Purchase so Meta deduplicates the pair.
+- **Privacy + safety:** email/phone/name are SHA-256 hashed per Meta's spec before leaving
+  the box — raw PII is never sent. The CAPI access token is a secret (VPS `.env` only, never
+  committed). The send is gated on `capi_live` (enabled + not simulated + creds present) and
+  on `OWNER_TENANT_ID`, so only the owner's bookings reach the owner's pixel. Fail-soft: a
+  measurement error can never break a payment.
+- Config: `META_PIXEL_ID`, `META_CAPI_ACCESS_TOKEN`, `META_CAPI_ENABLED`,
+  `META_CAPI_SIMULATED`, `META_TEST_EVENT_CODE`, `NEXT_PUBLIC_META_PIXEL_ID`
+  (see `.env.example`). Tests: 7 service unit tests + 2 endpoint tests.
+
 ## v0.66.0 — 2026-07-02 — Event reservations: prepaid by card
 
 Event rides are high-commitment and often booked well ahead, so they now prepay in full
