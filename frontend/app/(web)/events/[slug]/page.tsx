@@ -60,6 +60,18 @@ function fmtWhen(iso: string): string {
   });
 }
 
+/** Event date/time in America/Denver as {date:"YYYY-MM-DD", time:"HH:MM"} for /book prefill. */
+function denverParts(iso: string): { date: string; time: string } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Denver", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const p: Record<string, string> = {};
+  for (const part of fmt.formatToParts(new Date(iso))) p[part.type] = part.value;
+  const hour = p.hour === "24" ? "00" : p.hour;
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${hour}:${p.minute}` };
+}
+
 function bookLink(ev: EventDetail, dir: "to" | "from" | "roundtrip"): string {
   const venue = ev.venue_address || ev.venue_name;
   const p = new URLSearchParams({
@@ -68,13 +80,23 @@ function bookLink(ev: EventDetail, dir: "to" | "from" | "roundtrip"): string {
     utm_medium: "landing",
     utm_campaign: `event-${ev.slug}`,
   });
+  // Prefill the event date so /quote matches the event and applies its fees. Outbound legs
+  // arrive ~1h before showtime; the post-show pickup uses the expected end.
+  const arrive = denverParts(new Date(new Date(ev.starts_at).getTime() - 60 * 60 * 1000).toISOString());
+  const showEnd = ev.return_at ? denverParts(ev.return_at) : arrive;
   if (dir === "to") {
     p.set("to", venue);
+    p.set("date", arrive.date);
+    p.set("time", arrive.time);
   } else if (dir === "from") {
     p.set("from", venue);
+    p.set("date", showEnd.date);
+    p.set("time", showEnd.time);
   } else {
     p.set("to", venue);
     p.set("rt", "1");
+    p.set("date", arrive.date);
+    p.set("time", arrive.time);
     if (ev.return_at) p.set("return_at", ev.return_at);
   }
   return `/book?${p.toString()}`;

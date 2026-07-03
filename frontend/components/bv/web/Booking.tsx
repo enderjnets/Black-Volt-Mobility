@@ -19,6 +19,17 @@ import { useWeb } from "./WebShell";
 
 const FUNNEL_EVENT = ["book_start", "book_review", "book_pay", "book_confirmed"] as const;
 
+/** Format an ISO instant as a readable Denver-local time (e.g. "Sat, 8:30 PM"). */
+function fmtReturn(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      timeZone: "America/Denver", weekday: "short", hour: "numeric", minute: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
 // Fire a funnel stage at most once per browser session, so page reloads and
 // back-and-forth navigation don't inflate stage counts (which would make the
 // conversion math read worse than reality). Keyed off sessionStorage (per tab).
@@ -177,6 +188,11 @@ export function Booking() {
     const qpTo = qp.get("to");
     if (qpFrom) setFrom(qpFrom);
     if (qpTo) setTo(qpTo);
+    // Prefill the event date/time so the quote matches the event and applies its fees.
+    const qpDate = qp.get("date");
+    const qpTime = qp.get("time");
+    if (qpDate) setDate(qpDate);
+    if (qpTime) setTime(qpTime);
     // Round trip deep-link from an event landing (?rt=1&return_at=…).
     if (qp.get("rt") === "1") setRoundTrip(true);
     const qpReturn = qp.get("return_at");
@@ -451,6 +467,19 @@ export function Booking() {
                 </span>
               </span>
             </label>
+            {roundTrip && to ? (
+              <div
+                style={{
+                  fontSize: 12, color: "var(--silver)", background: "var(--obsidian-3)",
+                  border: "1px solid var(--line-strong)", borderRadius: 10,
+                  padding: "10px 12px", marginBottom: 12, lineHeight: 1.5,
+                }}
+              >
+                {t("book.roundtrip.return")
+                  .replace("{venue}", to)
+                  .replace("{time}", returnAt ? fmtReturn(returnAt) : t("book.roundtrip.afterShow"))}
+              </div>
+            ) : null}
             <Button
               variant="solid"
               full

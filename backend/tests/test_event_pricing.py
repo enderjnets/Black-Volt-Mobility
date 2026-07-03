@@ -183,6 +183,15 @@ def test_venue_matches_watchlist_and_generic():
     assert event_pricing._venue_matches(gen, "12 Ballwin Ave, Denver, CO") is False
 
 
+def test_venue_match_by_street_address():
+    # The event landing books to the venue's STREET address, not its name — a watchlist
+    # venue must still match so its fees apply. (Regression: over-tight alias-only match.)
+    ev = _fake_event()  # empower_field, address "1701 Bryant St, Denver, CO 80204"
+    assert event_pricing._venue_matches(ev, "1701 Bryant St, Denver, CO 80204") is True
+    assert event_pricing._venue_matches(ev, "1701 Bryant St., Denver, CO") is True
+    assert event_pricing._venue_matches(ev, "999 Other St, Denver, CO") is False
+
+
 def test_venue_match_no_substring_false_positive():
     # "Fiddler's Green" must not surcharge an unrelated ride to Greenwood Village.
     fiddlers = _fake_event(venue_key="fiddlers_green", venue_name="Fiddler's Green Amphitheatre",

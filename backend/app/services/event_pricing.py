@@ -59,15 +59,19 @@ def _venue_matches(event: Event, text: str) -> bool:
         return False
     words = set(t.split())
     key = event.venue_key
-    if key and key != "generic":
-        # Distinctive multi-word aliases → very low false-positive risk.
-        return match_venue_key(text or "") == key
-    name_tokens = [w for w in _norm(event.venue_name).split() if len(w) > 3 and w not in _STOP]
-    if name_tokens and all(tok in words for tok in name_tokens):
+    # Watchlist venues match via their distinctive curated aliases (low false-positive).
+    if key and key != "generic" and match_venue_key(text or "") == key:
         return True
+    # Exact street number + street name — specific and low false-positive — for ANY venue.
+    # This is the primary path for event bookings, whose address is the venue's street.
     if event.venue_address:
         m = re.match(r"(\d+)\s+([a-z0-9]+)", _norm(event.venue_address))
         if m and m.group(1) in words and m.group(2) in words:
+            return True
+    # Generic venues also match when ALL significant name tokens appear as whole words.
+    if not key or key == "generic":
+        name_tokens = [w for w in _norm(event.venue_name).split() if len(w) > 3 and w not in _STOP]
+        if name_tokens and all(tok in words for tok in name_tokens):
             return True
     return False
 
