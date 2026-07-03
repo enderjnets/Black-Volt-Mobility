@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.64.1";
+export const CURRENT_VERSION = "0.65.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.65.0",
+    date: "2026-07-02",
+    title: "Event pricing: fees, round trips & Uber research",
+    changes: [
+      "Each event now has its own pricing controls in the dashboard: an event fee, a night fee (auto-applied when the show lets out late), a per-hour wait fee and expected show length. The system suggests a round-trip total you can edit.",
+      "Customers can book a round trip in one prepaid checkout — we drive them to the show and pick them up after. Event, night and wait fees apply automatically to any ride to the venue, from any booking channel.",
+      "Event pages now show \"One-way from $X · Round trip $Y\" and a dedicated round-trip booking button.",
+      "New \"Research prices\" tool compares our fare against Uber Black / Black SUV from affluent Denver origins (Boulder, Cherry Hills, DTC and more) and recommends which areas to target ads on — keeping us competitively priced.",
+    ],
+  },
   {
     version: "0.64.1",
     date: "2026-07-01",

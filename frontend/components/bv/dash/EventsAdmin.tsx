@@ -17,6 +17,7 @@ import {
   scanNow,
 } from "@/lib/events";
 import { Button, Card, Field, Pill } from "../ui";
+import { EventPricingPanel } from "./EventPricingPanel";
 import { Icon } from "../Icon";
 
 function fmtDate(iso: string): string {
@@ -331,6 +332,7 @@ function EventCard({ e, onChange }: { e: AdminEvent; onChange: () => void }) {
           {t("dash.events.generate.photo")}
         </Button>
       </div>
+      <EventPricingPanel e={e} />
     </Card>
   );
 }

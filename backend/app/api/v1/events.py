@@ -15,8 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
 from app.db.base import get_db
-from app.services import events, events_scan
+from app.models import Event
+from app.services import event_pricing, events, events_scan, uber_research
 from app.services.tenancy import media_url, owner_tenant_id
+
+# Representative metro origin for the published round-trip suggestion (any denver_metro
+# address yields the flat zone fare, so the number is origin-independent).
+_PREVIEW_ORIGIN = "Downtown Denver, CO"
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -63,6 +68,13 @@ class AdminEventOut(BaseModel):
     tips_text: str | None = None
     status: str
     event_url: str | None = None
+    event_fee: float = 0
+    night_fee: float = 25
+    night_cutoff: str = "21:00"
+    wait_fee_per_hour: float = 30
+    est_duration_hours: float = 3
+    round_trip_price: float | None = None
+    pricing_research: dict | None = None
 
 
 class EventPatch(BaseModel):
@@ -71,6 +83,12 @@ class EventPatch(BaseModel):
     tips_text: str | None = Field(default=None, max_length=4000)
     venue_address: str | None = Field(default=None, max_length=240)
     status: str | None = None
+    event_fee: float | None = Field(default=None, ge=0)
+    night_fee: float | None = Field(default=None, ge=0)
+    night_cutoff: str | None = Field(default=None, max_length=5)
+    wait_fee_per_hour: float | None = Field(default=None, ge=0)
+    est_duration_hours: float | None = Field(default=None, ge=0)
+    round_trip_price: float | None = Field(default=None, ge=0)
 
 
 class GeneratePostIn(BaseModel):
@@ -84,6 +102,12 @@ def _admin_event_out(d: dict) -> AdminEventOut:
         venue_address=d.get("venue_address"), starts_at=d["starts_at"],
         hero_url=media_url(d.get("hero_path")), about_text=d.get("about_text"),
         tips_text=d.get("tips_text"), status=d["status"], event_url=d.get("event_url"),
+        event_fee=d.get("event_fee", 0) or 0, night_fee=d.get("night_fee", 25) or 0,
+        night_cutoff=d.get("night_cutoff") or "21:00",
+        wait_fee_per_hour=d.get("wait_fee_per_hour", 30) or 0,
+        est_duration_hours=d.get("est_duration_hours", 3) or 0,
+        round_trip_price=d.get("round_trip_price"),
+        pricing_research=d.get("pricing_research"),
     )
 
 
@@ -200,5 +224,39 @@ async def generate_post(
         db, tenant_id=await owner_tenant_id(db), event_id=event_id, kind=body.kind
     )
     if out.get("error") == "not_found":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return out
+
+
+async def _load_owner_event(db: AsyncSession, event_id: int) -> Event:
+    tid = await owner_tenant_id(db)
+    ev = await db.get(Event, event_id)
+    if ev is None or ev.tenant_id != tid:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return ev
+
+
+@router.get("/admin/{event_id}/pricing-preview")
+async def pricing_preview(
+    event_id: int,
+    origin: str = _PREVIEW_ORIGIN,
+    payload: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Suggested round-trip breakdown for the event (admin dashboard)."""
+    ev = await _load_owner_event(db, event_id)
+    return await event_pricing.suggest_round_trip(db, event=ev, origin=origin or _PREVIEW_ORIGIN)
+
+
+@router.post("/admin/{event_id}/research")
+async def research_prices(
+    event_id: int,
+    payload: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Run competitive Uber-price research for the event and persist the result."""
+    await _load_owner_event(db, event_id)
+    out = await uber_research.run_research(db, event_id=event_id)
+    if out is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     return out

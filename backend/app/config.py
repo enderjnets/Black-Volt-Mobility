@@ -350,6 +350,19 @@ class Settings(BaseSettings):
     EVENTS_BASE_LAT: float = 39.6005
     EVENTS_BASE_LNG: float = -104.7926
 
+    # --- Uber Black competitive pricing (formula fallback) — published Denver rates.
+    # Used to estimate a comparable Uber Black / Black SUV fare when the live scout is
+    # unavailable. Tunable via .env without a deploy.
+    UBER_BLACK_BASE: float = 15.0
+    UBER_BLACK_PER_MILE: float = 3.75
+    UBER_BLACK_PER_MINUTE: float = 0.55
+    UBER_BLACK_BOOKING_FEE: float = 3.0
+    UBER_BLACK_MINIMUM: float = 35.0
+    UBER_SUV_MULTIPLIER: float = 1.25
+    # Live price scout (Playwright container). Empty URL → formula-only (always works).
+    PRICING_SCOUT_URL: str = ""
+    PRICING_SCOUT_SECRET: str = ""
+
     @field_validator("OWNER_TENANT_ID", mode="before")
     @classmethod
     def _blank_owner_tenant_to_none(cls, v):

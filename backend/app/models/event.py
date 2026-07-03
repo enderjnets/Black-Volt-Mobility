@@ -96,6 +96,15 @@ class Event(Base):
     status: Mapped[str] = mapped_column(String(16), default="draft", server_default="draft")
     event_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # --- Event pricing (per-event surcharges over the base zone/metered fare) ---
+    event_fee: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    night_fee: Mapped[float] = mapped_column(Float, default=25.0, server_default="25")
+    night_cutoff: Mapped[str] = mapped_column(String(5), default="21:00", server_default="21:00")
+    wait_fee_per_hour: Mapped[float] = mapped_column(Float, default=30.0, server_default="30")
+    est_duration_hours: Mapped[float] = mapped_column(Float, default=3.0, server_default="3")
+    round_trip_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pricing_research: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
