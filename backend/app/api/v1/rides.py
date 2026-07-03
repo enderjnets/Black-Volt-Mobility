@@ -30,6 +30,7 @@ from app.services import (
     booking,
     dashboard,
     email,
+    event_pricing,
     maps,
     payments,
     payments_square,
@@ -379,6 +380,12 @@ async def create_ride(
     is_passenger = payload.get("role") == auth.ROLE_PASSENGER
     client_id = payload.get("cid") if is_passenger else body.client_id
     ride_status = RideStatus.CONFIRMED if body.confirm else RideStatus.QUOTED
+    # Event rides must be prepaid by card: never let confirm=true create a CONFIRMED,
+    # unpaid (cash) event ride — force it back to QUOTED so it goes through the card flow.
+    if body.confirm and await event_pricing.find_event_for_ride(
+        db, pickup=body.pickup, dropoff=body.dropoff, when=body.scheduled_at
+    ) is not None:
+        ride_status = RideStatus.QUOTED
     if body.round_trip:
         outbound, _ret = await booking.create_round_trip(
             db,
@@ -517,6 +524,9 @@ async def confirm_ride(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
     if payload.get("role") == auth.ROLE_PASSENGER and ride.client_id != payload.get("cid"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    # A round-trip return leg is only ever confirmed/paid through its outbound.
+    if ride.is_return:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="confirm_via_outbound")
     # Event rides must be prepaid by card (no pay-later / cash) to secure the commitment.
     if _is_event_ride(ride):
         raise HTTPException(
