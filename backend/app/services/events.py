@@ -11,6 +11,7 @@ import datetime as dt
 import ipaddress
 import logging
 import os
+import re
 import socket
 import time
 from urllib.parse import urlparse
@@ -22,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import Event, EventSuggestion
-from app.services import llm, social
+from app.services import event_pricing, llm, social
 from app.services.tenancy import owner_tenant_id
 from app.services.venue_profiles import get_profile
 from app.services.zones import DEFAULT_ZONE_PRICES
@@ -66,6 +67,13 @@ def _event_dict(ev: Event) -> dict:
         "tips_text": ev.tips_text,
         "status": ev.status,
         "event_url": ev.event_url,
+        "event_fee": ev.event_fee,
+        "night_fee": ev.night_fee,
+        "night_cutoff": ev.night_cutoff,
+        "wait_fee_per_hour": ev.wait_fee_per_hour,
+        "est_duration_hours": ev.est_duration_hours,
+        "round_trip_price": ev.round_trip_price,
+        "pricing_research": ev.pricing_research,
     }
 
 
@@ -353,8 +361,24 @@ async def list_events(db: AsyncSession, *, tenant_id: int) -> list[dict]:
     return [_event_dict(r) for r in rows]
 
 
-_EDITABLE = {"title", "about_text", "tips_text", "status", "venue_address"}
+_PRICING_NUMERIC = {
+    "event_fee",
+    "night_fee",
+    "wait_fee_per_hour",
+    "est_duration_hours",
+    "round_trip_price",
+}
+_EDITABLE = {
+    "title",
+    "about_text",
+    "tips_text",
+    "status",
+    "venue_address",
+    "night_cutoff",
+    *_PRICING_NUMERIC,
+}
 _ALLOWED_STATUS = {"draft", "published", "archived"}
+_CUTOFF_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 async def update_event(
@@ -371,6 +395,15 @@ async def update_event(
         if key not in _EDITABLE or val is None:
             continue
         if key == "status" and val not in _ALLOWED_STATUS:
+            continue
+        if key in _PRICING_NUMERIC:
+            try:
+                val = float(val)
+            except (TypeError, ValueError):
+                continue
+            if val < 0:
+                continue
+        if key == "night_cutoff" and not _CUTOFF_RE.match(str(val)):
             continue
         setattr(ev, key, val)
     await db.commit()
@@ -448,9 +481,29 @@ async def get_public_event(db: AsyncSession, *, slug: str) -> dict | None:
     if ev is None or ev.status == "draft":
         return None
     data = _event_dict(ev)
+    # Internal pricing/strategy fields must not leak to the public landing.
+    for k in ("pricing_research", "night_fee", "night_cutoff", "wait_fee_per_hour",
+              "est_duration_hours"):
+        data.pop(k, None)
     data["venue_profile"] = get_profile(ev.venue_key)
     # "passed" only once the landing is actually retired (archive grace window), so the
     # post-show pickup CTA stays live during and just after the show.
     data["passed"] = ev.status == "archived" or ev.starts_at < _now() - _ARCHIVE_GRACE
     data["flat_price"] = FLAT_PRICE
+    data["one_way_from"] = round(FLAT_PRICE + (ev.event_fee or 0), 2)
+    data["round_trip_price"] = _public_round_trip_price(ev)
+    data["return_at"] = event_pricing.default_return_dt(ev).isoformat()
     return data
+
+
+def _public_round_trip_price(ev: Event) -> float:
+    """Effective published round-trip price: admin override, else a metro-origin estimate
+    (both legs at the flat zone fare, so it's origin-independent). No maps calls."""
+    if ev.round_trip_price is not None:
+        return round(float(ev.round_trip_price), 2)
+    ret_dt = event_pricing.default_return_dt(ev)
+    total = 2 * FLAT_PRICE + float(ev.event_fee or 0)
+    total += float(ev.wait_fee_per_hour or 0) * float(ev.est_duration_hours or 3)
+    if ev.night_fee and event_pricing._after_cutoff(ret_dt, ev.night_cutoff):
+        total += float(ev.night_fee)
+    return round(total, 2)

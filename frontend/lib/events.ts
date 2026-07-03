@@ -33,6 +33,51 @@ export interface AdminEvent {
   tips_text: string | null;
   status: string;
   event_url: string | null;
+  event_fee: number;
+  night_fee: number;
+  night_cutoff: string;
+  wait_fee_per_hour: number;
+  est_duration_hours: number;
+  round_trip_price: number | null;
+  pricing_research: ResearchResult | null;
+}
+
+export interface RtLine {
+  label: string;
+  amount: number;
+  qty?: number;
+}
+
+export interface RoundTripPreview {
+  currency: string;
+  lines: RtLine[];
+  formula_total: number;
+  total: number;
+  overridden: boolean;
+  capped: boolean;
+  uber_black: number | null;
+}
+
+export interface ResearchZone {
+  key: string;
+  name: string;
+  affluence: number;
+  our_one_way: number;
+  our_round_trip: number;
+  uber_black: number;
+  uber_black_suv: number;
+  uber_round_trip: number;
+  method: string;
+  distance_from_base_mi: number;
+  margin_pct: number;
+  score: number;
+}
+
+export interface ResearchResult {
+  zones: ResearchZone[];
+  recommendation: string;
+  method: string;
+  venue: string;
 }
 
 export interface PublicEvent {
@@ -103,6 +148,15 @@ export async function generateEventPost(
   kind: "video" | "image",
 ): Promise<{ post_id: number; kind: string }> {
   return jsend(`/v1/events/admin/${id}/posts`, "POST", { kind });
+}
+
+export async function pricingPreview(id: number, origin?: string): Promise<RoundTripPreview> {
+  const q = origin ? `?origin=${encodeURIComponent(origin)}` : "";
+  return jget<RoundTripPreview>(`/v1/events/admin/${id}/pricing-preview${q}`);
+}
+
+export async function runResearch(id: number): Promise<ResearchResult> {
+  return jsend<ResearchResult>(`/v1/events/admin/${id}/research`, "POST");
 }
 
 // ── public ───────────────────────────────────────────────────────────────────

@@ -16,6 +16,11 @@ from app.services import profile as profile_svc
 
 logger = logging.getLogger("blackvolt.booking")
 
+
+class RoundTripLockedError(Exception):
+    """Raised when a route edit is attempted on a paid round-trip leg."""
+
+
 # Cancelled/no-show rides never count toward money or activity.
 CANCELLED_STATUSES = (RideStatus.CANCELLED, RideStatus.NO_SHOW)
 
@@ -84,9 +89,14 @@ async def build_quote(
     is_loyalty: bool = False,
     is_peak: bool | None = None,
     discount_code: str | None = None,
+    apply_event_fees: bool = True,
 ) -> dict:
     """Compute a fare for a candidate trip without persisting it. Returns the
-    route facts + the pricing breakdown."""
+    route facts + the pricing breakdown.
+
+    When ``apply_event_fees`` and the trip matches a published event (by venue + time),
+    event/night surcharges are appended to ``lines`` and ``total``; ``event`` names the
+    matched event (or None)."""
     rc = await get_or_create_rate_config(db, tenant_id=tenant_id)
     rr = await maps.route(pickup, dropoff, stops)
     facts = pricing.RouteFacts(
@@ -115,6 +125,21 @@ async def build_quote(
         facts.is_airport = pricing.looks_like_airport(pickup, dropoff)
     breakdown = pricing.quote(rc, facts)
     breakdown["route_simulated"] = rr.simulated
+    breakdown["event"] = None
+    if apply_event_fees and scheduled_at is not None:
+        from app.services import event_pricing
+
+        ev = await event_pricing.find_event_for_ride(
+            db, pickup=pickup, dropoff=dropoff, when=scheduled_at
+        )
+        if ev is not None:
+            fee_lines = event_pricing.event_fee_lines(ev, leg_dt_utc=scheduled_at)
+            if fee_lines:
+                breakdown["lines"].extend(fee_lines)
+                breakdown["total"] = round(
+                    breakdown["total"] + sum(fl["amount"] for fl in fee_lines), 2
+                )
+            breakdown["event"] = {"slug": ev.slug, "title": ev.title}
     return breakdown
 
 
@@ -140,6 +165,7 @@ async def create_ride(
     fare_override: float | None = None,
     ride_preferences: dict | None = None,
     discount_code: str | None = None,
+    apply_event_fees: bool = True,
 ) -> Ride:
     """Quote (maps + pricing) then persist the ride. `fare_override` lets the
     driver pin a negotiated fare while still snapshotting the computed route.
@@ -167,6 +193,7 @@ async def create_ride(
         is_loyalty=is_loyalty,
         is_peak=is_peak,
         discount_code=discount_code,
+        apply_event_fees=apply_event_fees,
     )
 
     # Persist a driver-entered passenger as a real Client (CRM + autocomplete);
@@ -256,6 +283,107 @@ async def create_ride(
     await db.refresh(ride)
     await sync_ride_to_calendar(db, ride)
     return ride
+
+
+async def build_round_trip_quote(
+    db: AsyncSession,
+    *,
+    tenant_id: int,
+    pickup: str,
+    dropoff: str,
+    pax: int | None = None,
+    scheduled_at: datetime | None = None,
+    return_at: datetime | None = None,
+    is_loyalty: bool = False,
+    is_peak: bool | None = None,
+) -> dict:
+    """Price a round trip (outbound + return) for the customer's own addresses. Event
+    surcharges apply once. Discount codes are not combined with round trips."""
+    from app.services import event_pricing
+
+    ev = await event_pricing.find_event_for_ride(
+        db, pickup=pickup, dropoff=dropoff, when=scheduled_at
+    )
+    ret_dt = return_at or (
+        event_pricing.default_return_dt(ev) if ev is not None else scheduled_at
+    )
+    leg_out = await build_quote(
+        db, tenant_id=tenant_id, pickup=pickup, dropoff=dropoff, pax=pax,
+        scheduled_at=scheduled_at, is_loyalty=is_loyalty, is_peak=is_peak,
+        apply_event_fees=False,
+    )
+    leg_return = await build_quote(
+        db, tenant_id=tenant_id, pickup=dropoff, dropoff=pickup, pax=pax,
+        scheduled_at=ret_dt, is_loyalty=is_loyalty, is_peak=is_peak,
+        apply_event_fees=False,
+    )
+    return event_pricing.compose_round_trip(
+        leg_out=leg_out, leg_return=leg_return, event=ev, return_dt=ret_dt,
+    )
+
+
+async def create_round_trip(
+    db: AsyncSession,
+    *,
+    tenant_id: int,
+    pickup: str,
+    dropoff: str,
+    scheduled_at: datetime,
+    return_at: datetime | None = None,
+    client_id: int | None = None,
+    passenger_name: str | None = None,
+    passenger_phone: str | None = None,
+    pax: int | None = None,
+    flight_number: str | None = None,
+    lang: str | None = None,
+    notes: str | None = None,
+    vehicle: str | None = None,
+    status: RideStatus = RideStatus.QUOTED,
+    ride_preferences: dict | None = None,
+) -> tuple[Ride, Ride]:
+    """Create a linked outbound+return pair with per-leg fares that sum to the round-trip
+    total (event/night/wait surcharges ride on the outbound leg). Returns (outbound, return).
+    """
+    from app.services import event_pricing
+
+    ev = await event_pricing.find_event_for_ride(
+        db, pickup=pickup, dropoff=dropoff, when=scheduled_at
+    )
+    ret_dt = return_at or (
+        event_pricing.default_return_dt(ev) if ev is not None else scheduled_at
+    )
+    rt = await build_round_trip_quote(
+        db, tenant_id=tenant_id, pickup=pickup, dropoff=dropoff, pax=pax,
+        scheduled_at=scheduled_at, return_at=ret_dt,
+    )
+    return_fare = round(rt["legs"][1]["total"], 2)
+    out_fare = round(rt["total"] - return_fare, 2)
+
+    outbound = await create_ride(
+        db, tenant_id=tenant_id, pickup=pickup, dropoff=dropoff, client_id=client_id,
+        passenger_name=passenger_name, passenger_phone=passenger_phone, pax=pax,
+        scheduled_at=scheduled_at, flight_number=flight_number, lang=lang, notes=notes,
+        vehicle=vehicle, status=status, fare_override=out_fare,
+        ride_preferences=ride_preferences, apply_event_fees=False,
+    )
+    ret = await create_ride(
+        db, tenant_id=tenant_id, pickup=dropoff, dropoff=pickup, client_id=client_id,
+        passenger_name=passenger_name, passenger_phone=passenger_phone, pax=pax,
+        scheduled_at=ret_dt, lang=lang, notes=notes, vehicle=vehicle, status=status,
+        fare_override=return_fare, ride_preferences=ride_preferences, apply_event_fees=False,
+    )
+    ret.is_return = True
+    outbound.return_ride_id = ret.id
+    ob = dict(outbound.price_breakdown or {})
+    ob["round_trip_total"] = rt["total"]
+    ob["round_trip_lines"] = rt["lines"]
+    ob["round_trip_return_at"] = ret_dt.isoformat() if hasattr(ret_dt, "isoformat") else ret_dt
+    ob["event"] = rt.get("event")
+    outbound.price_breakdown = ob
+    await db.commit()
+    await db.refresh(outbound)
+    await db.refresh(ret)
+    return outbound, ret
 
 
 # Terminal/inactive statuses: no overdue, excluded from active-ride queries.
@@ -575,6 +703,15 @@ async def apply_ride_update(
     re-synced (moved); with persist=False the ride is mutated in-memory only (for
     a dry-run preview)."""
     clean = {k: v for k, v in changes.items() if k in EDITABLE_FIELDS and v is not None}
+    # A paid round-trip leg has a fare locked to the combined charge; a route edit would
+    # re-quote and desync it from the captured amount. Block it.
+    if (
+        ride.paid
+        and (ride.return_ride_id or ride.is_return)
+        and any(f in clean for f in _ROUTE_FIELDS)
+        and "fare_override" not in clean
+    ):
+        raise RoundTripLockedError("edit_paid_round_trip")
     fare_override = clean.pop("fare_override", None)
 
     if "pickup" in clean:

@@ -134,6 +134,8 @@ export function Booking() {
   const [time, setTime] = useState("");
   const [schedErr, setSchedErr] = useState(false);
   const [pax, setPax] = useState(2);
+  const [roundTrip, setRoundTrip] = useState(false);
+  const [returnAt, setReturnAt] = useState<string | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
   // Registration wall: a 401 on /quote means the visitor must sign in first
@@ -175,6 +177,10 @@ export function Booking() {
     const qpTo = qp.get("to");
     if (qpFrom) setFrom(qpFrom);
     if (qpTo) setTo(qpTo);
+    // Round trip deep-link from an event landing (?rt=1&return_at=…).
+    if (qp.get("rt") === "1") setRoundTrip(true);
+    const qpReturn = qp.get("return_at");
+    if (qpReturn) setReturnAt(qpReturn);
   }, []);
 
   // Booking-funnel analytics: each stage counts at most once per session. `book_review`
@@ -198,7 +204,7 @@ export function Booking() {
     let alive = true;
     setQuoting(true);
     setAuthWall(false);
-    getQuote({ pickup, dropoff, pax, scheduled_at: date ? buildScheduledAt(date, time) : null, ...(appliedCode ? { discount_code: appliedCode } : {}) })
+    getQuote({ pickup, dropoff, pax, scheduled_at: date ? buildScheduledAt(date, time) : null, ...(roundTrip ? { round_trip: true, return_at: returnAt } : {}), ...(appliedCode ? { discount_code: appliedCode } : {}) })
       .then((q) => {
         if (alive) {
           setQuote(q);
@@ -224,7 +230,7 @@ export function Booking() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, from, to, pax, reload, appliedCode]);
+  }, [step, from, to, pax, reload, appliedCode, roundTrip, returnAt]);
 
   // Display helpers — real quote when available, else the original mock values.
   const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : "$120";
@@ -281,6 +287,7 @@ export function Booking() {
           pax,
           scheduled_at: date ? buildScheduledAt(date, time) : null,
           ride_preferences: ridePrefs,
+          ...(roundTrip ? { round_trip: true, return_at: returnAt } : {}),
           ...(appliedCode ? { discount_code: appliedCode } : {}),
           confirm: false,
         });
@@ -425,6 +432,25 @@ export function Booking() {
                 </div>
               )}
             </div>
+            <label
+              style={{
+                display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
+                padding: "10px 0",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={roundTrip}
+                onChange={(e) => setRoundTrip(e.target.checked)}
+                style={{ width: 18, height: 18, accentColor: "var(--volt)" }}
+              />
+              <span>
+                <span style={{ fontWeight: 600 }}>{t("book.roundtrip")}</span>
+                <span style={{ display: "block", fontSize: 12, color: "var(--fg3)" }}>
+                  {t("book.roundtrip.hint")}
+                </span>
+              </span>
+            </label>
             <Button
               variant="solid"
               full

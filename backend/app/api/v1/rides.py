@@ -80,6 +80,8 @@ class QuoteRequest(BaseModel):
     is_loyalty: bool = False
     is_peak: bool | None = None
     discount_code: str | None = None
+    round_trip: bool = False
+    return_at: datetime | None = None
 
 
 class RideCreate(QuoteRequest):
@@ -183,6 +185,8 @@ def _ride_out(r: Ride) -> dict:
         "fare_total": r.fare_total,
         "currency": r.currency,
         "price_breakdown": r.price_breakdown,
+        "return_ride_id": r.return_ride_id,
+        "is_return": r.is_return,
         "pax": r.pax,
         "vehicle": r.vehicle,
         "flight_number": r.flight_number,
@@ -239,6 +243,18 @@ async def post_quote(body: QuoteRequest, request: Request, db: AsyncSession = De
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
     tenant_id = await resolve_tenant_id(db, payload)
     try:
+        if body.round_trip:
+            return await booking.build_round_trip_quote(
+                db,
+                tenant_id=tenant_id,
+                pickup=body.pickup,
+                dropoff=body.dropoff,
+                pax=body.pax,
+                scheduled_at=body.scheduled_at,
+                return_at=body.return_at,
+                is_loyalty=body.is_loyalty,
+                is_peak=body.is_peak,
+            )
         return await booking.build_quote(
             db,
             tenant_id=tenant_id,
@@ -356,6 +372,26 @@ async def create_ride(
     is_passenger = payload.get("role") == auth.ROLE_PASSENGER
     client_id = payload.get("cid") if is_passenger else body.client_id
     ride_status = RideStatus.CONFIRMED if body.confirm else RideStatus.QUOTED
+    if body.round_trip:
+        outbound, _ret = await booking.create_round_trip(
+            db,
+            tenant_id=tenant_id,
+            pickup=body.pickup,
+            dropoff=body.dropoff,
+            scheduled_at=body.scheduled_at,
+            return_at=body.return_at,
+            client_id=client_id,
+            passenger_name=body.passenger_name,
+            passenger_phone=body.passenger_phone,
+            pax=body.pax,
+            flight_number=body.flight_number,
+            lang=body.lang,
+            notes=body.notes,
+            vehicle=body.vehicle,
+            status=ride_status,
+            ride_preferences=body.ride_preferences.model_dump() if body.ride_preferences else None,
+        )
+        return _ride_out(outbound)
     try:
         ride = await booking.create_ride(
             db,
@@ -506,7 +542,10 @@ async def patch_ride(
     changes = body.model_dump(exclude_none=True)
     has_edits = any(k in changes for k in booking.EDITABLE_FIELDS)
     if has_edits:
-        await booking.apply_ride_update(db, ride=ride, changes=changes, persist=False)
+        try:
+            await booking.apply_ride_update(db, ride=ride, changes=changes, persist=False)
+        except booking.RoundTripLockedError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
 
     if body.status is not None:
         # Cancelled/no-show rides leave the calendar (the correct per-tenant one).
@@ -656,6 +695,15 @@ async def cancel_ride(
     ride.cancelled_at = now
     if ride.google_event_id:
         await booking.remove_ride_from_calendar(db, ride)
+    # Round trip: cancelling the outbound cancels the linked return leg too (the single
+    # payment refund below already covers both legs' fares).
+    if ride.return_ride_id:
+        ret = await db.get(Ride, ride.return_ride_id)
+        if ret is not None and ret.status != RideStatus.CANCELLED:
+            ret.status = RideStatus.CANCELLED
+            ret.cancelled_at = now
+            if ret.google_event_id:
+                await booking.remove_ride_from_calendar(db, ret)
     fee_eligible = (
         ride.scheduled_at is not None and (ride.scheduled_at - now) < _CANCELLATION_FEE_WINDOW
     )

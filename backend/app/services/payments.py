@@ -26,8 +26,14 @@ async def authorize_for_ride(
     db: AsyncSession, *, tenant_id: int, ride: Ride, source_id: str, amount: int | None = None
 ) -> Payment:
     """Authorize a card for a ride (Web SDK token = source_id). On success the
-    ride is confirmed and the Payment row is stored AUTHORIZED."""
-    cents = amount if amount is not None else int(round((ride.fare_total or 0) * 100))
+    ride is confirmed and the Payment row is stored AUTHORIZED. For a round trip the
+    linked return leg is confirmed too and its fare is included in the charge."""
+    ret = await _linked_return(db, ride)
+    if amount is not None:
+        cents = amount
+    else:
+        legs_total = (ride.fare_total or 0) + (ret.fare_total or 0 if ret is not None else 0)
+        cents = int(round(legs_total * 100))
     if cents <= 0:
         raise payments_square.PaymentError("invalid_amount")
     res = await payments_square.authorize(
@@ -51,6 +57,12 @@ async def authorize_for_ride(
     ride.payment_method = PaymentMethod.SQUARE  # card via Square
     if ride.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
         ride.status = RideStatus.CONFIRMED
+    if ret is not None:
+        # One card charge covers both legs; mirror the confirmation onto the return leg.
+        ret.payment_id = res.square_payment_id
+        ret.payment_method = PaymentMethod.SQUARE
+        if ret.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
+            ret.status = RideStatus.CONFIRMED
     await db.commit()
     await db.refresh(pay)
     # Atomic discount redemption: claim flag + increment in one transaction.
@@ -69,11 +81,23 @@ async def authorize_for_ride(
     from app.services import booking
 
     await booking.sync_ride_to_calendar(db, ride)
+    if ret is not None:
+        await booking.sync_ride_to_calendar(db, ret)
     # Tell the driver a new (paid) ride came in. Best-effort, never raises.
     from app.services import email
 
     await email.send_driver_new_ride(db, ride=ride)
     return pay
+
+
+async def _linked_return(db: AsyncSession, ride: Ride) -> Ride | None:
+    """The return leg of a round trip (outbound rides carry ``return_ride_id``)."""
+    rid = getattr(ride, "return_ride_id", None)
+    if not rid:
+        return None
+    return (
+        await db.execute(select(Ride).where(Ride.id == rid))
+    ).scalar_one_or_none()
 
 
 async def capture_payment(db: AsyncSession, *, tenant_id: int, payment: Payment) -> Payment:
@@ -89,13 +113,16 @@ async def capture_payment(db: AsyncSession, *, tenant_id: int, payment: Payment)
             await db.execute(select(Ride).where(Ride.id == payment.ride_id))
         ).scalar_one_or_none()
         if ride:
-            ride.paid = True
-            ride.paid_at = datetime.now(UTC)
-            ride.payment_method = PaymentMethod.SQUARE
-            # Settling a ride whose pickup time has passed closes it.
             from app.services import booking
 
-            booking.complete_if_overdue_paid(ride)
+            for leg in (ride, await _linked_return(db, ride)):
+                if leg is None:
+                    continue
+                leg.paid = True
+                leg.paid_at = datetime.now(UTC)
+                leg.payment_method = PaymentMethod.SQUARE
+                # Settling a ride whose pickup time has passed closes it.
+                booking.complete_if_overdue_paid(leg)
     await db.commit()
     await db.refresh(payment)
     return payment

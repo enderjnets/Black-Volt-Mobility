@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.65.0 — 2026-07-02 — Event pricing: fees, round trips & Uber research
+
+Layers per-event pricing on top of the featured-events module: event/night/wait fees, a
+round-trip product bookable in one prepaid checkout, and a competitive-research agent that
+prices us against Uber Black.
+
+- **Per-event pricing (`event.py` mig `0038`, `event_pricing.py`):** each `Event` carries
+  `event_fee`, `night_fee`, `night_cutoff` (Denver-local), `wait_fee_per_hour`,
+  `est_duration_hours`, an editable `round_trip_price`, and a `pricing_research` snapshot.
+  `find_event_for_ride` matches a ride to an event by venue + time window, so fees apply on
+  **any** booking channel (event landing, direct `/book`, admin-created). Night fee is keyed
+  to the leg's local time; all time-of-day logic runs in `America/Denver`.
+- **Round-trip booking (`booking.create_round_trip`, mig `0038` ride linkage):** creates a
+  linked outbound + return pair (`return_ride_id`, `is_return`) with per-leg fares that sum
+  to the round-trip total (event/night/wait surcharges ride on the outbound). A single Square
+  authorization covers both legs; confirm/capture/cancel propagate across the pair; calendar
+  syncs both. A paid round-trip leg blocks route edits (409) to protect the captured amount.
+- **Quote + booking surfaces:** `/quote` and `/book` accept `round_trip` + `return_at`; the
+  event landing shows "One-way from $X · Round trip $Y" and a round-trip CTA; the booking
+  flow has a round-trip toggle (prefilled from the landing deep-link) and charges once.
+- **Uber competitive research (`uber_research.py`, `pricing-scout` container):** the dashboard
+  "Research prices" button estimates Uber Black / Black SUV from affluent Denver origins,
+  compares them to our fare, scores each origin for ad targeting (margin × affluence ×
+  proximity to base), and writes an AI recommendation. Live prices come from an optional,
+  isolated Playwright `pricing-scout` service (HMAC, fail-soft); without it a published-rate
+  formula is used, so research always produces a full table. The suggested round-trip price
+  is capped just under Uber Black when we'd otherwise be pricier.
+- **Config:** `UBER_BLACK_*` rate knobs + `PRICING_SCOUT_URL`/`PRICING_SCOUT_SECRET`
+  (`.env`-tunable). Docs: `docs/setup-event-pricing.md`.
+
 ## v0.64.1 — 2026-07-01 — Featured events: hardening & fixes (code-review follow-up)
 
 Fixes the 10 findings from the high-effort review of v0.64.0.

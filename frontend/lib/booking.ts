@@ -21,6 +21,11 @@ export interface Quote {
   is_loyalty: boolean;
   lines: QuoteLine[];
   route_simulated?: boolean;
+  // Round-trip / event pricing (present when round_trip is requested).
+  round_trip?: boolean;
+  wait_fee?: number;
+  event?: { slug: string; title: string } | null;
+  return_at?: string | null;
 }
 
 export interface RateConfig {
@@ -56,6 +61,8 @@ export interface RideInput {
   ride_preferences?: RidePreferences | null;
   discount_code?: string;
   confirm?: boolean;
+  round_trip?: boolean;
+  return_at?: string | null;
 }
 
 // Error carrying the HTTP status so callers can branch on it (e.g. a 401 from
@@ -124,6 +131,8 @@ export async function getQuote(input: {
   is_loyalty?: boolean;
   is_peak?: boolean | null;
   discount_code?: string;
+  round_trip?: boolean;
+  return_at?: string | null;
 }): Promise<Quote> {
   return jsend<Quote>("/v1/quote", "POST", input);
 }
