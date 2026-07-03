@@ -13,7 +13,7 @@ import { buildScheduledAt } from "@/lib/datetime";
 import { ApiError, confirmRide, createRide, getQuote, validateDiscount, type Quote } from "@/lib/booking";
 import { defaultRidePreferences, getProfile, type RidePreferences } from "@/lib/profile";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
-import { track } from "@/lib/analytics";
+import { pixelTrack, pixelTrackCustom, purchaseEventId, track } from "@/lib/analytics";
 import { setRef } from "@/lib/referral";
 import { useWeb } from "./WebShell";
 
@@ -207,6 +207,17 @@ export function Booking() {
     if (ev && ev !== "book_review") {
       trackFunnelOnce(ev, ev === "book_confirmed" ? { fare: quote?.total } : undefined);
     }
+    // Meta Pixel funnel: InitiateCheckout at the payment step, Purchase on confirm
+    // (deduped with the server CAPI by eventID). QuoteViewed fires with book_review.
+    if (ev === "book_pay") {
+      pixelTrack("InitiateCheckout", { value: quote?.total, currency: "USD" });
+    } else if (ev === "book_confirmed" && rideId != null) {
+      pixelTrack(
+        "Purchase",
+        { value: quote?.total, currency: "USD" },
+        purchaseEventId(rideId),
+      );
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
@@ -225,6 +236,7 @@ export function Booking() {
         if (alive) {
           setQuote(q);
           trackFunnelOnce("book_review"); // price shown = route actually reviewed
+          pixelTrackCustom("QuoteViewed", { value: q.total, currency: "USD" });
         }
       })
       .catch((e: unknown) => {

@@ -117,6 +117,11 @@ services:
       META_APP_ID: ${META_APP_ID:-}
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_GRAPH_VERSION: ${META_GRAPH_VERSION:-v21.0}
+      META_PIXEL_ID: ${META_PIXEL_ID:-}
+      META_CAPI_ACCESS_TOKEN: ${META_CAPI_ACCESS_TOKEN:-}
+      META_CAPI_ENABLED: ${META_CAPI_ENABLED:-false}
+      META_CAPI_SIMULATED: ${META_CAPI_SIMULATED:-true}
+      META_TEST_EVENT_CODE: ${META_TEST_EVENT_CODE:-}
       TIKTOK_CLIENT_KEY: ${TIKTOK_CLIENT_KEY:-}
       TIKTOK_CLIENT_SECRET: ${TIKTOK_CLIENT_SECRET:-}
       TIKTOK_DIRECT_PUBLISH: ${TIKTOK_DIRECT_PUBLISH:-false}
@@ -182,6 +187,8 @@ services:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.blackvoltmobility.com/dashboard}
         NEXT_PUBLIC_SALES_EMAIL: ${NEXT_PUBLIC_SALES_EMAIL:-hola@blackvoltmobility.com}
         DRIVER_HOSTS: ${DRIVER_HOSTS:-driver.blackvoltmobility.com}
+        # Meta Pixel id (public). Empty → no pixel ships. Set in the VPS .env.
+        NEXT_PUBLIC_META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
     container_name: blackvolt-frontend
     restart: unless-stopped
     depends_on:

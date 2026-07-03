@@ -317,6 +317,17 @@ class Settings(BaseSettings):
     META_APP_ID: str = ""
     META_APP_SECRET: str = ""
     META_GRAPH_VERSION: str = "v21.0"
+    # Meta Pixel + Conversions API (ad measurement). The Pixel id is public and is
+    # surfaced to the browser via NEXT_PUBLIC_META_PIXEL_ID at build time; the CAPI
+    # access token is a SECRET — it lives only in the VPS .env, never committed.
+    # Purchases are sent server-side (CAPI) and browser-side (Pixel) with a shared
+    # event_id so Meta deduplicates. Test-event code routes events to the Events
+    # Manager "Test events" tab without affecting optimization; leave empty in prod.
+    META_PIXEL_ID: str = ""
+    META_CAPI_ACCESS_TOKEN: str = ""
+    META_CAPI_ENABLED: bool = False
+    META_CAPI_SIMULATED: bool = True  # no outbound POST unless creds present + enabled
+    META_TEST_EVENT_CODE: str = ""
     # TikTok Content Posting API. Direct publish needs an approved TikTok app;
     # until then the module prepares an assisted-upload pack. Gated by this flag.
     TIKTOK_CLIENT_KEY: str = ""
@@ -417,6 +428,16 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.APP_ENV == "production"
+
+    @property
+    def capi_live(self) -> bool:
+        """True only when a real Conversions API POST should be made."""
+        return bool(
+            self.META_CAPI_ENABLED
+            and not self.META_CAPI_SIMULATED
+            and self.META_PIXEL_ID
+            and self.META_CAPI_ACCESS_TOKEN
+        )
 
 
 @lru_cache

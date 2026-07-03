@@ -108,6 +108,42 @@ export function track(type: string, props?: Record<string, unknown>) {
   enqueue({ type, props });
 }
 
+/* ─── Meta Pixel (browser side of ad measurement) ───────────────────────────
+   No-ops unless the base pixel loaded (NEXT_PUBLIC_META_PIXEL_ID set). Purchase
+   carries an eventID shared with the server Conversions API so Meta dedups. */
+
+type Fbq = (...args: unknown[]) => void;
+
+function fbq(): Fbq | null {
+  if (typeof window === "undefined") return null;
+  const f = (window as unknown as { fbq?: Fbq }).fbq;
+  return typeof f === "function" ? f : null;
+}
+
+/** Shared Purchase event id — must match the backend's `purchase_<ride_id>`. */
+export function purchaseEventId(rideId: number | string): string {
+  return `purchase_${rideId}`;
+}
+
+/** Fire a standard Meta Pixel event (optionally deduped by eventID). */
+export function pixelTrack(
+  event: string,
+  params?: Record<string, unknown>,
+  eventID?: string,
+) {
+  const f = fbq();
+  if (!f) return;
+  if (eventID) f("track", event, params ?? {}, { eventID });
+  else f("track", event, params ?? {});
+}
+
+/** Fire a custom (non-standard) Meta Pixel event, e.g. QuoteViewed. */
+export function pixelTrackCustom(event: string, params?: Record<string, unknown>) {
+  const f = fbq();
+  if (!f) return;
+  f("trackCustom", event, params ?? {});
+}
+
 export function trackSessionStart() {
   parseUtm();
   enqueue({
