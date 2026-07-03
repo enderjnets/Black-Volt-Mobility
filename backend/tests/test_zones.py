@@ -89,6 +89,9 @@ def test_metro_tiers_by_distance():
     assert _hit("Aurora, CO", "Highlands Ranch, CO").key == "metro_mid"
     assert _hit("Aurora, CO", "Castle Pines, CO").key == "metro_far"
     assert _hit("Aurora, CO", "Parker, CO").key == "metro_far"
+    # Distance-consistent outliers: Brighton (~20mi) is far; Broomfield (~15mi) is mid.
+    assert _hit("Aurora, CO", "Brighton, CO").key == "metro_far"
+    assert _hit("Aurora, CO", "Broomfield, CO").key == "metro_mid"
 
 
 def test_far_pickup_beats_close_dropoff():
