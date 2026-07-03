@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.66.0 — 2026-07-02 — Event reservations: prepaid by card
+
+Event rides are high-commitment and often booked well ahead, so they now prepay in full
+by card at booking instead of the everyday authorize-hold (a Square hold expires in ~6
+days and would fail for a concert booked further out). Non-event rides are unchanged.
+
+- **Immediate capture (`payments_square.authorize` + `payments.authorize_for_ride`):** a new
+  `capture` flag charges in full (`autocomplete=true`) when the ride is an event ride
+  (`price_breakdown["event"]` set). The Payment is stored `CAPTURED` and both legs of a
+  round trip are marked `paid`. Everyday rides still authorize-hold + staff-capture.
+- **Card required for events (`confirm_ride`, `Booking.tsx`):** pay-later/cash is blocked
+  server-side (402 `card_required_for_event`) and the "Pay later" tab is hidden at checkout
+  for event rides; a prepay + refund-policy note is shown.
+- **Event cancellation policy (`rides.py` cancel):** full refund 72h+ before pickup, else a
+  50% refund (auto — no driver decision). `settle_cancellation` now accepts `fee_pct=50`
+  and refunds the non-fee half of the captured payment. Everyday rides keep the 24h /
+  driver-choice policy.
+
 ## v0.65.2 — 2026-07-02 — Distance-tiered metro pricing
 
 Split the single flat Denver-metro zone into distance tiers so the far affluent suburbs

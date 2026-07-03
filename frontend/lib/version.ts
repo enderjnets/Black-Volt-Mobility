@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.65.2";
+export const CURRENT_VERSION = "0.66.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.66.0",
+    date: "2026-07-02",
+    title: "Event reservations: prepaid by card",
+    changes: [
+      "Event and concert rides (one-way and round trip) are now charged in full at booking by card — securing the reservation and avoiding expiring card holds. Everyday rides are unchanged.",
+      "Cancellation policy for events: full refund if you cancel 72h or more before pickup, 50% refund within 72h. The policy is shown at checkout.",
+    ],
+  },
   {
     version: "0.65.2",
     date: "2026-07-02",

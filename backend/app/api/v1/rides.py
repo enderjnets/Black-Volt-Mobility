@@ -30,6 +30,7 @@ from app.services import (
     booking,
     dashboard,
     email,
+    event_pricing,
     maps,
     payments,
     payments_square,
@@ -159,6 +160,13 @@ class RateConfigBody(BaseModel):
 _CANCELLABLE_BY_RIDER = (RideStatus.QUOTED, RideStatus.CONFIRMED, RideStatus.ASSIGNED)
 # A cancellation fee may be charged only when the rider cancels <24h before pickup.
 _CANCELLATION_FEE_WINDOW = timedelta(hours=24)
+# Event rides commit the driver's whole evening: full refund only 72h+ out, else 50%.
+_EVENT_CANCELLATION_FEE_WINDOW = timedelta(hours=72)
+_EVENT_CANCELLATION_FEE_PCT = 50
+
+
+def _is_event_ride(r: Ride) -> bool:
+    return bool((r.price_breakdown or {}).get("event"))
 
 
 def _cancellation_fee_eligible(r: Ride) -> bool:
@@ -372,6 +380,12 @@ async def create_ride(
     is_passenger = payload.get("role") == auth.ROLE_PASSENGER
     client_id = payload.get("cid") if is_passenger else body.client_id
     ride_status = RideStatus.CONFIRMED if body.confirm else RideStatus.QUOTED
+    # Event rides must be prepaid by card: never let confirm=true create a CONFIRMED,
+    # unpaid (cash) event ride — force it back to QUOTED so it goes through the card flow.
+    if body.confirm and await event_pricing.find_event_for_ride(
+        db, pickup=body.pickup, dropoff=body.dropoff, when=body.scheduled_at
+    ) is not None:
+        ride_status = RideStatus.QUOTED
     if body.round_trip:
         outbound, _ret = await booking.create_round_trip(
             db,
@@ -510,6 +524,14 @@ async def confirm_ride(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
     if payload.get("role") == auth.ROLE_PASSENGER and ride.client_id != payload.get("cid"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    # A round-trip return leg is only ever confirmed/paid through its outbound.
+    if ride.is_return:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="confirm_via_outbound")
+    # Event rides must be prepaid by card (no pay-later / cash) to secure the commitment.
+    if _is_event_ride(ride):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="card_required_for_event"
+        )
     if ride.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
         ride.status = RideStatus.CONFIRMED
         # Pay-on-completion: keep the default CASH method; stays unpaid until the
@@ -704,13 +726,18 @@ async def cancel_ride(
             ret.cancelled_at = now
             if ret.google_event_id:
                 await booking.remove_ride_from_calendar(db, ret)
-    fee_eligible = (
-        ride.scheduled_at is not None and (ride.scheduled_at - now) < _CANCELLATION_FEE_WINDOW
-    )
+    is_event = _is_event_ride(ride)
+    window = _EVENT_CANCELLATION_FEE_WINDOW if is_event else _CANCELLATION_FEE_WINDOW
+    fee_eligible = ride.scheduled_at is not None and (ride.scheduled_at - now) < window
     refund_pending = False
     if not fee_eligible:
-        # No fee can apply -> make the rider whole right away.
+        # Outside the fee window -> make the rider whole right away.
         await payments.settle_cancellation(db, tenant_id=tenant_id, ride=ride, fee_pct=0)
+    elif is_event:
+        # Events have a fixed policy: within 72h -> automatic 50% refund (no driver choice).
+        await payments.settle_cancellation(
+            db, tenant_id=tenant_id, ride=ride, fee_pct=_EVENT_CANCELLATION_FEE_PCT
+        )
     else:
         pay = await payments.active_payment_for_ride(
             db, tenant_id=ride.tenant_id, ride_id=ride.id

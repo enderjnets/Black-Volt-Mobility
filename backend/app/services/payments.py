@@ -43,17 +43,22 @@ async def authorize_for_ride(
         cents = int(round((ride.fare_total or 0) * 100))
     if cents <= 0:
         raise payments_square.PaymentError("invalid_amount")
+    # Event rides are charged in full at booking (captured now), not held — a Square hold
+    # expires in ~6 days, which would fail for a concert booked further out.
+    is_event = bool((ride.price_breakdown or {}).get("event"))
     res = await payments_square.authorize(
         amount=cents,
         currency=ride.currency or "USD",
         source_id=source_id,
         reference_id=f"ride-{ride.id}",
         note=f"Black Volt ride #{ride.id}",
+        capture=is_event,
     )
+    now = datetime.now(UTC)
     pay = Payment(
         tenant_id=tenant_id,
         ride_id=ride.id,
-        status=PaymentStatus.AUTHORIZED,
+        status=PaymentStatus.CAPTURED if is_event else PaymentStatus.AUTHORIZED,
         amount=cents,
         currency=ride.currency or "USD",
         square_payment_id=res.square_payment_id,
@@ -64,12 +69,18 @@ async def authorize_for_ride(
     ride.payment_method = PaymentMethod.SQUARE  # card via Square
     if ride.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
         ride.status = RideStatus.CONFIRMED
+    if is_event:
+        ride.paid = True
+        ride.paid_at = now
     if ret is not None:
         # One card charge covers both legs; mirror the confirmation onto the return leg.
         ret.payment_id = res.square_payment_id
         ret.payment_method = PaymentMethod.SQUARE
         if ret.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
             ret.status = RideStatus.CONFIRMED
+        if is_event:
+            ret.paid = True
+            ret.paid_at = now
     await db.commit()
     await db.refresh(pay)
     # Atomic discount redemption: claim flag + increment in one transaction.
@@ -207,7 +218,7 @@ async def settle_cancellation(
 
     No settleable payment (cash / pay-on-completion) → no-op, returns None.
     """
-    if fee_pct not in (0, 20, 30):
+    if fee_pct not in (0, 20, 30, 50):
         raise payments_square.PaymentError("invalid_fee_pct")
     # The payment always belongs to the ride's owning tenant (the booker), which
     # can differ from the acting tenant on a discount-handoff ride. Scope the

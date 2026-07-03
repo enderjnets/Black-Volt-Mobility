@@ -106,16 +106,13 @@ async def test_payment_covers_both_legs(db, owner):
     )
     # Charge equals the combined total, not just the outbound share.
     assert pay.amount == 39500
+    # Event rides are captured in full at booking (not held), so both legs are paid now.
+    assert pay.status.value == "captured"
     await db.refresh(outbound)
     await db.refresh(ret)
     assert outbound.status == RideStatus.CONFIRMED
     assert ret.status == RideStatus.CONFIRMED
     assert ret.payment_id == outbound.payment_id
-
-    captured = await payments.capture_payment(db, tenant_id=owner, payment=pay)
-    assert captured.status.value == "captured"
-    await db.refresh(outbound)
-    await db.refresh(ret)
     assert outbound.paid is True and ret.paid is True
 
 
@@ -127,11 +124,12 @@ async def test_paid_round_trip_route_edit_blocked(db, owner):
         dropoff="Empower Field at Mile High, 1701 Bryant St, Denver, CO 80204",
         scheduled_at=_denver(2026, 7, 4, 19, 0),
     )
-    pay = await payments.authorize_for_ride(
+    # Event round trip is captured (paid) at authorize.
+    await payments.authorize_for_ride(
         db, tenant_id=owner, ride=outbound, source_id="cnon:card-nonce-ok",
     )
-    await payments.capture_payment(db, tenant_id=owner, payment=pay)
     await db.refresh(outbound)
+    assert outbound.paid is True
     with pytest.raises(booking.RoundTripLockedError):
         await booking.apply_ride_update(
             db, ride=outbound, changes={"pickup": "Elsewhere, CO"}, persist=True
@@ -181,6 +179,76 @@ async def test_override_below_return_fare_no_negative_leg(db, owner):
     )
     assert outbound.fare_total >= 0 and ret.fare_total >= 0
     assert round(outbound.fare_total + ret.fare_total, 2) == 100.0
+
+
+_VENUE = "Empower Field at Mile High, 1701 Bryant St, Denver, CO 80204"
+
+
+async def _event_ride(db, owner):
+    return await booking.create_ride(
+        db, tenant_id=owner, pickup="Cherry Creek, Denver, CO", dropoff=_VENUE,
+        scheduled_at=_denver(2026, 7, 4, 19, 0),
+    )
+
+
+@pytest.mark.asyncio
+async def test_one_way_event_captured_at_booking(db, owner):
+    await _mk_event(db, owner)
+    ride = await _event_ride(db, owner)
+    assert ride.price_breakdown.get("event")  # detected as an event ride
+    pay = await payments.authorize_for_ride(
+        db, tenant_id=owner, ride=ride, source_id="cnon:card-nonce-ok"
+    )
+    assert pay.status.value == "captured"  # charged in full now, not just held
+    await db.refresh(ride)
+    assert ride.paid is True and ride.status == RideStatus.CONFIRMED
+
+
+@pytest.mark.asyncio
+async def test_non_event_ride_only_held(db, owner):
+    ride = await booking.create_ride(
+        db, tenant_id=owner, pickup="Cherry Creek, Denver, CO", dropoff="Wash Park, Denver, CO",
+        scheduled_at=_denver(2026, 8, 1, 14, 0),
+    )
+    assert not ride.price_breakdown.get("event")
+    pay = await payments.authorize_for_ride(
+        db, tenant_id=owner, ride=ride, source_id="cnon:card-nonce-ok"
+    )
+    assert pay.status.value == "authorized"  # hold, captured later by staff
+    await db.refresh(ride)
+    assert ride.paid is False
+
+
+@pytest.mark.asyncio
+async def test_event_cancel_full_refund(db, owner):
+    await _mk_event(db, owner)
+    ride = await _event_ride(db, owner)
+    pay = await payments.authorize_for_ride(
+        db, tenant_id=owner, ride=ride, source_id="cnon:card-nonce-ok"
+    )
+    amt = pay.amount
+    ride.status = RideStatus.CANCELLED
+    await db.commit()
+    out = await payments.settle_cancellation(db, tenant_id=owner, ride=ride, fee_pct=0)
+    assert out is not None and out.status.value == "refunded"
+    assert out.refunded_amount == amt
+
+
+@pytest.mark.asyncio
+async def test_event_cancel_half_refund(db, owner):
+    await _mk_event(db, owner)
+    ride = await _event_ride(db, owner)
+    pay = await payments.authorize_for_ride(
+        db, tenant_id=owner, ride=ride, source_id="cnon:card-nonce-ok"
+    )
+    amt = pay.amount
+    ride.status = RideStatus.CANCELLED
+    await db.commit()
+    out = await payments.settle_cancellation(db, tenant_id=owner, ride=ride, fee_pct=50)
+    assert out.status.value == "refunded"
+    assert out.refunded_amount == amt - round(amt * 50 / 100)  # half refunded, half kept
+    await db.refresh(ride)
+    assert ride.paid is True  # the driver kept the cancellation fee
 
 
 @pytest.mark.asyncio
