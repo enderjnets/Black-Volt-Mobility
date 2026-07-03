@@ -92,6 +92,7 @@ def test_metro_tiers_by_distance():
     # Distance-consistent outliers: Brighton (~20mi) is far; Broomfield (~15mi) is mid.
     assert _hit("Aurora, CO", "Brighton, CO").key == "metro_far"
     assert _hit("Aurora, CO", "Broomfield, CO").key == "metro_mid"
+    assert _hit("Aurora, CO", "Morrison, CO").key == "metro_mid"  # Red Rocks town, ~17mi
 
 
 def test_far_pickup_beats_close_dropoff():

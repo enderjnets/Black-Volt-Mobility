@@ -113,6 +113,7 @@ ZONES: tuple[Zone, ...] = (
             "lone tree",
             "golden",
             "broomfield",
+            "morrison",
         ),
     ),
     Zone(
@@ -136,7 +137,6 @@ ZONES: tuple[Zone, ...] = (
             "louisville",
             "lafayette",
             "superior",
-            "morrison",
             "denver international",
             "dia",
         ),
