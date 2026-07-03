@@ -179,6 +179,16 @@ def test_venue_matches_watchlist_and_generic():
                       venue_address="4242 Wynkoop St, Denver, CO")
     assert event_pricing._venue_matches(gen, "Mission Ballroom, Denver") is True
     assert event_pricing._venue_matches(gen, "4242 Wynkoop St, Denver, CO") is True
+    # Whole-word match: a generic "Ballroom" event must NOT attach to "Ballwin".
+    assert event_pricing._venue_matches(gen, "12 Ballwin Ave, Denver, CO") is False
+
+
+def test_venue_match_no_substring_false_positive():
+    # "Fiddler's Green" must not surcharge an unrelated ride to Greenwood Village.
+    fiddlers = _fake_event(venue_key="fiddlers_green", venue_name="Fiddler's Green Amphitheatre",
+                           venue_address="6350 Greenwood Plaza Blvd, Greenwood Village, CO")
+    assert event_pricing._venue_matches(fiddlers, "6300 Greenwood Village, CO") is False
+    assert event_pricing._venue_matches(fiddlers, "Fiddler's Green Amphitheatre, CO") is True
 
 
 @pytest.mark.asyncio

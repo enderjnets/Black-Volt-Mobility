@@ -356,7 +356,9 @@ async def create_round_trip(
         db, tenant_id=tenant_id, pickup=pickup, dropoff=dropoff, pax=pax,
         scheduled_at=scheduled_at, return_at=ret_dt,
     )
-    return_fare = round(rt["legs"][1]["total"], 2)
+    # Fees ride on the outbound; the return carries just its own fare. Clamp so an admin
+    # override or Uber cap below the return-leg fare can't push the outbound negative.
+    return_fare = min(round(rt["legs"][1]["total"], 2), round(rt["total"], 2))
     out_fare = round(rt["total"] - return_fare, 2)
 
     outbound = await create_ride(

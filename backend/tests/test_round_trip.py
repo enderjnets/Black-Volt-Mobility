@@ -21,6 +21,7 @@ get_settings.cache_clear()
 from app.models import Event, Tenant  # noqa: E402
 from app.models.ride import RideStatus  # noqa: E402
 from app.services import booking, payments  # noqa: E402
+from app.services.payments_square import PaymentError  # noqa: E402
 
 _DENVER = ZoneInfo("America/Denver")
 
@@ -135,6 +136,51 @@ async def test_paid_round_trip_route_edit_blocked(db, owner):
         await booking.apply_ride_update(
             db, ride=outbound, changes={"pickup": "Elsewhere, CO"}, persist=True
         )
+
+
+@pytest.mark.asyncio
+async def test_cannot_pay_return_leg_directly(db, owner):
+    # Fee-dodge guard: authorizing the return leg (which carries only its own fare) must be
+    # refused — payment has to go through the outbound, which sums both legs.
+    await _mk_event(db, owner)
+    outbound, ret = await booking.create_round_trip(
+        db, tenant_id=owner, pickup="Downtown Denver, CO",
+        dropoff="Empower Field at Mile High, 1701 Bryant St, Denver, CO 80204",
+        scheduled_at=_denver(2026, 7, 4, 19, 0),
+    )
+    with pytest.raises(PaymentError):
+        await payments.authorize_for_ride(
+            db, tenant_id=owner, ride=ret, source_id="cnon:card-nonce-ok",
+        )
+
+
+@pytest.mark.asyncio
+async def test_round_trip_ignores_client_amount(db, owner):
+    # A client-supplied `amount` must not undercut the combined round-trip charge.
+    await _mk_event(db, owner)
+    outbound, _ = await booking.create_round_trip(
+        db, tenant_id=owner, pickup="Downtown Denver, CO",
+        dropoff="Empower Field at Mile High, 1701 Bryant St, Denver, CO 80204",
+        scheduled_at=_denver(2026, 7, 4, 19, 0),
+    )
+    pay = await payments.authorize_for_ride(
+        db, tenant_id=owner, ride=outbound, source_id="cnon:card-nonce-ok", amount=1,
+    )
+    assert pay.amount == 39500  # server-computed combined total, not the client's 1 cent
+
+
+@pytest.mark.asyncio
+async def test_override_below_return_fare_no_negative_leg(db, owner):
+    ev = await _mk_event(db, owner)
+    ev.round_trip_price = 100  # below the ~$120 return-leg fare
+    await db.commit()
+    outbound, ret = await booking.create_round_trip(
+        db, tenant_id=owner, pickup="Downtown Denver, CO",
+        dropoff="Empower Field at Mile High, 1701 Bryant St, Denver, CO 80204",
+        scheduled_at=_denver(2026, 7, 4, 19, 0),
+    )
+    assert outbound.fare_total >= 0 and ret.fare_total >= 0
+    assert round(outbound.fare_total + ret.fare_total, 2) == 100.0
 
 
 @pytest.mark.asyncio

@@ -47,21 +47,27 @@ def _after_cutoff(when: dt.datetime, cutoff: str) -> bool:
 
 
 def _venue_matches(event: Event, text: str) -> bool:
-    """Does an address string refer to this event's venue?"""
+    """Does an address string refer to this event's venue?
+
+    Watchlist venues match via the curated alias list only. Generic venues require ALL
+    significant name tokens to appear as whole words (or the exact street number + name) —
+    a whole-word test, not a substring test, so "Green" (Fiddler's Green) does not match
+    "Greenwood Village" and wrongly attach a surcharge to an unrelated ride.
+    """
     t = _norm(text)
     if not t:
         return False
+    words = set(t.split())
     key = event.venue_key
     if key and key != "generic":
-        if match_venue_key(text or "") == key:
-            return True
-    # Generic / fallback: a significant venue-name token, or the street number + name.
+        # Distinctive multi-word aliases → very low false-positive risk.
+        return match_venue_key(text or "") == key
     name_tokens = [w for w in _norm(event.venue_name).split() if len(w) > 3 and w not in _STOP]
-    if any(tok in t for tok in name_tokens):
+    if name_tokens and all(tok in words for tok in name_tokens):
         return True
     if event.venue_address:
         m = re.match(r"(\d+)\s+([a-z0-9]+)", _norm(event.venue_address))
-        if m and m.group(1) in t and m.group(2) in t:
+        if m and m.group(1) in words and m.group(2) in words:
             return True
     return False
 
@@ -142,8 +148,11 @@ def compose_round_trip(
     if event is not None:
         if event.event_fee and event.event_fee > 0:
             lines.append({"label": "event_fee", "amount": round(event.event_fee, 2)})
+        # Night fee is keyed to the show's expected end, NOT the customer-supplied return
+        # time — otherwise a rider could pass an early `return_at` to dodge it.
+        night_ref = default_return_dt(event)
         night = event.night_fee and event.night_fee > 0
-        if night and _after_cutoff(return_dt, event.night_cutoff):
+        if night and _after_cutoff(night_ref, event.night_cutoff):
             lines.append({"label": "night_fee", "amount": round(event.night_fee, 2)})
         duration = float(event.est_duration_hours or 3)
         wait = round(float(event.wait_fee_per_hour or 0) * duration, 2)

@@ -28,12 +28,19 @@ async def authorize_for_ride(
     """Authorize a card for a ride (Web SDK token = source_id). On success the
     ride is confirmed and the Payment row is stored AUTHORIZED. For a round trip the
     linked return leg is confirmed too and its fare is included in the charge."""
+    # A round-trip's fees ride on the outbound leg; the return leg must be paid THROUGH the
+    # outbound (which sums both fares). Refuse to charge a return leg on its own — otherwise
+    # a client could authorize just the return id and dodge the outbound fare + surcharges.
+    if ride.is_return:
+        raise payments_square.PaymentError("pay_via_outbound_leg")
     ret = await _linked_return(db, ride)
-    if amount is not None:
+    if ret is not None:
+        # Round trip: the amount is server-computed from both legs; ignore any client value.
+        cents = int(round(((ride.fare_total or 0) + (ret.fare_total or 0)) * 100))
+    elif amount is not None:
         cents = amount
     else:
-        legs_total = (ride.fare_total or 0) + (ret.fare_total or 0 if ret is not None else 0)
-        cents = int(round(legs_total * 100))
+        cents = int(round((ride.fare_total or 0) * 100))
     if cents <= 0:
         raise payments_square.PaymentError("invalid_amount")
     res = await payments_square.authorize(
