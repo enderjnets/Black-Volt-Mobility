@@ -152,6 +152,11 @@ class RateConfigBody(BaseModel):
                 continue
             if price < 0:
                 raise ValueError("zone price must be >= 0")
+            # Store only deviations: the Rates editor round-trips the full effective map,
+            # and persisting default-equal entries would pin every zone forever — future
+            # zones.py recalibrations would silently stop reaching this tenant.
+            if float(price) == zones.DEFAULT_ZONE_PRICES[key]:
+                continue
             cleaned[key] = float(price)
         return cleaned
 

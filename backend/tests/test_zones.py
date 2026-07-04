@@ -96,6 +96,24 @@ def test_metro_tiers_by_uber_black_benchmark():
     assert _hit("Aurora, CO", "Castle Rock, CO").key == "metro_far"  # Black ~$175
 
 
+def test_dtc_and_lone_tree_are_core():
+    # The DTC SEO page advertises the core rate — these terms must stay in denver_metro.
+    assert _hit("Denver Tech Center, Greenwood Village, CO", "Denver, CO").key == "denver_metro"
+    assert _hit("Aurora, CO", "DTC Blvd, Denver Tech, CO").key == "denver_metro"
+    assert _hit("Aurora, CO", "Hyatt Regency, DTC, CO").key == "denver_metro"
+    assert _hit("Aurora, CO", "Lone Tree, CO").key == "denver_metro"
+
+
+def test_base_street_pinned_to_core_regardless_of_city_label():
+    # Google labels the base street as Aurora OR Centennial depending on the day; the
+    # marker pin must make both price as the core, independent of Centennial's ring.
+    for label in ("Aurora", "Centennial"):
+        hit = _hit(f"6000 S Fraser St, {label}, CO 80016, USA", "Boulder, CO, USA")
+        assert hit is not None and hit.key == "boulder"  # farther zone still wins
+        hit = _hit(f"6000 S Fraser St, {label}, CO 80016, USA", "Wash Park, Denver, CO, USA")
+        assert hit is not None and hit.key == "denver_metro" and hit.flat == 110.0
+
+
 def test_base_address_centennial_label_is_core_110():
     # Google formats the Aurora 80016 base as "Centennial, CO" — it must price as the
     # $110 core, not the outer ring (regression: owner's own base→DEN quoted $140).

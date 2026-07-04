@@ -4,17 +4,22 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
 import { useI18n } from "@/lib/i18n";
-import { type BvMsg, bvComplete } from "@/lib/bvAI";
+import { type BvMsg, type BvRates, bvComplete } from "@/lib/bvAI";
+import { getRateConfig } from "@/lib/booking";
 
-function mockReply(q: string): string {
-  const s = q.toLowerCase();
-  if (/driver|chofer|d[oó]nde/.test(s))
-    return "Ender is 6 minutes away in the black Kia EV9 (ENV-4827), heading north on Blake St.";
-  if (/pickup|recog|time|hora/.test(s))
-    return "Sure — I can move your pickup. What time works? Your flight UA 2293 lands 14:05, on time.";
-  if (/fare|tarifa|price|precio|estimate|estimar/.test(s))
-    return "Downtown Denver → DEN is about 18.4 mi, ~$74 with fixed upfront pricing. No surge.";
-  return "Got it — I've noted that. Ender will take care of it. Anything else before pickup?";
+function mockReply(rates: BvRates | null) {
+  return (q: string): string => {
+    const s = q.toLowerCase();
+    if (/driver|chofer|d[oó]nde/.test(s))
+      return "Ender is 6 minutes away in the black Kia EV9 (ENV-4827), heading north on Blake St.";
+    if (/pickup|recog|time|hora/.test(s))
+      return "Sure — I can move your pickup. What time works? Your flight UA 2293 lands 14:05, on time.";
+    if (/fare|tarifa|price|precio|estimate|estimar/.test(s))
+      return rates?.denFlat
+        ? `Denver metro → DEN is a flat $${Math.round(rates.denFlat)} with fixed upfront pricing. No surge.`
+        : "DEN airport rides are a flat rate quoted upfront at blackvoltmobility.com/book. No surge.";
+    return "Got it — I've noted that. Ender will take care of it. Anything else before pickup?";
+  };
 }
 
 export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
@@ -22,7 +27,22 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
   const [msgs, setMsgs] = useState<BvMsg[]>([{ role: "ai", text: t("chat.greet") }]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
+  const [rates, setRates] = useState<BvRates | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Live fares for the assistant (owner tunes them in the Rates dashboard).
+    getRateConfig()
+      .then((rc) =>
+        setRates({
+          denFlat: rc?.zone_prices?.denver_metro ?? null,
+          base: rc?.base ?? null,
+          perMile: rc?.per_mile ?? null,
+          minimum: rc?.minimum ?? null,
+        }),
+      )
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -35,7 +55,7 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
     setMsgs(next);
     setInput("");
     setTyping(true);
-    const reply = await bvComplete(next, { mock: mockReply });
+    const reply = await bvComplete(next, { mock: mockReply(rates), rates });
     setTyping(false);
     setMsgs((m) => [...m, { role: "ai", text: reply }]);
   };

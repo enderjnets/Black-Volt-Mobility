@@ -13,6 +13,7 @@ import {
   routeHero,
   routeMap,
 } from "@/lib/seoRoutes";
+import { fillPrice, getZonePrices, routePrice } from "@/lib/zonePrices";
 
 export function generateStaticParams() {
   return SEO_ROUTES.map((r) => ({ slug: r.slug }));
@@ -39,12 +40,16 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
 
 const fmtPrice = (n: number) => `$${n.toLocaleString("en-US")}`;
 
-export default function RidePage({ params }: { params: { slug: string } }) {
+export const revalidate = 300; // live zone prices from the Rates dashboard, no redeploy
+
+export default async function RidePage({ params }: { params: { slug: string } }) {
   const route = getRoute(params.slug);
   if (!route) notFound();
 
+  const zonePrices = await getZonePrices();
+  const priceFrom = routePrice(route, zonePrices);
   const path = `/rides/${route.slug}`;
-  const priceLabel = route.priceFrom != null ? `from ${fmtPrice(route.priceFrom)}` : "Instant quote";
+  const priceLabel = priceFrom != null ? `from ${fmtPrice(priceFrom)}` : "Instant quote";
   const hero = routeHero(route);
 
   // Structured data: Service + FAQPage + BreadcrumbList. Helps local SEO and can earn
@@ -65,10 +70,10 @@ export default function RidePage({ params }: { params: { slug: string } }) {
         areaServed: { "@type": "City", name: "Denver" },
         description: route.metaDescription,
         url: `${SITE_ORIGIN}${path}`,
-        ...(route.priceFrom != null && {
+        ...(priceFrom != null && {
           offers: {
             "@type": "Offer",
-            price: route.priceFrom,
+            price: priceFrom,
             priceCurrency: "USD",
             description: `Private luxury EV transfer ${priceLabel}`,
           },
@@ -79,7 +84,7 @@ export default function RidePage({ params }: { params: { slug: string } }) {
         mainEntity: route.faq.map((f) => ({
           "@type": "Question",
           name: f.q,
-          acceptedAnswer: { "@type": "Answer", text: f.a },
+          acceptedAnswer: { "@type": "Answer", text: fillPrice(f.a, priceFrom) },
         })),
       },
       {
@@ -280,7 +285,9 @@ export default function RidePage({ params }: { params: { slug: string } }) {
               <h3 style={{ fontSize: 15.5, fontWeight: 600, margin: "0 0 5px", color: "var(--fg1)" }}>
                 {f.q}
               </h3>
-              <p style={{ fontSize: 14.5, lineHeight: 1.6, margin: 0, color: "var(--fg2)" }}>{f.a}</p>
+              <p style={{ fontSize: 14.5, lineHeight: 1.6, margin: 0, color: "var(--fg2)" }}>
+                {fillPrice(f.a, priceFrom)}
+              </p>
             </div>
           ))}
         </div>

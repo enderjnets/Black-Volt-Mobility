@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.66.3";
+export const CURRENT_VERSION = "0.66.4";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.66.4",
+    date: "2026-07-04",
+    title: "Live prices everywhere",
+    changes: [
+      "Every advertised price on the site — homepage route cards, the /rides pages and their FAQs, the booking screen placeholder, event landings, and the chat assistant — now reads the live pricing engine instead of hardcoded numbers, so fare updates reach the whole site within minutes.",
+      "The chat assistant no longer quotes an outdated $74 airport fare; it answers with the current flat rate.",
+      "Renamed the outer pricing ring (it no longer includes the Denver Tech Center, which now enjoys the core Denver-metro flat rate).",
+    ],
+  },
   {
     version: "0.66.3",
     date: "2026-07-03",

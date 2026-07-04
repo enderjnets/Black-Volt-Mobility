@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import Event, EventSuggestion
+from app.models import Event, EventSuggestion, RateConfig
 from app.services import event_pricing, llm, social
 from app.services.tenancy import owner_tenant_id
 from app.services.venue_profiles import get_profile
@@ -35,6 +35,21 @@ _DENVER_TZ = ZoneInfo("America/Denver")
 # Single source of truth: the metered engine's flat Denver-metro fare (owner-editable
 # default), not a magic number. Events fall in the denver_metro zone.
 FLAT_PRICE = int(DEFAULT_ZONE_PRICES.get("denver_metro", 110))
+
+
+async def live_flat_price(db: AsyncSession, tenant_id: int | None = None) -> float:
+    """Effective DEN/metro flat for the owner tenant — the tenant's Rates override wins
+    over the code default, exactly like quotes (the owner tunes fares live in the
+    dashboard, so anything published must read the same source)."""
+    tid = tenant_id if tenant_id is not None else await owner_tenant_id(db)
+    rc = (
+        await db.execute(select(RateConfig).where(RateConfig.tenant_id == tid))
+    ).scalar_one_or_none()
+    prices = (rc.zone_prices or {}) if rc else {}
+    try:
+        return float(prices.get("denver_metro", FLAT_PRICE))
+    except (TypeError, ValueError):
+        return float(FLAT_PRICE)
 
 
 def _now() -> dt.datetime:
@@ -211,7 +226,7 @@ _ABOUT_FALLBACK = (
 )
 
 
-async def _about_text(sug: EventSuggestion) -> str:
+async def _about_text(sug: EventSuggestion, flat: float | None = None) -> str:
     prompt = (
         "Write 2 short paragraphs (max 120 words total) for a premium ride service's "
         f"event page about: {sug.title} at {sug.venue_name} on {_local(sug.starts_at):%B %d, %Y}. "
@@ -233,14 +248,14 @@ async def _about_text(sug: EventSuggestion) -> str:
             logger.warning("event about-text provider %s failed: %s", model, e)
     return _ABOUT_FALLBACK.format(
         title=sug.title, venue=sug.venue_name,
-        date=f"{_local(sug.starts_at):%B %d, %Y}", price=FLAT_PRICE
+        date=f"{_local(sug.starts_at):%B %d, %Y}", price=round(flat) if flat else FLAT_PRICE
     )
 
 
-def _event_topic(ev: Event) -> str:
+def _event_topic(ev: Event, flat: float) -> str:
     return (
         f"Event ride: {ev.title} at {ev.venue_name} on {_local(ev.starts_at):%B %d} — flat "
-        f"${FLAT_PRICE} each way, no surge, door-to-door and prepaid. Book at "
+        f"${round(flat)} each way, no surge, door-to-door and prepaid. Book at "
         f"https://blackvoltmobility.com/events/{ev.slug}"
     )
 
@@ -253,7 +268,8 @@ async def _spawn_post(
         saved = social.save_reference_image(ev.tenant_id, raw=hero[0])
         refs = [saved[0]] if saved else None
     out = await social.generate_and_create(
-        db, tenant_id=ev.tenant_id, topic=_event_topic(ev), angle=None, lang="en",
+        db, tenant_id=ev.tenant_id, topic=_event_topic(ev, await live_flat_price(db, ev.tenant_id)),
+        angle=None, lang="en",
         reference_paths=refs, media_kind=kind,
     )
     if out.get("status") == "draft":  # video, or image without a photo → kick the render
@@ -327,7 +343,7 @@ async def approve_suggestion(
         starts_at=sug.starts_at,
         event_url=sug.event_url,
         status="published",
-        about_text=await _about_text(sug),
+        about_text=await _about_text(sug, await live_flat_price(db, sug.tenant_id)),
     )
     if hero:
         try:
@@ -489,20 +505,21 @@ async def get_public_event(db: AsyncSession, *, slug: str) -> dict | None:
     # "passed" only once the landing is actually retired (archive grace window), so the
     # post-show pickup CTA stays live during and just after the show.
     data["passed"] = ev.status == "archived" or ev.starts_at < _now() - _ARCHIVE_GRACE
-    data["flat_price"] = FLAT_PRICE
-    data["one_way_from"] = round(FLAT_PRICE + (ev.event_fee or 0), 2)
-    data["round_trip_price"] = _public_round_trip_price(ev)
+    flat = await live_flat_price(db, tid)
+    data["flat_price"] = flat
+    data["one_way_from"] = round(flat + (ev.event_fee or 0), 2)
+    data["round_trip_price"] = _public_round_trip_price(ev, flat)
     data["return_at"] = event_pricing.default_return_dt(ev).isoformat()
     return data
 
 
-def _public_round_trip_price(ev: Event) -> float:
+def _public_round_trip_price(ev: Event, flat: float | None = None) -> float:
     """Effective published round-trip price: admin override, else a metro-origin estimate
     (both legs at the flat zone fare, so it's origin-independent). No maps calls."""
     if ev.round_trip_price is not None:
         return round(float(ev.round_trip_price), 2)
     ret_dt = event_pricing.default_return_dt(ev)
-    total = 2 * FLAT_PRICE + float(ev.event_fee or 0)
+    total = 2 * (flat if flat is not None else FLAT_PRICE) + float(ev.event_fee or 0)
     total += float(ev.wait_fee_per_hour or 0) * float(ev.est_duration_hours or 3)
     if ev.night_fee and event_pricing._after_cutoff(ret_dt, ev.night_cutoff):
         total += float(ev.night_fee)

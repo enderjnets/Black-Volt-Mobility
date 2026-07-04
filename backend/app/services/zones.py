@@ -91,10 +91,11 @@ ZONES: tuple[Zone, ...] = (
         ("loveland", "greeley", "johnstown", "berthoud", "evans", "milliken", "kersey"),
     ),
     Zone("boulder", "Boulder", 165.0, ("boulder", "pine brook hill", "gunbarrel")),
-    # Outer/far metro rings — priced above the close-in metro to reflect the longer drive.
-    # These MUST precede denver_metro so that on a mixed trip (far pickup → downtown venue)
-    # the farther pickup zone wins the price. Ring membership is calibrated to Uber Black
-    # →DEN estimates (2026-07): a town stays out of the core only while Black clears ~$140.
+    # Outer/far metro rings. These MUST precede denver_metro so that on a mixed trip
+    # (far pickup → downtown venue) the farther pickup zone wins the price. Ring
+    # membership follows the Uber Black →DEN benchmark (2026-07), NOT distance from the
+    # base: a town stays out of the $110 core only while Black clears ~$140 for its
+    # airport run (that's why nearby Brighton is core while Golden is not).
     Zone(
         "metro_far",
         "Denver metro — far ring",
@@ -103,7 +104,7 @@ ZONES: tuple[Zone, ...] = (
     ),
     Zone(
         "metro_mid",
-        "Denver metro — outer / DTC",
+        "Denver metro — outer ring",
         140.0,
         (
             "golden",
@@ -158,6 +159,11 @@ ZONE_DESCRIPTORS: list[dict] = [
 _STATE_ZIP = re.compile(r"^[a-z]{2}(\s+\d{5}(-\d{4})?)?$")
 _COUNTRY = {"usa", "us", "united states"}
 
+# The home base (6000 S Fraser St, Aurora 80016) sits on the Aurora/Centennial county
+# line and Google labels it either way. Pin it to the core so the flagship base→DEN
+# price never depends on which city label Google picks or on Centennial's ring.
+_BASE_MARKERS = ("s fraser st",)
+
 
 def _city(address: str | None) -> str:
     """Best-effort city/locality of an address for zone matching.
@@ -175,6 +181,9 @@ def _city(address: str | None) -> str:
 
 
 def _zone_keys_for(address: str | None) -> set[str]:
+    lowered = (address or "").lower()
+    if any(marker in lowered for marker in _BASE_MARKERS):
+        return {"denver_metro"}
     city = _city(address)
     if not city:
         return set()

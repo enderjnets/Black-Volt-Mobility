@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.66.4 — 2026-07-04 — Live prices everywhere (kills teaser drift)
+
+**Problem (from the v0.66.3 code review):** teaser prices were hardcoded in three places (seoRoutes.ts, FAQ prose, Booking placeholder) plus a stale $74 in the chat assistant, while the owner tunes real fares live in the Rates dashboard — v0.66.2 and v0.66.3 were both manual re-sync releases and the site drifted again within the hour of deploy. Pricing policy going forward: stay >=10% (~$15-30) below **Uber Black Reserve**; owner adjusts in Rates as Uber moves.
+
+- **Frontend reads the live zone map**: new `lib/zonePrices.ts` fetches `GET /v1/rate-config` server-side with ISR (`revalidate = 300`); `/rides/[slug]`, `/rides`, and the homepage Popular routes resolve each route's `zoneKey` (new field in seoRoutes) against it — `priceFrom` is now only an offline fallback. FAQ answers use a `{{price}}` token filled at render (visible text + JSON-LD), so prose can never disagree with the number again.
+- **Booking screen**: pre-quote placeholder and pay-later amounts use the live `denver_metro` flat via `getRateConfig()` instead of a hardcoded 110.
+- **Chat assistant**: retired the $74/`$12+$2.40/mi` era — persona and mock replies now interpolate the live rate config (generic wording when offline).
+- **Event landings & social posts**: new `events.live_flat_price(db, tenant)` — `flat_price`, `one_way_from`, round-trip estimate, event social topic, and about-text fallback read the tenant override, not the import-time constant.
+- **Rates save path**: `_check_zone_prices` now strips entries equal to `DEFAULT_ZONE_PRICES`, storing only intentional deviations — the editor's full-map round-trip was permanently pinning every zone key, making future code recalibrations dead for the tenant.
+- **zones.py**: `metro_mid` renamed "Denver metro — outer ring" (it no longer contains DTC); base-address pin `_BASE_MARKERS` ("s fraser st") → core, so the flagship base→DEN price no longer depends on Google's Aurora/Centennial labeling or Centennial's ring; ring comment rewritten (benchmark rule, not distance).
+- **Tests**: dtc/denver tech/lone tree core-membership asserts added; base-street pin tested under both city labels; removed the hand-synced "not in <flat prices>" tuple (the `zone is None` assert above it is the real check).
+
 ## v0.66.3 — 2026-07-03 — Competitive zone pricing (Uber benchmark)
 
 **Problem:** the owner's own base→DEN test quoted **$140** — above Uber for the same reservation. Two causes: (1) Google formats the Aurora 80016 base as "Centennial, CO" and `centennial` sat in the $140 `metro_mid` ring; (2) several zones were priced above Uber Black for their typical airport run (RideGuru benchmark, 2026-07-03: DTC→DEN Black $112 vs our $140; Parker $123 vs $165; Brighton $87 vs $165; Boulder $170 vs $180; Denver→Vail $359 vs $390; Breck $303 vs $349; COS→DEN premium ~$230 vs $359; FoCo ~$208 vs $280; Greeley ~$176 vs $249).

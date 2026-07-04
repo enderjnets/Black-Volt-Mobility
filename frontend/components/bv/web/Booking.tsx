@@ -10,7 +10,7 @@ import { RidePreferencesFields } from "./RidePreferences";
 import { BVDatePicker, BVTimePicker } from "../DateTimePicker";
 import { useI18n } from "@/lib/i18n";
 import { buildScheduledAt } from "@/lib/datetime";
-import { ApiError, confirmRide, createRide, getQuote, validateDiscount, type Quote } from "@/lib/booking";
+import { ApiError, confirmRide, createRide, getQuote, validateDiscount, type Quote, getRateConfig } from "@/lib/booking";
 import { defaultRidePreferences, getProfile, type RidePreferences } from "@/lib/profile";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
 import { pixelTrack, pixelTrackCustom, purchaseEventId, track } from "@/lib/analytics";
@@ -149,6 +149,13 @@ export function Booking() {
   const [returnAt, setReturnAt] = useState<string | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
+  // Live DEN flat for pre-quote placeholders (owner tunes it in Rates).
+  const [denFlat, setDenFlat] = useState<number | null>(null);
+  useEffect(() => {
+    getRateConfig()
+      .then((rc) => setDenFlat(rc?.zone_prices?.denver_metro ?? null))
+      .catch(() => {});
+  }, []);
   // Registration wall: a 401 on /quote means the visitor must sign in first
   // (which also attributes them to their referring driver). `reload` re-runs the
   // quote after they authenticate.
@@ -261,7 +268,7 @@ export function Booking() {
   }, [step, from, to, pax, reload, appliedCode, roundTrip, returnAt]);
 
   // Display helpers — real quote when available, else the original mock values.
-  const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : "$110";
+  const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : `$${Math.round(denFlat ?? 110)}`;
   const distanceText = quote ? `${quote.distance_miles} mi` : quoting ? "—" : "18.4 mi";
   const etaText = quote ? `${Math.round(quote.duration_minutes)} min` : quoting ? "—" : "6 min";
 
@@ -689,7 +696,7 @@ export function Booking() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ color: "var(--silver)", fontSize: 14 }}>{t("book.fare")}</span>
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 32, color: "var(--arctic)" }}>
-                ${(quote ? quote.total : 110).toFixed(2)}
+                ${(quote ? quote.total : denFlat ?? 110).toFixed(2)}
               </span>
             </div>
             {quote?.event ? (
@@ -753,7 +760,7 @@ export function Booking() {
                   locationId={payCfg!.location_id!}
                   env={payCfg!.env}
                   sandbox={!payCfg!.live}
-                  amountLabel={`$${(quote ? quote.total : 110).toFixed(2)}`}
+                  amountLabel={`$${(quote ? quote.total : denFlat ?? 110).toFixed(2)}`}
                   onToken={handleToken}
                 />
               ) : (
@@ -784,7 +791,7 @@ export function Booking() {
                   }}
                 >
                   <Icon name="dollar-sign" size={18} color="var(--volt)" />
-                  {t("book.paylater.note").replace("{amount}", `$${(quote ? quote.total : 110).toFixed(2)}`)}
+                  {t("book.paylater.note").replace("{amount}", `$${(quote ? quote.total : denFlat ?? 110).toFixed(2)}`)}
                 </div>
                 <Button
                   variant="solid"
@@ -869,7 +876,7 @@ export function Booking() {
             </div>
             {payLater && (
               <p style={{ color: "var(--silver)", fontSize: 13, maxWidth: 320, margin: "0 auto 14px", lineHeight: 1.5 }}>
-                {t("book.confirmed.paylater").replace("{amount}", `$${(quote ? quote.total : 110).toFixed(2)}`)}
+                {t("book.confirmed.paylater").replace("{amount}", `$${(quote ? quote.total : denFlat ?? 110).toFixed(2)}`)}
               </p>
             )}
             <div

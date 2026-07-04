@@ -56,7 +56,12 @@ function Feature({ icon, title, body }: { icon: string; title: string; body: str
   );
 }
 
-export function Landing() {
+export function Landing({ zonePrices }: { zonePrices?: Record<string, number> | null } = {}) {
+  // Live zone price (passed from the server page) with the static teaser as fallback.
+  const routeFrom = (r: { zoneKey?: string; priceFrom: number | null }) => {
+    const live = r.zoneKey && zonePrices ? zonePrices[r.zoneKey] : undefined;
+    return typeof live === "number" && live > 0 ? Math.round(live) : r.priceFrom;
+  };
   const { t } = useI18n();
   const router = useRouter();
   return (
@@ -236,7 +241,7 @@ export function Landing() {
                   {r.shortLabel}
                 </span>
                 <span style={{ fontSize: 12.5, color: "var(--silver)" }}>
-                  {r.priceFrom != null ? `${t("home.routes.from")} $${r.priceFrom}` : t("home.routes.quote")}
+                  {routeFrom(r) != null ? `${t("home.routes.from")} $${routeFrom(r)}` : t("home.routes.quote")}
                 </span>
               </span>
               <span style={{ color: "var(--volt)", fontWeight: 700 }}>→</span>

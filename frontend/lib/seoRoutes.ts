@@ -33,6 +33,9 @@ export interface SeoRoute {
   prefillTo: string;
   /** example fare in USD, shown as "from $X" (null → show "Instant quote") */
   priceFrom: number | null;
+  /** Pricing-engine zone this route resolves to; lets pages read the LIVE price
+   *  (see lib/zonePrices.ts). priceFrom is only the offline fallback. */
+  zoneKey?: string;
   distanceMi: number;
   durationMin: number;
   /** unique intro paragraph */
@@ -60,7 +63,8 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Aurora → DEN",
     prefillFrom: "Aurora, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 110,
+    priceFrom: 105,
+    zoneKey: "denver_metro",
     distanceMi: 12,
     durationMin: 20,
     lede:
@@ -79,7 +83,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much does an Aurora to DEN ride cost?",
-        a: "Fares start around $110 for a private luxury SUV with a flat airport rate — the price is quoted upfront before you book, with no surge pricing.",
+        a: "Fares start around {{price}} for a private luxury SUV with a flat airport rate — the price is quoted upfront before you book, with no surge pricing.",
       },
       {
         q: "How early should I book my airport pickup?",
@@ -101,7 +105,8 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Cherry Creek → DEN",
     prefillFrom: "Cherry Creek, Denver, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 110,
+    priceFrom: 105,
+    zoneKey: "denver_metro",
     distanceMi: 20,
     durationMin: 31,
     lede:
@@ -120,7 +125,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "What does a Cherry Creek to airport ride cost?",
-        a: "From about $110 for a private luxury SUV at a flat airport rate, quoted upfront with no surge.",
+        a: "From about {{price}} for a private luxury SUV at a flat airport rate, quoted upfront with no surge.",
       },
       {
         q: "Can you pick up from a Cherry Creek hotel or store?",
@@ -138,7 +143,8 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "DTC → DEN",
     prefillFrom: "Denver Tech Center, Greenwood Village, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 110,
+    priceFrom: 105,
+    zoneKey: "denver_metro",
     distanceMi: 22,
     durationMin: 25,
     lede:
@@ -157,7 +163,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much is a DTC to DEN corporate transfer?",
-        a: "From about $110 for a private luxury SUV, quoted upfront so it's easy to approve and expense — no surge surprises.",
+        a: "From about {{price}} for a private luxury SUV, quoted upfront so it's easy to approve and expense — no surge surprises.",
       },
       {
         q: "How long does the DTC to airport drive take?",
@@ -175,7 +181,8 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Boulder → DEN",
     prefillFrom: "Boulder, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 165,
+    priceFrom: 140,
+    zoneKey: "boulder",
     distanceMi: 39,
     durationMin: 45,
     lede:
@@ -194,7 +201,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much is a Boulder to DEN ride?",
-        a: "From about $165 for a private luxury SUV — quoted upfront, no surge, and far more comfortable than a shared shuttle.",
+        a: "From about {{price}} for a private luxury SUV — quoted upfront, no surge, and far more comfortable than a shared shuttle.",
       },
       {
         q: "Is this better than an airport shuttle from Boulder?",
@@ -212,7 +219,8 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Red Rocks concert rides",
     prefillFrom: "Downtown Denver, CO",
     prefillTo: "Red Rocks Amphitheatre, Morrison, CO",
-    priceFrom: 140,
+    priceFrom: 115,
+    zoneKey: "metro_mid",
     distanceMi: 15,
     durationMin: 25,
     lede:
@@ -231,7 +239,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much does a Red Rocks ride cost?",
-        a: "One-way fares start around $140 from central Denver in a private luxury SUV; round trips are quoted upfront based on your pickup point and wait time.",
+        a: "One-way fares start around {{price}} from central Denver in a private luxury SUV; round trips are quoted upfront based on your pickup point and wait time.",
       },
       {
         q: "Can you take a group to a concert?",
@@ -249,7 +257,8 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Denver → Vail",
     prefillFrom: "Denver, CO",
     prefillTo: "Vail, CO",
-    priceFrom: 349,
+    priceFrom: 329,
+    zoneKey: "vail",
     distanceMi: 97,
     durationMin: 105,
     lede:
@@ -268,7 +277,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much is a private transfer from Denver to Vail?",
-        a: "From about $349 for a private luxury SUV door-to-door — quoted upfront, with no per-seat shuttle pricing or surprises.",
+        a: "From about {{price}} for a private luxury SUV door-to-door — quoted upfront, with no per-seat shuttle pricing or surprises.",
       },
       {
         q: "Can you pick us up at DEN airport for a Vail transfer?",
@@ -291,6 +300,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     prefillFrom: "Denver, CO",
     prefillTo: "Breckenridge, CO",
     priceFrom: 299,
+    zoneKey: "summit",
     distanceMi: 81,
     durationMin: 95,
     lede:
@@ -309,7 +319,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "What does a Denver to Breckenridge transfer cost?",
-        a: "From about $299 for a private luxury SUV door-to-door, quoted upfront — no per-person shuttle fares.",
+        a: "From about {{price}} for a private luxury SUV door-to-door, quoted upfront — no per-person shuttle fares.",
       },
       {
         q: "Can you pick us up from DEN for Breckenridge?",
@@ -328,6 +338,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     prefillFrom: "Denver, CO",
     prefillTo: "Aspen, CO",
     priceFrom: 790,
+    zoneKey: "aspen",
     distanceMi: 159,
     durationMin: 205,
     lede:
@@ -346,7 +357,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much is a private car from Denver to Aspen?",
-        a: "From about $790 for a private luxury SUV door-to-door for your whole party — quoted upfront, no per-person pricing.",
+        a: "From about {{price}} for a private luxury SUV door-to-door for your whole party — quoted upfront, no per-person pricing.",
       },
       {
         q: "Is a private transfer better than flying to Aspen?",

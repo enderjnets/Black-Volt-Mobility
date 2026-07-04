@@ -1,3 +1,4 @@
+import { getZonePrices } from "@/lib/zonePrices";
 import { Landing } from "@/components/bv/web/Landing";
 import { SITE_ORIGIN } from "@/lib/seoRoutes";
 
@@ -27,14 +28,17 @@ const localBusinessLd = {
   priceRange: "$$$",
 };
 
-export default function Page() {
+export const revalidate = 300; // live zone prices for Popular routes
+
+export default async function Page() {
+  const zonePrices = await getZonePrices();
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessLd) }}
       />
-      <Landing />
+      <Landing zonePrices={zonePrices} />
     </>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SEO_ROUTES, SITE_ORIGIN } from "@/lib/seoRoutes";
+import { getZonePrices, routePrice } from "@/lib/zonePrices";
 
 export const metadata: Metadata = {
   title: "Routes & Rides — Black Volt Mobility (Denver)",
@@ -19,7 +20,10 @@ export const metadata: Metadata = {
 
 const fmtPrice = (n: number) => `$${n.toLocaleString("en-US")}`;
 
-export default function RidesHub() {
+export const revalidate = 300; // live zone prices from the Rates dashboard
+
+export default async function RidesHub() {
+  const zonePrices = await getZonePrices();
   return (
     <main style={{ maxWidth: 760, margin: "0 auto", padding: "28px 18px 64px" }}>
       <h1
@@ -64,7 +68,7 @@ export default function RidesHub() {
                 {r.shortLabel}
               </span>
               <span style={{ fontSize: 13, color: "var(--fg3)" }}>
-                {r.priceFrom != null ? `from ${fmtPrice(r.priceFrom)}` : "Instant quote"} · ~
+                {routePrice(r, zonePrices) != null ? `from ${fmtPrice(routePrice(r, zonePrices)!)}` : "Instant quote"} · ~
                 {r.distanceMi} mi
               </span>
             </span>
