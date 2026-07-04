@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.66.3 — 2026-07-03 — Competitive zone pricing (Uber benchmark)
+
+**Problem:** the owner's own base→DEN test quoted **$140** — above Uber for the same reservation. Two causes: (1) Google formats the Aurora 80016 base as "Centennial, CO" and `centennial` sat in the $140 `metro_mid` ring; (2) several zones were priced above Uber Black for their typical airport run (RideGuru benchmark, 2026-07-03: DTC→DEN Black $112 vs our $140; Parker $123 vs $165; Brighton $87 vs $165; Boulder $170 vs $180; Denver→Vail $359 vs $390; Breck $303 vs $349; COS→DEN premium ~$230 vs $359; FoCo ~$208 vs $280; Greeley ~$176 vs $249).
+
+**Changes (rule: flat ≤ Uber Black on-demand → always ≤ Uber Reserve):**
+- `backend/app/services/zones.py` ring membership recalibrated to the Black→DEN benchmark: **centennial, greenwood village, denver tech, dtc, lone tree, parker, broomfield, brighton → `denver_metro` $110**; `metro_mid` $140 keeps golden/highlands ranch/morrison + castle pines (down from far); `metro_far` $165 is castle rock only.
+- Zone prices: **boulder 180→165, vail 390→349, summit 349→299, colorado_springs 359→229, fort_collins 280→199, loveland_greeley 249→169**. Aspen stays $790 (owner decision: no price war on Aspen) and denver_metro/DEN stays $110. Owner decisions 2026-07-03: Brighton joins the $110 core (parity with Uber's SUV tier — Black sedan is uncatchable there); short intra-metro trips stay on the $110 flat (not the target business).
+- Prod + local dev `rate_configs.zone_prices` override (tenant 1) updated to the same map — the override is what quotes actually read.
+- `frontend/lib/seoRoutes.ts` teasers synced: DTC **$110**, Boulder **$165**, Vail **$349**, Breck **$299** (priceFrom + FAQ); Aurora/Cherry Creek $110, Red Rocks $140, Aspen $790 unchanged.
+- New regression test: base address with the "Centennial" Google label must price as `denver_metro` $110.
+
 ## v0.66.2 — 2026-07-03 — Price teaser sync + ad deep-link
 
 **Problem:** customer-facing teaser prices had drifted from the live quote engine. The homepage cards, `/rides/[slug]` labels + JSON-LD, the `/book` placeholder fare, and the event landing all showed **$120** (and Boulder **$190**, plus stale mountain FAQ figures) while the real flat zones charge **$110** metro/DEN, **$140** outer/DTC, **$165** far ring, **$180** Boulder — a price a customer would see advertised and then not match at checkout (bad UX + SEO doorway risk).

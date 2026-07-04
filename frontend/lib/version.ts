@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.66.2";
+export const CURRENT_VERSION = "0.66.3";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.66.3",
+    date: "2026-07-03",
+    title: "More competitive flat-zone pricing",
+    changes: [
+      "Recalibrated every flat-rate zone against current market prices so a Black Volt ride is priced at or below a comparable premium Uber: Boulder ↔ DEN is now $165 (was $180), Denver ↔ Vail $349 (was $390), Summit County $299 (was $349), Colorado Springs $229 (was $359), Fort Collins $199 (was $280), and Loveland/Greeley $169 (was $249).",
+      "Centennial, DTC/Greenwood Village, Lone Tree, Parker, Broomfield, and Brighton now price at the core Denver metro flat rate of $110 to DEN — previously they quoted $140–$165.",
+      "Fixed addresses on the Aurora/Centennial border (including our home base) quoting the outer-ring price instead of the $110 metro rate.",
+    ],
+  },
   {
     version: "0.66.2",
     date: "2026-07-03",

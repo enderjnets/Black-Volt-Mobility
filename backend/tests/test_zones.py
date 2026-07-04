@@ -32,12 +32,12 @@ def test_every_zone_matches_its_own_town_from_the_base():
 def test_prices_match_the_owner_map():
     assert DEFAULT_ZONE_PRICES == {
         "aspen": 790.0,
-        "vail": 390.0,
-        "summit": 349.0,
-        "colorado_springs": 359.0,
-        "fort_collins": 280.0,
-        "loveland_greeley": 249.0,
-        "boulder": 180.0,
+        "vail": 349.0,
+        "summit": 299.0,
+        "colorado_springs": 229.0,
+        "fort_collins": 199.0,
+        "loveland_greeley": 169.0,
+        "boulder": 165.0,
         "metro_far": 165.0,
         "metro_mid": 140.0,
         "denver_metro": 110.0,
@@ -54,7 +54,7 @@ def test_symmetry_either_endpoint():
 def test_precedence_farther_zone_beats_metro():
     # Base is in the metro, so origin always carries a metro term; the farther zone must win.
     hit = _hit("Aurora, CO, USA", "Vail, CO 81657, USA")
-    assert hit is not None and hit.key == "vail" and hit.flat == 390.0
+    assert hit is not None and hit.key == "vail" and hit.flat == 349.0
 
 
 def test_den_airport_is_metro_110():
@@ -82,22 +82,33 @@ def test_golden_is_metro_not_a_den_substring():
     assert hit is not None and hit.key == "metro_mid"
 
 
-def test_metro_tiers_by_distance():
-    # Close-in stays denver_metro; outer suburbs step up; far ring is highest.
+def test_metro_tiers_by_uber_black_benchmark():
+    # Rings follow the Uber Black →DEN benchmark (2026-07), not distance from the base:
+    # a town leaves the $110 core only while Black clears ~$140 for its airport run.
     assert _hit("Aurora, CO", "Cherry Hills Village, CO").key == "denver_metro"
-    assert _hit("Aurora, CO", "Greenwood Village, CO").key == "metro_mid"
-    assert _hit("Aurora, CO", "Highlands Ranch, CO").key == "metro_mid"
-    assert _hit("Aurora, CO", "Castle Pines, CO").key == "metro_far"
-    assert _hit("Aurora, CO", "Parker, CO").key == "metro_far"
-    # Distance-consistent outliers: Brighton (~20mi) is far; Broomfield (~15mi) is mid.
-    assert _hit("Aurora, CO", "Brighton, CO").key == "metro_far"
-    assert _hit("Aurora, CO", "Broomfield, CO").key == "metro_mid"
-    assert _hit("Aurora, CO", "Morrison, CO").key == "metro_mid"  # Red Rocks town, ~17mi
+    assert _hit("Aurora, CO", "Greenwood Village, CO").key == "denver_metro"  # Black ~$112
+    assert _hit("Aurora, CO", "Parker, CO").key == "denver_metro"  # Black ~$123
+    assert _hit("Aurora, CO", "Brighton, CO").key == "denver_metro"  # Black ~$87 (near DEN)
+    assert _hit("Aurora, CO", "Broomfield, CO").key == "denver_metro"  # Black ~$112
+    assert _hit("Aurora, CO", "Highlands Ranch, CO").key == "metro_mid"  # Black ~$162
+    assert _hit("Aurora, CO", "Castle Pines, CO").key == "metro_mid"  # Black ~$155
+    assert _hit("Aurora, CO", "Morrison, CO").key == "metro_mid"  # Red Rocks town
+    assert _hit("Aurora, CO", "Castle Rock, CO").key == "metro_far"  # Black ~$175
+
+
+def test_base_address_centennial_label_is_core_110():
+    # Google formats the Aurora 80016 base as "Centennial, CO" — it must price as the
+    # $110 core, not the outer ring (regression: owner's own base→DEN quoted $140).
+    hit = _hit(
+        "6000 S Fraser St, Centennial, CO 80016, USA",
+        "Denver International Airport (DEN), 8500 Peña Blvd, Denver, CO 80249, USA",
+    )
+    assert hit is not None and hit.key == "denver_metro" and hit.flat == 110.0
 
 
 def test_far_pickup_beats_close_dropoff():
     # A far-ring pickup to a downtown venue prices at the farther zone (precedence).
-    hit = _hit("Castle Pines, CO", "1701 Bryant St, Denver, CO")
+    hit = _hit("Castle Rock, CO", "1701 Bryant St, Denver, CO")
     assert hit is not None and hit.key == "metro_far" and hit.flat == 165.0
 
 
@@ -118,7 +129,7 @@ def test_per_tenant_price_override():
 
 def test_override_ignores_unknown_and_bad_values():
     hit = _hit("Denver, CO, USA", "Vail, CO, USA", prices={"vail": "not-a-number"})
-    assert hit is not None and hit.key == "vail" and hit.flat == 390.0  # falls back to default
+    assert hit is not None and hit.key == "vail" and hit.flat == 349.0  # falls back to default
 
 
 def test_descriptors_cover_all_zones_in_order():

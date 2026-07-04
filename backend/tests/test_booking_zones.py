@@ -102,4 +102,4 @@ def test_build_quote_out_of_zone_is_metered():
     # Metered fare from the simulated route; just assert it's a positive metered number,
     # not a flat zone price.
     assert q["total"] > 0
-    assert q["total"] not in (110.0, 180.0, 249.0, 280.0, 349.0, 359.0, 390.0, 790.0)
+    assert q["total"] not in (110.0, 140.0, 165.0, 169.0, 199.0, 229.0, 299.0, 349.0, 790.0)

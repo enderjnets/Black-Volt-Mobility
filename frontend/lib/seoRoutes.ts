@@ -138,7 +138,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "DTC → DEN",
     prefillFrom: "Denver Tech Center, Greenwood Village, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 140,
+    priceFrom: 110,
     distanceMi: 22,
     durationMin: 25,
     lede:
@@ -157,7 +157,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much is a DTC to DEN corporate transfer?",
-        a: "From about $140 for a private luxury SUV, quoted upfront so it's easy to approve and expense — no surge surprises.",
+        a: "From about $110 for a private luxury SUV, quoted upfront so it's easy to approve and expense — no surge surprises.",
       },
       {
         q: "How long does the DTC to airport drive take?",
@@ -175,7 +175,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Boulder → DEN",
     prefillFrom: "Boulder, CO",
     prefillTo: "Denver International Airport (DEN)",
-    priceFrom: 180,
+    priceFrom: 165,
     distanceMi: 39,
     durationMin: 45,
     lede:
@@ -194,7 +194,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much is a Boulder to DEN ride?",
-        a: "From about $180 for a private luxury SUV — quoted upfront, no surge, and far more comfortable than a shared shuttle.",
+        a: "From about $165 for a private luxury SUV — quoted upfront, no surge, and far more comfortable than a shared shuttle.",
       },
       {
         q: "Is this better than an airport shuttle from Boulder?",
@@ -249,7 +249,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Denver → Vail",
     prefillFrom: "Denver, CO",
     prefillTo: "Vail, CO",
-    priceFrom: 390,
+    priceFrom: 349,
     distanceMi: 97,
     durationMin: 105,
     lede:
@@ -268,7 +268,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "How much is a private transfer from Denver to Vail?",
-        a: "From about $390 for a private luxury SUV door-to-door — quoted upfront, with no per-seat shuttle pricing or surprises.",
+        a: "From about $349 for a private luxury SUV door-to-door — quoted upfront, with no per-seat shuttle pricing or surprises.",
       },
       {
         q: "Can you pick us up at DEN airport for a Vail transfer?",
@@ -290,7 +290,7 @@ export const SEO_ROUTES: SeoRoute[] = [
     shortLabel: "Denver → Breckenridge",
     prefillFrom: "Denver, CO",
     prefillTo: "Breckenridge, CO",
-    priceFrom: 349,
+    priceFrom: 299,
     distanceMi: 81,
     durationMin: 95,
     lede:
@@ -309,7 +309,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       },
       {
         q: "What does a Denver to Breckenridge transfer cost?",
-        a: "From about $349 for a private luxury SUV door-to-door, quoted upfront — no per-person shuttle fares.",
+        a: "From about $299 for a private luxury SUV door-to-door, quoted upfront — no per-person shuttle fares.",
       },
       {
         q: "Can you pick us up from DEN for Breckenridge?",

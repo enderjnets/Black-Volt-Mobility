@@ -44,13 +44,13 @@ ZONES: tuple[Zone, ...] = (
     Zone(
         "vail",
         "Vail / Beaver Creek / Eagle",
-        390.0,
+        349.0,
         ("vail", "beaver creek", "avon", "edwards", "eagle", "eagle-vail", "gypsum", "minturn"),
     ),
     Zone(
         "summit",
         "Summit County",
-        349.0,
+        299.0,
         (
             "breckenridge",
             "frisco",
@@ -64,7 +64,7 @@ ZONES: tuple[Zone, ...] = (
     Zone(
         "colorado_springs",
         "Colorado Springs",
-        359.0,
+        229.0,
         (
             "colorado springs",
             "monument",
@@ -81,39 +81,35 @@ ZONES: tuple[Zone, ...] = (
     Zone(
         "fort_collins",
         "Fort Collins / Wellington",
-        280.0,
+        199.0,
         ("fort collins", "wellington", "windsor", "severance", "timnath", "laporte"),
     ),
     Zone(
         "loveland_greeley",
         "Loveland / Greeley",
-        249.0,
+        169.0,
         ("loveland", "greeley", "johnstown", "berthoud", "evans", "milliken", "kersey"),
     ),
-    Zone("boulder", "Boulder", 180.0, ("boulder", "pine brook hill", "gunbarrel")),
+    Zone("boulder", "Boulder", 165.0, ("boulder", "pine brook hill", "gunbarrel")),
     # Outer/far metro rings — priced above the close-in metro to reflect the longer drive.
     # These MUST precede denver_metro so that on a mixed trip (far pickup → downtown venue)
-    # the farther pickup zone wins the price.
+    # the farther pickup zone wins the price. Ring membership is calibrated to Uber Black
+    # →DEN estimates (2026-07): a town stays out of the core only while Black clears ~$140.
     Zone(
         "metro_far",
         "Denver metro — far ring",
         165.0,
-        ("castle pines", "castle rock", "parker", "brighton"),
+        ("castle rock",),
     ),
     Zone(
         "metro_mid",
         "Denver metro — outer / DTC",
         140.0,
         (
-            "greenwood village",
-            "denver tech",
-            "dtc",
-            "centennial",
-            "highlands ranch",
-            "lone tree",
             "golden",
-            "broomfield",
+            "highlands ranch",
             "morrison",
+            "castle pines",
         ),
     ),
     Zone(
@@ -137,6 +133,14 @@ ZONES: tuple[Zone, ...] = (
             "louisville",
             "lafayette",
             "superior",
+            "centennial",
+            "greenwood village",
+            "denver tech",
+            "dtc",
+            "lone tree",
+            "parker",
+            "broomfield",
+            "brighton",
             "denver international",
             "dia",
         ),
