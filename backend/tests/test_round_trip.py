@@ -75,8 +75,8 @@ async def test_build_round_trip_quote_event_fees_once(db, owner):
     assert labels.count("event_fee") == 1
     assert labels.count("wait_fee") == 1
     assert q["round_trip"] is True
-    # 120 + 120 + 40 + 25 + 90.
-    assert q["total"] == 395.0
+    # 110 + 110 + 40 + 25 + 90.
+    assert q["total"] == 375.0
 
 
 @pytest.mark.asyncio
@@ -89,8 +89,8 @@ async def test_create_round_trip_links_and_splits(db, owner):
     )
     assert outbound.return_ride_id == ret.id
     assert ret.is_return is True and outbound.is_return is False
-    assert round(outbound.fare_total + ret.fare_total, 2) == 395.0
-    assert outbound.price_breakdown["round_trip_total"] == 395.0
+    assert round(outbound.fare_total + ret.fare_total, 2) == 375.0
+    assert outbound.price_breakdown["round_trip_total"] == 375.0
 
 
 @pytest.mark.asyncio
@@ -105,7 +105,7 @@ async def test_payment_covers_both_legs(db, owner):
         db, tenant_id=owner, ride=outbound, source_id="cnon:card-nonce-ok",
     )
     # Charge equals the combined total, not just the outbound share.
-    assert pay.amount == 39500
+    assert pay.amount == 37500
     # Event rides are captured in full at booking (not held), so both legs are paid now.
     assert pay.status.value == "captured"
     await db.refresh(outbound)
@@ -164,13 +164,13 @@ async def test_round_trip_ignores_client_amount(db, owner):
     pay = await payments.authorize_for_ride(
         db, tenant_id=owner, ride=outbound, source_id="cnon:card-nonce-ok", amount=1,
     )
-    assert pay.amount == 39500  # server-computed combined total, not the client's 1 cent
+    assert pay.amount == 37500  # server-computed combined total, not the client's 1 cent
 
 
 @pytest.mark.asyncio
 async def test_override_below_return_fare_no_negative_leg(db, owner):
     ev = await _mk_event(db, owner)
-    ev.round_trip_price = 100  # below the ~$120 return-leg fare
+    ev.round_trip_price = 100  # below the ~$110 return-leg fare
     await db.commit()
     outbound, ret = await booking.create_round_trip(
         db, tenant_id=owner, pickup="Downtown Denver, CO",

@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.66.1";
+export const CURRENT_VERSION = "0.66.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.66.2",
+    date: "2026-07-03",
+    title: "Accurate route prices across the site",
+    changes: [
+      "Synced every quoted price shown on the homepage, route pages, and the booking screen to the live pricing engine, so the fare you see always matches the fare you pay. The Denver metro / DEN airport flat rate is $110, with per-distance pricing for outer-metro and mountain transfers.",
+      "Fixed stale example fares on the Boulder, Vail, Breckenridge, Aspen, DTC, and Red Rocks route pages that were still quoting old numbers.",
+    ],
+  },
   {
     version: "0.66.1",
     date: "2026-07-03",

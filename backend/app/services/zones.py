@@ -90,7 +90,7 @@ ZONES: tuple[Zone, ...] = (
         249.0,
         ("loveland", "greeley", "johnstown", "berthoud", "evans", "milliken", "kersey"),
     ),
-    Zone("boulder", "Boulder", 190.0, ("boulder", "pine brook hill", "gunbarrel")),
+    Zone("boulder", "Boulder", 180.0, ("boulder", "pine brook hill", "gunbarrel")),
     # Outer/far metro rings — priced above the close-in metro to reflect the longer drive.
     # These MUST precede denver_metro so that on a mixed trip (far pickup → downtown venue)
     # the farther pickup zone wins the price.
@@ -119,7 +119,7 @@ ZONES: tuple[Zone, ...] = (
     Zone(
         "denver_metro",
         "Denver metro / DEN airport",
-        120.0,
+        110.0,
         (
             "denver",
             "aurora",

@@ -261,7 +261,7 @@ export function Booking() {
   }, [step, from, to, pax, reload, appliedCode, roundTrip, returnAt]);
 
   // Display helpers — real quote when available, else the original mock values.
-  const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : "$120";
+  const fareText = quote ? `$${Math.round(quote.total)}` : quoting ? "—" : "$110";
   const distanceText = quote ? `${quote.distance_miles} mi` : quoting ? "—" : "18.4 mi";
   const etaText = quote ? `${Math.round(quote.duration_minutes)} min` : quoting ? "—" : "6 min";
 
@@ -689,7 +689,7 @@ export function Booking() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ color: "var(--silver)", fontSize: 14 }}>{t("book.fare")}</span>
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 32, color: "var(--arctic)" }}>
-                ${(quote ? quote.total : 120).toFixed(2)}
+                ${(quote ? quote.total : 110).toFixed(2)}
               </span>
             </div>
             {quote?.event ? (
@@ -753,7 +753,7 @@ export function Booking() {
                   locationId={payCfg!.location_id!}
                   env={payCfg!.env}
                   sandbox={!payCfg!.live}
-                  amountLabel={`$${(quote ? quote.total : 120).toFixed(2)}`}
+                  amountLabel={`$${(quote ? quote.total : 110).toFixed(2)}`}
                   onToken={handleToken}
                 />
               ) : (
@@ -784,7 +784,7 @@ export function Booking() {
                   }}
                 >
                   <Icon name="dollar-sign" size={18} color="var(--volt)" />
-                  {t("book.paylater.note").replace("{amount}", `$${(quote ? quote.total : 120).toFixed(2)}`)}
+                  {t("book.paylater.note").replace("{amount}", `$${(quote ? quote.total : 110).toFixed(2)}`)}
                 </div>
                 <Button
                   variant="solid"
@@ -869,7 +869,7 @@ export function Booking() {
             </div>
             {payLater && (
               <p style={{ color: "var(--silver)", fontSize: 13, maxWidth: 320, margin: "0 auto 14px", lineHeight: 1.5 }}>
-                {t("book.confirmed.paylater").replace("{amount}", `$${(quote ? quote.total : 120).toFixed(2)}`)}
+                {t("book.confirmed.paylater").replace("{amount}", `$${(quote ? quote.total : 110).toFixed(2)}`)}
               </p>
             )}
             <div

@@ -83,7 +83,7 @@ def test_build_quote_applies_zone_flat():
 def test_build_quote_metro_flat_for_local_ride():
     tid = _run(_mk_tenant("bz-metro"))
     q = _run(_quote(tid, "Aurora, CO, USA", "Cherry Creek, Denver, CO, USA"))
-    assert q["total"] == 120.0
+    assert q["total"] == 110.0
     assert q["zone"] == "denver_metro"
 
 
@@ -102,4 +102,4 @@ def test_build_quote_out_of_zone_is_metered():
     # Metered fare from the simulated route; just assert it's a positive metered number,
     # not a flat zone price.
     assert q["total"] > 0
-    assert q["total"] not in (120.0, 190.0, 249.0, 280.0, 349.0, 359.0, 390.0, 790.0)
+    assert q["total"] not in (110.0, 180.0, 249.0, 280.0, 349.0, 359.0, 390.0, 790.0)

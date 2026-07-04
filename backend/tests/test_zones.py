@@ -37,10 +37,10 @@ def test_prices_match_the_owner_map():
         "colorado_springs": 359.0,
         "fort_collins": 280.0,
         "loveland_greeley": 249.0,
-        "boulder": 190.0,
+        "boulder": 180.0,
         "metro_far": 165.0,
         "metro_mid": 140.0,
-        "denver_metro": 120.0,
+        "denver_metro": 110.0,
     }
 
 
@@ -57,23 +57,23 @@ def test_precedence_farther_zone_beats_metro():
     assert hit is not None and hit.key == "vail" and hit.flat == 390.0
 
 
-def test_den_airport_is_metro_120():
+def test_den_airport_is_metro_110():
     hit = _hit(
         "6000 S Fraser St, Aurora, CO, USA",
         "Denver International Airport (DEN), 8500 Peña Blvd, Denver, CO 80249, USA",
     )
-    assert hit is not None and hit.key == "denver_metro" and hit.flat == 120.0
+    assert hit is not None and hit.key == "denver_metro" and hit.flat == 110.0
 
 
-def test_within_metro_local_is_120():
+def test_within_metro_local_is_110():
     hit = _hit("Aurora, CO, USA", "Cherry Creek, Denver, CO, USA")
-    assert hit is not None and hit.key == "denver_metro" and hit.flat == 120.0
+    assert hit is not None and hit.key == "denver_metro" and hit.flat == 110.0
 
 
 def test_tricky_aspen_grove_is_metro_not_aspen():
     # "Aspen Grove" is a mall in Littleton (metro) — must NOT price as Aspen $790.
     hit = _hit("Aurora, CO, USA", "Aspen Grove, S Broadway, Littleton, CO 80120, USA")
-    assert hit is not None and hit.key == "denver_metro" and hit.flat == 120.0
+    assert hit is not None and hit.key == "denver_metro" and hit.flat == 110.0
 
 
 def test_golden_is_metro_not_a_den_substring():

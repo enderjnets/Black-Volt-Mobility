@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.66.2 — 2026-07-03 — Price teaser sync + ad deep-link
+
+**Problem:** customer-facing teaser prices had drifted from the live quote engine. The homepage cards, `/rides/[slug]` labels + JSON-LD, the `/book` placeholder fare, and the event landing all showed **$120** (and Boulder **$190**, plus stale mountain FAQ figures) while the real flat zones charge **$110** metro/DEN, **$140** outer/DTC, **$165** far ring, **$180** Boulder — a price a customer would see advertised and then not match at checkout (bad UX + SEO doorway risk).
+
+**Changes:**
+- `backend/app/services/zones.py`: code defaults aligned to the owner's Rates configurator — `denver_metro` 120→**110**, `boulder` 190→**180** (all other zones already matched). `DEFAULT_ZONE_PRICES`, `ZONE_DESCRIPTORS`, and `events.py` `FLAT_PRICE` derive from these, so the event landing + social posts auto-follow. The DB `rate_configs` override (source of truth) was already correct on prod; this only fixes the code fallback.
+- `frontend/lib/seoRoutes.ts`: `priceFrom` + FAQ prose synced to live quotes per route — Aurora/Cherry Creek **$110**, DTC + Red Rocks **$140**, Boulder **$180**, and mountain FAQ figures corrected to the real flat (Vail **$390**, Breck **$349**, Aspen **$790**). Home cards, `/rides` list, and `/rides/[slug]` label/JSON-LD all read from this.
+- `frontend/components/bv/web/Booking.tsx`: pre-quote placeholder fare 120→**110**.
+- Ad deep-link: Instagram/Facebook paid campaign points to `/book?to=Denver%20International%20Airport&utm_source=ig&utm_medium=paid&utm_campaign=den-flat-110` — destination prefilled so the visitor sees a quote immediately.
+- Tests updated to the new prices (`test_zones`, `test_booking_zones`, `test_booking_api`, `test_events_*`, `test_round_trip`, `test_event_pricing`); round-trip combined total 395→**375** (2×110 + $40 event + $25 night + $90 wait). 613 backend tests pass; ruff/tsc/lint/build clean.
+
 ## v0.66.1 — 2026-07-03 — Ad measurement (Meta Pixel + Conversions API)
 
 The Instagram/Facebook ads run on a *Traffic* objective, so Meta was optimizing for

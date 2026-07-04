@@ -129,7 +129,7 @@ def test_public_detail_404_on_draft_and_ok_on_published():
     assert r.status_code == 200
     body = r.json()
     assert body["venue_profile"]["dropoff"]
-    assert body["flat_price"] == 120
+    assert body["flat_price"] == 110
     assert body["passed"] is False
     assert "hero_path" not in body  # internal path not leaked
 

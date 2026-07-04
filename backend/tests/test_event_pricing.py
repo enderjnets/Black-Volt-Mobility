@@ -251,9 +251,9 @@ async def test_suggest_round_trip_math_override_cap(db, owner):
     out = await event_pricing.suggest_round_trip(db, event=ev, origin="Downtown Denver, CO")
     labels = {x["label"] for x in out["lines"]}
     assert {"ride_out", "ride_return", "event_fee", "night_fee", "wait_fee"} <= labels
-    # ride legs are the denver_metro flat ($120 each) → 240 + 40 + 25 + 90 = 395.
-    assert out["formula_total"] == 395.0
-    assert out["total"] == 395.0 and out["overridden"] is False and out["capped"] is False
+    # ride legs are the denver_metro flat ($110 each) → 220 + 40 + 25 + 90 = 375.
+    assert out["formula_total"] == 375.0
+    assert out["total"] == 375.0 and out["overridden"] is False and out["capped"] is False
 
     # Uber cap: below-formula estimate trims the suggestion to 0.92×uber.
     capped = await event_pricing.suggest_round_trip(
@@ -281,8 +281,8 @@ async def test_public_event_exposes_prices_not_strategy(db, owner):
     await db.commit()
     pub = await events.get_public_event(db, slug=ev.slug)
     assert pub is not None
-    assert pub["one_way_from"] == 160.0  # 120 flat + 40 event fee
-    assert pub["round_trip_price"] == 395.0  # 240 + 40 + 25 + 90
+    assert pub["one_way_from"] == 150.0  # 110 flat + 40 event fee
+    assert pub["round_trip_price"] == 375.0  # 220 + 40 + 25 + 90
     assert "return_at" in pub
     # Internal strategy / raw fees must not leak publicly.
     for leaked in ("pricing_research", "night_fee", "wait_fee_per_hour", "est_duration_hours"):

@@ -34,7 +34,7 @@ _ARCHIVE_GRACE = dt.timedelta(hours=6)  # keep a landing live a bit past showtim
 _DENVER_TZ = ZoneInfo("America/Denver")
 # Single source of truth: the metered engine's flat Denver-metro fare (owner-editable
 # default), not a magic number. Events fall in the denver_metro zone.
-FLAT_PRICE = int(DEFAULT_ZONE_PRICES.get("denver_metro", 120))
+FLAT_PRICE = int(DEFAULT_ZONE_PRICES.get("denver_metro", 110))
 
 
 def _now() -> dt.datetime:

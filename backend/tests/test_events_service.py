@@ -168,7 +168,7 @@ async def test_public_endpoints_shape(db, owner):
     detail = await events.get_public_event(db, slug=slug)
     assert detail is not None
     assert detail["venue_profile"]["dropoff"]
-    assert detail["flat_price"] == 120
+    assert detail["flat_price"] == 110
     assert detail["passed"] is False
 
     # Draft event → hidden from public detail.

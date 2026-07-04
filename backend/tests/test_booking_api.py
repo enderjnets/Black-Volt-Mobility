@@ -52,10 +52,10 @@ def test_quote_den_airport_is_metro_flat():
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    # DEN now folds into the Denver-metro flat zone ($120), not the old airport floor.
+    # DEN now folds into the Denver-metro flat zone ($110), not the old airport floor.
     assert body["is_airport"] is False
     assert body["zone"] == "denver_metro"
-    assert body["total"] == 120.0
+    assert body["total"] == 110.0
 
 
 def test_places_autocomplete():
