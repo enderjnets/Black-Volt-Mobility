@@ -18,8 +18,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_passenger, require_staff, resolve_tenant_id
 from app.db.base import get_db
-from app.models import ChatConversation, ChatMessage, ChatRole, ChatStatus, Client, Tenant
-from app.services import email, joules, ratelimit
+from app.models import (
+    ChatConversation,
+    ChatMessage,
+    ChatRole,
+    ChatStatus,
+    Client,
+    NotificationKind,
+    Tenant,
+)
+from app.services import email, joules, notifications, ratelimit
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -204,7 +212,8 @@ async def send_message(
     if body.lang:
         conv.lang = body.lang
     conv.last_message_at = now
-    conv.unread_for_staff = (conv.unread_for_staff or 0) + 1
+    unread_before = conv.unread_for_staff or 0
+    conv.unread_for_staff = unread_before + 1
 
     newly_escalated = escalated and conv.status != ChatStatus.ESCALATED
     if newly_escalated:
@@ -223,6 +232,27 @@ async def send_message(
             pass
 
     await db.commit()
+
+    # Bell notification (best-effort, after the messages are durable). A newly
+    # escalated chat notifies as chat_escalated; otherwise notify once per unread
+    # batch (unread_before == 0) so a run of passenger messages isn't spammy.
+    client_name = (
+        (getattr(client, "name", None) or getattr(client, "email", None)) if client else None
+    )
+    if newly_escalated:
+        await notifications.emit(
+            db,
+            tenant_id=conv.tenant_id,
+            kind=NotificationKind.chat_escalated,
+            data={"conversation_id": conv.id, "client_name": client_name},
+        )
+    elif unread_before == 0:
+        await notifications.emit(
+            db,
+            tenant_id=conv.tenant_id,
+            kind=NotificationKind.chat_message,
+            data={"conversation_id": conv.id, "client_name": client_name},
+        )
     return ChatSendOut(reply=reply_text, escalated=escalated, conversation_id=conv.id)
 
 

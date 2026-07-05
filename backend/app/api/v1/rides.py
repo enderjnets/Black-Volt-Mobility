@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import current_payload, require_auth, require_staff, resolve_tenant_id
 from app.config import get_settings
 from app.db.base import get_db
-from app.models import PaymentMethod, Ride, RideStatus
+from app.models import NotificationKind, PaymentMethod, Ride, RideStatus
 from app.services import (
     auth,
     booking,
@@ -32,6 +32,7 @@ from app.services import (
     email,
     event_pricing,
     maps,
+    notifications,
     payments,
     payments_square,
     profile,
@@ -546,6 +547,17 @@ async def confirm_ride(
         await db.refresh(ride)
         await booking.sync_ride_to_calendar(db, ride)
         await email.send_driver_new_ride(db, ride=ride)
+        await notifications.emit(
+            db,
+            tenant_id=getattr(ride, "assigned_tenant_id", None) or ride.tenant_id,
+            kind=NotificationKind.ride_new,
+            data={
+                "ride_id": ride.id,
+                "pickup": ride.pickup_text,
+                "dropoff": ride.dropoff_text,
+                "client_name": (ride.passenger_name or "").strip() or None,
+            },
+        )
     return _ride_out(ride)
 
 
@@ -751,6 +763,17 @@ async def cancel_ride(
     await db.commit()
     await db.refresh(ride)
     await email.send_driver_ride_cancelled(db, ride=ride, refund_pending=refund_pending)
+    await notifications.emit(
+        db,
+        tenant_id=getattr(ride, "assigned_tenant_id", None) or ride.tenant_id,
+        kind=NotificationKind.ride_cancelled,
+        data={
+            "ride_id": ride.id,
+            "pickup": ride.pickup_text,
+            "dropoff": ride.dropoff_text,
+            "client_name": (ride.passenger_name or "").strip() or None,
+        },
+    )
     return _ride_out(ride)
 
 

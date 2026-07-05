@@ -9,6 +9,7 @@ from app.models.discount import DiscountCampaign, DiscountCode
 from app.models.document_consent import DocumentConsent
 from app.models.driver_funnel import DriverFunnelLog, DriverGoal
 from app.models.event import Event, EventSuggestion
+from app.models.notification import Notification, NotificationKind
 from app.models.payment import Payment, PaymentStatus
 from app.models.platform_stat import PlatformStat
 from app.models.rate_config import RateConfig
@@ -52,6 +53,8 @@ __all__ = [
     "DriverGoal",
     "Event",
     "EventSuggestion",
+    "Notification",
+    "NotificationKind",
     "PlatformStat",
     "SocialAccount",
     "SocialPost",

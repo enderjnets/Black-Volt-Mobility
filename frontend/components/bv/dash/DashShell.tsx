@@ -11,6 +11,7 @@ import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { fetchMe, logout, type Me } from "@/lib/auth";
 import { DriverTabBar } from "./DriverTabBar";
+import { NotificationsBell } from "./NotificationsBell";
 
 export function StatusPill({
   status,
@@ -241,21 +242,7 @@ export function DashShell({ children }: { children: ReactNode }) {
           </h1>
           <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
             <LanguageSwitcher />
-            <div style={{ position: "relative" }}>
-              <Icon name="bell" size={19} color="var(--silver)" />
-              <span
-                style={{
-                  position: "absolute",
-                  top: -2,
-                  right: -2,
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  background: "var(--volt)",
-                  boxShadow: "var(--shadow-volt-sm)",
-                }}
-              />
-            </div>
+            <NotificationsBell />
             <Button variant="solid" size="sm" icon="plus" onClick={() => router.push("/dashboard/add")}>
               {t("dash.newRide")}
             </Button>

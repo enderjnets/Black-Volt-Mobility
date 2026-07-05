@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.67.1";
+export const CURRENT_VERSION = "0.68.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.68.0",
+    date: "2026-07-05",
+    title: "The notification bell works",
+    changes: [
+      "The bell in your dashboard header is now live: it shows a count of unread notifications and a panel of recent activity.",
+      "You're notified about new rides, cancellations, chats that need a person, new messages, new reviews to approve, redeemed discount codes, and failed subscription payments.",
+      "Tap any notification to jump straight to it; mark one or all as read. Works on phone (bottom sheet) and desktop (dropdown), in English and Spanish.",
+    ],
+  },
   {
     version: "0.67.1",
     date: "2026-07-05",

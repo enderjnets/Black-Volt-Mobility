@@ -15,7 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_payload, require_admin, resolve_tenant_id
 from app.db.base import get_db
-from app.services import email, reviews
+from app.models import NotificationKind
+from app.services import email, notifications, reviews
 from app.services.reviews import ReviewError
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
@@ -138,6 +139,12 @@ async def submit_review(
         await email.notify_owner_new_review(db, review=r)
     except Exception:  # noqa: BLE001 — notification must never break submit
         pass
+    await notifications.emit(
+        db,
+        tenant_id=r.tenant_id,
+        kind=NotificationKind.review_new,
+        data={"review_id": r.id, "rating": int(r.rating), "author_name": r.author_name},
+    )
     return {"ok": True, "status": r.status.value, "verified": r.verified}
 
 

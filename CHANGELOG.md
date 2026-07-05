@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.68.0 — 2026-07-05 — The notification bell works
+
+**Feature:** the dashboard header bell is now functional — an unread count badge + a panel of recent activity, tenant-scoped, delivered by polling (no websockets in the stack).
+
+- **New `Notification` model + migration 0040** (`notifications` table, `notification_kind` pg-enum, JSONB `data`, per-tenant, retention capped at 100 newest rows). Only `kind` + `data` are stored; the frontend renders bilingual text from i18n templates.
+- **Service `services/notifications.py`** — `emit()` is best-effort (commits its own row, rolls back only on its own failure) and is called AFTER each caller commits, so a notification failure can never lose the underlying ride/message/review.
+- **Events wired** (next to the existing emails): new ride (`payments.authorize_for_ride`, `rides.confirm`), ride cancelled (`rides.cancel`), chat escalated + new chat message (`chat.send_message`, deduped to one per unread batch), new review (`reviews.submit`), discount redeemed (`payments`), subscription payment failed (`webhooks_square`). Ride/discount notifications route to the servicing driver (`assigned_tenant_id`), matching the email.
+- **API `/api/v1/notifications`** (staff-only, tenant-scoped): `GET` (unread count + 30 newest), `POST /{id}/read`, `POST /read-all`. Cross-tenant access 404s.
+- **Frontend** — `NotificationsBell.tsx` replaces the decorative bell: numeric badge, dropdown on desktop / bottom sheet on mobile, 60s polling (paused when the tab is hidden), deep-links per kind, mark one/all read, EN + ES.
+
+No secrets touched; migration runs on backend boot.
+
 ## v0.67.1 — 2026-07-05 — Joules speaks your language
 
 **Fix:** Joules now respects the site language instead of always opening in English.

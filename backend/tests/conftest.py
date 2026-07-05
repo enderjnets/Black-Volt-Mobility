@@ -42,7 +42,7 @@ def _reset_ride_data():
                 "TRUNCATE rides, payments, driver_funnel_logs, platform_stats, "
                 "driver_goals, social_posts, social_interactions, social_accounts, "
                 "document_consents, reviews, review_invites, events, "
-                "event_suggestions, chat_conversations, chat_messages, clients "
+                "event_suggestions, chat_conversations, chat_messages, notifications, clients "
                 "RESTART IDENTITY CASCADE"
             )
         finally:

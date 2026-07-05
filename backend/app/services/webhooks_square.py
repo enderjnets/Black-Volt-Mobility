@@ -20,7 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import Subscription, SubscriptionStatus
+from app.models import NotificationKind, Subscription, SubscriptionStatus
+from app.services import notifications
 from app.services.subscriptions_square import _parse_square_date
 
 logger = logging.getLogger("blackvolt.subscriptions")
@@ -38,6 +39,9 @@ _WEBHOOK_STATUS_MAP = {
 # Invoice events that don't carry a subscription status but move our row.
 _INVOICE_PAID = {"invoice.payment_made"}
 _INVOICE_FAILED = {"invoice.scheduled_charge_failed", "invoice.payment_failed", "invoice.canceled"}
+# Only genuine charge failures notify the driver's bell (a canceled invoice is not
+# a declined card, so it stays out of the "payment failed" notification).
+_INVOICE_CHARGE_FAILED = {"invoice.scheduled_charge_failed", "invoice.payment_failed"}
 
 
 def verify_signature(*, body: bytes, signature: str) -> bool:
@@ -108,5 +112,14 @@ async def apply_event(db: AsyncSession, *, event: dict) -> str:
         logger.info(
             "webhook applied: sub=%s type=%s status=%s",
             sub_id, (event or {}).get("type"), row.status.value,
+        )
+    # Tell the driver their subscription charge failed (bell). Only on the
+    # transition (changed) so redeliveries of the same failed invoice don't spam.
+    if changed and ((event or {}).get("type") or "") in _INVOICE_CHARGE_FAILED:
+        await notifications.emit(
+            db,
+            tenant_id=getattr(row, "tenant_id", None),
+            kind=NotificationKind.subscription_payment_failed,
+            data={},
         )
     return "applied" if changed else "noop"

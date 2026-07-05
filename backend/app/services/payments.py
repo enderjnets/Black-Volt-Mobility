@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Payment, PaymentMethod, PaymentStatus, Ride, RideStatus
+from app.models import NotificationKind, Payment, PaymentMethod, PaymentStatus, Ride, RideStatus
 from app.services import discounts, payments_square
 
 _logger = logging.getLogger("blackvolt.payments")
@@ -86,11 +86,14 @@ async def authorize_for_ride(
     # Atomic discount redemption: claim flag + increment in one transaction.
     # Payment durability (commit above) is guaranteed before touching discount state.
     # Uses DB-level conditional UPDATE as the idempotency gate — race- and crash-safe.
+    _discount_redeemed = False
     if ride.discount_code_id:
         try:
             status = await discounts.redeem_for_ride(db, ride.id, ride.discount_code_id)
             if status == "already":
                 _logger.debug("discount already claimed for ride %s; skipping", ride.id)
+            else:
+                _discount_redeemed = True
         except Exception:  # noqa: BLE001
             _logger.exception("discount redemption failed for ride %s; ignoring", ride.id)
     # The ride is now CONFIRMED (the card authorized) — push it to the driver's
@@ -102,9 +105,30 @@ async def authorize_for_ride(
     if ret is not None:
         await booking.sync_ride_to_calendar(db, ret)
     # Tell the driver a new (paid) ride came in. Best-effort, never raises.
-    from app.services import email
+    from app.services import email, notifications
 
     await email.send_driver_new_ride(db, ride=ride)
+    # In-app bell notifications (best-effort; committed independently after the
+    # ride is durable). Routed to the servicing driver, matching the email.
+    driver_tid = getattr(ride, "assigned_tenant_id", None) or ride.tenant_id
+    await notifications.emit(
+        db,
+        tenant_id=driver_tid,
+        kind=NotificationKind.ride_new,
+        data={
+            "ride_id": ride.id,
+            "pickup": ride.pickup_text,
+            "dropoff": ride.dropoff_text,
+            "client_name": (ride.passenger_name or "").strip() or None,
+        },
+    )
+    if _discount_redeemed:
+        await notifications.emit(
+            db,
+            tenant_id=driver_tid,
+            kind=NotificationKind.discount_redeemed,
+            data={"ride_id": ride.id},
+        )
     return pay
 
 
