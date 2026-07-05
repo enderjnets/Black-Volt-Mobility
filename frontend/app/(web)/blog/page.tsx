@@ -19,8 +19,9 @@ export const metadata: Metadata = {
 
 export default function BlogPage() {
   return (
-    <main style={{ maxWidth: 860, margin: "0 auto", padding: "20px 16px 64px" }}>
+    // section (not main): WebShell already renders the page's <main> landmark.
+    <section style={{ maxWidth: 860, margin: "0 auto", padding: "20px 16px 64px" }}>
       <SoroBlog />
-    </main>
+    </section>
   );
 }

@@ -30,14 +30,43 @@ export function SoroBlog() {
     const host = hostRef.current;
     if (host) host.innerHTML = "";
 
+    // Soro's embed registers a window `popstate` listener that removing the
+    // <script> tag does NOT undo — left in place it fires on back/forward on
+    // OTHER pages after an SPA exit (overwriting document.title and throwing on
+    // its detached container). Intercept addEventListener only while the embed
+    // loads, capture that specific handler (identified by its own internals),
+    // and detach it on unmount.
+    const captured: EventListener[] = [];
+    const originalAdd = window.addEventListener;
+    (window as any).addEventListener = function (type: string, fn: any, opts?: any) {
+      if (type === "popstate" && typeof fn === "function" && /getRequestedSlug|showArticle/.test(String(fn))) {
+        captured.push(fn);
+      }
+      return originalAdd.call(window, type, fn, opts);
+    };
+    const restoreAdd = () => {
+      window.addEventListener = originalAdd;
+    };
+
     const script = document.createElement("script");
     script.src = SORO_EMBED_SRC;
     script.defer = true;
     script.setAttribute("data-soro", "1");
+    script.onload = restoreAdd; // fires after the embed executed (and registered its listener)
+    script.onerror = restoreAdd;
     document.body.appendChild(script);
 
     return () => {
+      restoreAdd();
+      captured.forEach((fn) => window.removeEventListener("popstate", fn));
       script.remove();
+      // Sweep the <head> artifacts the embed leaves behind so they can't leak
+      // onto other pages: its canonical (tagged data-soro) and its Blog JSON-LD
+      // (untagged — identified by content; our own pages' JSON-LD lives in <body>).
+      document.querySelectorAll('link[rel="canonical"][data-soro]').forEach((n) => n.remove());
+      document.head.querySelectorAll('script[type="application/ld+json"]').forEach((n) => {
+        if (/"@type"\s*:\s*"Blog(Posting)?"/.test(n.textContent || "")) n.remove();
+      });
       if (host) host.innerHTML = "";
     };
   }, []);

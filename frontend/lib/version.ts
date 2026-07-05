@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.69.0";
+export const CURRENT_VERSION = "0.69.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.69.1",
+    date: "2026-07-05",
+    title: "Blog polish",
+    changes: [
+      "Hardened the blog widget so browsing back and forward around the site after visiting the blog never affects other pages.",
+    ],
+  },
   {
     version: "0.69.0",
     date: "2026-07-05",

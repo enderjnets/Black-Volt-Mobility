@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.69.1 — 2026-07-05 — Blog embed lifecycle hardening
+
+**Fix (from post-deploy adversarial audit):** the Soro embed registers a window `popstate` listener and mutates `<head>` (canonical, Blog JSON-LD, `document.title`) — removing its `<script>` tag undoes none of that, so after an SPA exit from `/blog`, back/forward on other pages fired a stale handler (console TypeError, title overwritten) and a stray canonical/JSON-LD lingered in `<head>`.
+
+- `SoroBlog.tsx`: intercept `window.addEventListener` only while the embed script loads, capture its `popstate` handler (matched by its own internals), restore the original on `onload`/`onerror`, and detach the captured handler on unmount; cleanup also sweeps the embed's `<head>` artifacts (canonical tagged `data-soro` + Blog/BlogPosting JSON-LD — our own pages' JSON-LD lives in `<body>` and is untouched).
+- `blog/page.tsx`: nested `<main>` → `<section>` (WebShell already renders the page's `<main>` landmark).
+
 ## v0.69.0 — 2026-07-05 — Blog
 
 **Feature:** Black Volt Mobility now has a public blog at `/blog` on the apex site, powered by the Soro embed (SEO article engine, paid quarterly through 2026-10-05).
