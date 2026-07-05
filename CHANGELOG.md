@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.69.0 — 2026-07-05 — Blog
+
+**Feature:** Black Volt Mobility now has a public blog at `/blog` on the apex site, powered by the Soro embed (SEO article engine, paid quarterly through 2026-10-05).
+
+- **New route `app/(web)/blog/page.tsx`** — server component with SEO metadata (title/description/canonical/OG) that renders a branded H1 + intro (own indexable copy) above the Soro widget.
+- **New client component `components/bv/web/SoroBlog.tsx`** — injects the Soro embed script (`app.trysoro.com/api/embed/<public-token>?theme=dark`) into `#soro-blog`, (re)created per mount and cleaned up on unmount so it survives StrictMode / SPA re-entry; container stays empty and harmless if the embed is disabled. The embed token is a public identifier (not a secret).
+- **Navigation** — "Blog" added to the header `NAV` array and the footer links in `WebShell.tsx`, i18n `nav.blog` / `blog.title` / `blog.intro` in EN + ES.
+- **Sitemap** — `/blog` added to `app/sitemap.ts` (priority 0.7, weekly).
+- No CSP anywhere in the stack, so the external Soro script loads without allow-listing. No backend changes, no migration.
+
 ## v0.68.0 — 2026-07-05 — The notification bell works
 
 **Feature:** the dashboard header bell is now functional — an unread count badge + a panel of recent activity, tenant-scoped, delivered by polling (no websockets in the stack).

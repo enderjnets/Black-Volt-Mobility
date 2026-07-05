@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.68.0";
+export const CURRENT_VERSION = "0.69.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.69.0",
+    date: "2026-07-05",
+    title: "Blog",
+    changes: [
+      "Black Volt Mobility now has a blog at /blog — SEO articles about private luxury EV transfers in Denver, DEN airport runs, and Colorado mountain trips.",
+      "You can reach it from Blog in the top navigation and in the footer, in English and Spanish.",
+    ],
+  },
   {
     version: "0.68.0",
     date: "2026-07-05",

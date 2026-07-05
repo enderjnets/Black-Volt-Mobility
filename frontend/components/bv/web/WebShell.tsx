@@ -37,6 +37,7 @@ const NAV = [
   { href: "/", key: "nav.home" },
   { href: "/book", key: "nav.book" },
   { href: "/rides", key: "nav.rides" },
+  { href: "/blog", key: "nav.blog" },
   { href: "/trips", key: "nav.trips" },
   // Smart route: resolves to the visitor's designated driver (see /your-driver).
   { href: "/your-driver", key: "nav.driver" },
@@ -372,6 +373,9 @@ export function WebShell({ children }: { children: ReactNode }) {
             </Link>
             <Link href="/rides" style={{ color: "var(--fg2)", textDecoration: "none" }}>
               {t("nav.rides")}
+            </Link>
+            <Link href="/blog" style={{ color: "var(--fg2)", textDecoration: "none" }}>
+              {t("nav.blog")}
             </Link>
             {SEO_ROUTES.slice(0, 4).map((r) => (
               <Link

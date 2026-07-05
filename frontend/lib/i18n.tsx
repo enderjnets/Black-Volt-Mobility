@@ -117,6 +117,10 @@ const EN: Record<string, string> = {
   "nav.home": "Home",
   "nav.book": "Book a ride",
   "nav.rides": "Routes",
+  "nav.blog": "Blog",
+  "blog.title": "Black Volt Blog",
+  "blog.intro":
+    "Guides and tips for private luxury EV transfers across Denver, DEN airport, and the Colorado mountains.",
   "reviews.title": "What riders say",
   "reviews.verified": "Verified ride",
   "reviews.ownerReply": "Black Volt",
@@ -1231,6 +1235,10 @@ const ES: Record<string, string> = {
   "nav.home": "Inicio",
   "nav.book": "Reservar viaje",
   "nav.rides": "Rutas",
+  "nav.blog": "Blog",
+  "blog.title": "Blog de Black Volt",
+  "blog.intro":
+    "Guías y consejos sobre traslados privados de lujo en EV por Denver, el aeropuerto DEN y las montañas de Colorado.",
   "reviews.title": "Lo que dicen los pasajeros",
   "reviews.verified": "Viaje verificado",
   "reviews.ownerReply": "Black Volt",
