@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.67.0 — 2026-07-04 — Joules, the real AI assistant
+
+**What shipped:** the public-site chat widget is now **Joules**, a real Kimi→MiniMax
+assistant (replacing the canned `bvAI.ts` mock with its fake "Hi Alex" greeting).
+
+- **Google sign-in required.** The widget is visible to anonymous visitors with
+  Joules' greeting + suggestion chips; sending the first message opens the existing
+  Google sign-in modal, then the pending message auto-sends (reuses
+  `useWeb().openSignIn` + the profile-gate resume chain).
+- **Live pricing + passenger context.** The system prompt is built server-side from
+  the tenant's effective zone prices (same merge as `/rate-config`), the service
+  area, cancellation/payment policies, Denver time, and the signed-in passenger's
+  upcoming rides (status, pickup time, driver contact once assigned). Joules is
+  **read-only** — it directs users to `/book` and `/trips`, never books or changes
+  anything.
+- **Escalation.** When a passenger asks for a human (or every LLM provider fails),
+  Joules emits an `[ESCALATE]` marker; the backend strips it, flips the conversation
+  to `escalated`, and emails the tenant owner the transcript + contact (Resend,
+  once per transition, never blocks the reply).
+- **Dashboard Inbox is real.** `/dashboard/inbox` now lists persisted conversations
+  (client, last-message time, unread badge, "Needs you" filter) and renders the full
+  thread; opening clears the unread badge; owner can email the client (mailto) or
+  close the chat. Tenant-scoped — each owner sees only their own threads.
+- **Bilingual** EN/ES; the reply language follows the passenger.
+
+**Backend:** new `chat_conversations` + `chat_messages` tables (migration `0039_chat`,
+one conversation per `(tenant_id, client_id)`, reopens when closed);
+`app/services/joules.py` (prompt builder + provider chain + fallback);
+`llm.chat_complete` (multi-turn) + `llm.providers()`; `email.notify_owner_chat_escalation`;
+`api/v1/chat.py` (passenger post/history gated by `require_passenger`, staff
+list/read/close gated by `require_staff`, per-client rate limits 5/min + 30/h).
+**Frontend:** `lib/chat.ts`, rewritten `Chat.tsx` + `dash/Inbox.tsx`, deleted the
+`lib/bvAI.ts` mock. **Tests:** 22 new backend tests (API auth-gating, rate limit,
+escalation email once, tenant scoping, prompt content) — full suite green.
+
 ## v0.66.4 — 2026-07-04 — Live prices everywhere (kills teaser drift)
 
 **Problem (from the v0.66.3 code review):** teaser prices were hardcoded in three places (seoRoutes.ts, FAQ prose, Booking placeholder) plus a stale $74 in the chat assistant, while the owner tunes real fares live in the Rates dashboard — v0.66.2 and v0.66.3 were both manual re-sync releases and the site drifted again within the hour of deploy. Pricing policy going forward: stay >=10% (~$15-30) below **Uber Black Reserve**; owner adjusts in Rates as Uber moves.

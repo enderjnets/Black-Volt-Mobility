@@ -2,6 +2,7 @@
 from app.models.allowed_user import AllowedUser
 from app.models.analytics import AnalyticsEvent
 from app.models.calendar_credential import CalendarCredential
+from app.models.chat import ChatConversation, ChatMessage, ChatRole, ChatStatus
 from app.models.client import Client
 from app.models.client_address import ClientAddress
 from app.models.discount import DiscountCampaign, DiscountCode
@@ -41,6 +42,10 @@ __all__ = [
     "PaymentStatus",
     "AllowedUser",
     "CalendarCredential",
+    "ChatConversation",
+    "ChatMessage",
+    "ChatRole",
+    "ChatStatus",
     "Subscription",
     "SubscriptionStatus",
     "DriverFunnelLog",

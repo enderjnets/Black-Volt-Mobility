@@ -15,6 +15,7 @@ from app.api.v1.agreements import router as agreements_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.calendar_link import router as calendar_link_router
+from app.api.v1.chat import router as chat_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.discounts import router as discounts_router
 from app.api.v1.events import router as events_router
@@ -130,6 +131,7 @@ app.include_router(social_router, prefix="/api/v1")
 app.include_router(tenant_router, prefix="/api/v1")
 app.include_router(team_router, prefix="/api/v1", dependencies=[Depends(require_admin)])
 app.include_router(discounts_router, prefix="/api/v1")
+app.include_router(chat_router, prefix="/api/v1")
 
 # Owner-uploaded brand assets (logo/photo). The directory must exist before the
 # mount or StaticFiles raises at import; create it up front (idempotent).

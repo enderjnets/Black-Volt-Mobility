@@ -4,60 +4,87 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
 import { useI18n } from "@/lib/i18n";
-import { type BvMsg, type BvRates, bvComplete } from "@/lib/bvAI";
-import { getRateConfig } from "@/lib/booking";
+import { ApiError } from "@/lib/booking";
+import { type ChatApiMsg, getChat, sendChatMessage } from "@/lib/chat";
+import { useWeb } from "./WebShell";
 
-function mockReply(rates: BvRates | null) {
-  return (q: string): string => {
-    const s = q.toLowerCase();
-    if (/driver|chofer|d[oó]nde/.test(s))
-      return "Ender is 6 minutes away in the black Kia EV9 (ENV-4827), heading north on Blake St.";
-    if (/pickup|recog|time|hora/.test(s))
-      return "Sure — I can move your pickup. What time works? Your flight UA 2293 lands 14:05, on time.";
-    if (/fare|tarifa|price|precio|estimate|estimar/.test(s))
-      return rates?.denFlat
-        ? `Denver metro → DEN is a flat $${Math.round(rates.denFlat)} with fixed upfront pricing. No surge.`
-        : "DEN airport rides are a flat rate quoted upfront at blackvoltmobility.com/book. No surge.";
-    return "Got it — I've noted that. Ender will take care of it. Anything else before pickup?";
-  };
+type Msg = { role: "user" | "ai"; text: string };
+
+function toBubbles(api: ChatApiMsg[]): Msg[] {
+  return api.map((m) => ({ role: m.role === "user" ? "user" : "ai", text: m.body }));
 }
 
 export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
-  const { t } = useI18n();
-  const [msgs, setMsgs] = useState<BvMsg[]>([{ role: "ai", text: t("chat.greet") }]);
+  const { t, lang } = useI18n();
+  const { user, openSignIn } = useWeb();
+  const [msgs, setMsgs] = useState<Msg[]>([{ role: "ai", text: t("chat.greet") }]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const [rates, setRates] = useState<BvRates | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const pendingRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Load the persisted history once a signed-in passenger opens the panel.
   useEffect(() => {
-    // Live fares for the assistant (owner tunes them in the Rates dashboard).
-    getRateConfig()
-      .then((rc) =>
-        setRates({
-          denFlat: rc?.zone_prices?.denver_metro ?? null,
-          base: rc?.base ?? null,
-          perMile: rc?.per_mile ?? null,
-          minimum: rc?.minimum ?? null,
-        }),
-      )
+    if (!open || !user || loaded) return;
+    setLoaded(true);
+    getChat()
+      .then((h) => {
+        const bubbles = toBubbles(h.messages);
+        if (bubbles.length) setMsgs(bubbles);
+      })
       .catch(() => {});
-  }, []);
+  }, [open, user, loaded]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs, open, typing]);
 
+  async function deliver(text: string, base?: Msg[]) {
+    setTyping(true);
+    try {
+      const res = await sendChatMessage(text, lang);
+      setMsgs((m) => [...(base ?? m), { role: "ai", text: res.reply }]);
+    } catch (e) {
+      const key = e instanceof ApiError && e.status === 429 ? "chat.rateLimited" : "chat.error";
+      setMsgs((m) => [...(base ?? m), { role: "ai", text: t(key) }]);
+    } finally {
+      setTyping(false);
+    }
+  }
+
   const send = async (text?: string) => {
     const v = (text ?? input).trim();
     if (!v || typing) return;
-    const next: BvMsg[] = [...msgs, { role: "user", text: v }];
-    setMsgs(next);
     setInput("");
-    setTyping(true);
-    const reply = await bvComplete(next, { mock: mockReply(rates), rates });
-    setTyping(false);
-    setMsgs((m) => [...m, { role: "ai", text: reply }]);
+
+    // Gate: an anonymous visitor must sign in with Google before Joules replies.
+    if (!user) {
+      pendingRef.current = v;
+      setMsgs((m) => [...m, { role: "user", text: v }]);
+      openSignIn(async () => {
+        const pending = pendingRef.current;
+        pendingRef.current = null;
+        if (!pending) return;
+        // Rebuild from any server history (returning user) + this message, then send.
+        let base: Msg[] = [];
+        try {
+          const h = await getChat();
+          base = toBubbles(h.messages);
+        } catch {
+          base = [{ role: "ai", text: t("chat.greet") }];
+        }
+        setLoaded(true);
+        const withPending: Msg[] = [...base, { role: "user", text: pending }];
+        setMsgs(withPending);
+        await deliver(pending, withPending);
+      });
+      return;
+    }
+
+    const next: Msg[] = [...msgs, { role: "user", text: v }];
+    setMsgs(next);
+    await deliver(v, next);
   };
 
   return (

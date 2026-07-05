@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.66.4";
+export const CURRENT_VERSION = "0.67.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.0",
+    date: "2026-07-04",
+    title: "Meet Joules — your real AI assistant",
+    changes: [
+      "The site assistant is now Joules, a real AI that answers questions about fares, coverage, and how the service works — with live pricing straight from the dashboard.",
+      "Signed-in passengers can ask Joules about their own upcoming rides (status, pickup time, driver contact once assigned). Sign in with Google to start chatting.",
+      "Joules hands off to a human when you ask — it emails Ender your conversation so he can follow up.",
+      "Conversations are saved: the owner reviews every chat in the dashboard Inbox, with a badge on the ones that need a person.",
+      "Bilingual: Joules replies in English or Spanish to match you.",
+    ],
+  },
   {
     version: "0.66.4",
     date: "2026-07-04",

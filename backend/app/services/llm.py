@@ -101,6 +101,64 @@ async def text_complete(
     return text
 
 
+async def chat_complete(
+    *,
+    messages: list[dict],
+    system: str | None = None,
+    model: str,
+    base_url: str,
+    api_key: str,
+    max_tokens: int = 500,
+) -> str:
+    """Multi-turn chat completion. ``messages`` is an ordered list of
+    ``{"role": "user"|"assistant", "content": "<text>"}`` turns (plain-string
+    content is wrapped into the anthropic text block shape). Returns the model's
+    text reply. Mirrors ``text_complete`` but keeps conversation history. Raises
+    LLMError on transport/SDK failure or an empty response. NEVER pass an
+    Anthropic OAuth token (CLAUDE.md anti-pattern #1)."""
+    if not api_key:
+        raise LLMError("chat:no_api_key")
+    norm: list[dict] = []
+    for m in messages:
+        content = m["content"]
+        if isinstance(content, str):
+            content = [{"type": "text", "text": content}]
+        norm.append({"role": m["role"], "content": content})
+    kwargs: dict = {"model": model, "max_tokens": max_tokens, "messages": norm}
+    if system:
+        kwargs["system"] = system
+    try:
+        resp = await _client(base_url, api_key).messages.create(**kwargs)
+    except Exception as e:  # SDK / network / API error
+        raise LLMError(f"chat:{type(e).__name__}") from e
+    parts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
+    text = "".join(parts).strip()
+    if not text:
+        raise LLMError("chat:empty_response")
+    return text
+
+
+def providers() -> list[tuple[str, str, str]]:
+    """Ordered ``(model, base_url, api_key)`` triples for the configured LLM
+    chain (primary → fallback), skipping any provider with no API key. Shared by
+    every text/chat feature so callers never import a private helper."""
+    s = get_settings()
+    by_name = {
+        "kimi": (s.KIMI_MODEL, s.KIMI_BASE_URL, s.KIMI_API_KEY),
+        "minimax": (s.MINIMAX_MODEL, s.MINIMAX_BASE_URL, s.MINIMAX_API_KEY),
+    }
+    out: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for name in (s.LLM_PRIMARY, s.LLM_FALLBACK):
+        key = (name or "").strip().lower()
+        if key in by_name and key not in seen:
+            seen.add(key)
+            triple = by_name[key]
+            if triple[2]:  # has an api key
+                out.append(triple)
+    return out
+
+
 async def minimax_vlm_understand(
     *,
     host: str,

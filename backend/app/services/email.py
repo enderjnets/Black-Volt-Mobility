@@ -253,6 +253,42 @@ async def send_driver_ride_cancelled(db, *, ride, refund_pending: bool = False) 
     return "simulated" if res.get("simulated") else "sent"
 
 
+async def notify_owner_chat_escalation(db, *, conversation, client, messages) -> str:
+    """Tell the tenant owner a Joules chat needs a human. ``messages`` is the
+    recent turns (objects with ``.role`` and ``.body``). Never raises."""
+    user = await _driver_recipient(db, tenant_id=conversation.tenant_id)
+    if user is None or not user.email:
+        return "skipped"
+    name = (getattr(client, "name", None) or getattr(client, "email", None) or "A passenger")
+    contact_bits = []
+    if getattr(client, "email", None):
+        contact_bits.append(f"Email: {client.email}")
+    if getattr(client, "phone", None):
+        contact_bits.append(f"Phone: {client.phone}")
+    contact = "\n".join(contact_bits) or "No contact on file."
+    transcript_lines = []
+    for m in list(messages)[-10:]:
+        who = {"user": name, "assistant": "Joules", "owner": "You"}.get(
+            getattr(getattr(m, "role", None), "value", getattr(m, "role", "")), "?"
+        )
+        transcript_lines.append(f"{who}: {m.body}")
+    transcript = "\n".join(transcript_lines) or "(no messages)"
+    dash = f"{get_settings().PUBLIC_DASHBOARD_URL}/inbox"
+    subject = f"Chat escalation from {name}"
+    text = (
+        f"Joules handed off a chat that needs your attention.\n\n"
+        f"{contact}\n\n"
+        f"Recent conversation:\n{transcript}\n\n"
+        f"Open the full thread here:\n{dash}\n\n— Black Volt Mobility"
+    )
+    try:
+        res = await send_email(to=user.email, subject=subject, body_text=text)
+    except Exception as e:
+        log.warning("Chat-escalation email to %s failed: %s", user.email, e)
+        return "failed"
+    return "simulated" if res.get("simulated") else "sent"
+
+
 async def notify_owner_new_review(db, *, review) -> str:
     """Tell the tenant owner a new review landed (pending moderation). Never raises."""
     user = await _driver_recipient(db, tenant_id=review.tenant_id)
