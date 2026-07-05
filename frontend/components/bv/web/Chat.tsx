@@ -40,6 +40,15 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs, open, typing]);
 
+  // Keep the initial greeting in sync with the page language until real history
+  // loads. The i18n provider hydrates `lang` from localStorage after mount, so the
+  // greeting captured at first render (English default) must follow the switch.
+  useEffect(() => {
+    setMsgs((m) =>
+      m.length === 1 && m[0].role === "ai" ? [{ role: "ai", text: t("chat.greet") }] : m,
+    );
+  }, [lang, t]);
+
   async function deliver(text: string, base?: Msg[]) {
     setTyping(true);
     try {

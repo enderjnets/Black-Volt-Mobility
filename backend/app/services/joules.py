@@ -136,10 +136,10 @@ async def build_system_prompt(
     now_local = dt.datetime.now(_DENVER_TZ)
     passenger_name = (client.first_name if client else None) or "there"
 
+    default_lang = "Spanish" if (lang_hint or "").lower().startswith("es") else "English"
     lang_line = (
-        "The passenger's UI language is Spanish — reply in Spanish."
-        if (lang_hint or "").lower().startswith("es")
-        else "Reply in the passenger's language (English or Spanish); default English."
+        "Always reply in the SAME language the passenger's most recent message is "
+        f"written in (English or Spanish). If a message is too short to tell, use {default_lang}."
     )
 
     return f"""You are Joules, the AI assistant for {brand_name}, a premium electric \

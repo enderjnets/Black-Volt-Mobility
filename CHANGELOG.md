@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.67.1 — 2026-07-05 — Joules speaks your language
+
+**Fix:** Joules now respects the site language instead of always opening in English.
+
+- **Greeting follows the page language.** The i18n provider hydrates the saved
+  language (`localStorage`) after first render, but the chat greeting was captured
+  once in state at mount (English default) and never re-translated. A small
+  `useEffect` in `Chat.tsx` keyed on `lang` now re-syncs the greeting bubble to the
+  current language while the panel still shows only that greeting — so a Spanish
+  visitor is greeted in Spanish, an English visitor in English.
+- **Replies mirror the passenger's language.** The system prompt no longer hard-locks
+  Spanish when the UI is Spanish. `joules.py` now instructs Joules to reply in the
+  **same language as the passenger's most recent message** (English or Spanish),
+  using the UI language only as the tie-break default when a message is too short to
+  detect — so a mid-conversation language switch is honored both ways.
+
+_No schema changes. Backend `build_system_prompt` + `test_joules_prompt.py`, frontend
+`Chat.tsx`._
+
 ## v0.67.0 — 2026-07-04 — Joules, the real AI assistant
 
 **What shipped:** the public-site chat widget is now **Joules**, a real Kimi→MiniMax

@@ -97,9 +97,20 @@ def test_no_rides_message():
     assert "no upcoming rides" in prompt.lower()
 
 
-def test_spanish_hint_switches_language_instruction():
-    prompt = _build([], RateConfig(tenant_id=1, base=28, per_mile=2.4, minimum=90), lang="es")
-    assert "Spanish" in prompt
+def test_reply_follows_the_passengers_latest_message_language():
+    # Joules must mirror whatever language the passenger writes in, so a mid-chat
+    # switch is honoured — the UI language only decides the tie-break default.
+    for lang in ("en", "es"):
+        prompt = _build([], RateConfig(tenant_id=1, base=28, per_mile=2.4, minimum=90), lang=lang)
+        assert "same language the passenger's most recent message" in prompt.lower()
+
+
+def test_language_default_tiebreak_follows_ui_hint():
+    rc = RateConfig(tenant_id=1, base=28, per_mile=2.4, minimum=90)
+    assert "use Spanish" in _build([], rc, lang="es")
+    assert "use English" in _build([], rc, lang="en")
+    # a Spanish variant tag still defaults to Spanish
+    assert "use Spanish" in _build([], rc, lang="es-MX")
 
 
 def test_serialize_rides_helper_direct():

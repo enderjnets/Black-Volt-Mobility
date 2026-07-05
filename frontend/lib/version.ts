@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.67.0";
+export const CURRENT_VERSION = "0.67.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.67.1",
+    date: "2026-07-05",
+    title: "Joules speaks your language",
+    changes: [
+      "Joules now greets you in the language your site is set to — Spanish if you're browsing in Spanish, English if in English — instead of always opening in English.",
+      "If you switch languages mid-conversation, Joules follows: it replies in whatever language you just wrote in.",
+    ],
+  },
   {
     version: "0.67.0",
     date: "2026-07-04",
