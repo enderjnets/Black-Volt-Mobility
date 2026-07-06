@@ -251,7 +251,9 @@ export function Profile({ slug = PUBLIC_PROFILE_SLUG }: { slug?: string }) {
         <div style={{ height: 110, position: "relative", overflow: "hidden" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={p.photo_url || "/assets/ev9-coors-field.jpg"}
+            src={p.photo_url || "/assets/ev9-coors-field-800w.webp"}
+            loading="lazy"
+            decoding="async"
             alt={p.name}
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 58%" }}
           />

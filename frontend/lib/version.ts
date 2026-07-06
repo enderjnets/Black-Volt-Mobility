@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.69.1";
+export const CURRENT_VERSION = "0.70.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.70.0",
+    date: "2026-07-05",
+    title: "Fair quotes for every town + a much faster site",
+    changes: [
+      "Fixed a pricing gap: rides from towns outside our named zones (like Longmont) were quoting the Denver-core flat rate no matter the distance. The flat rate is now a floor — long trips price by actual distance, and Longmont/Niwot officially ride the Boulder rate.",
+      "The site loads much faster, especially on phones: hero photos are now modern WebP (up to 5x smaller), analytics scripts load after the page, and images cache for a month.",
+    ],
+  },
   {
     version: "0.69.1",
     date: "2026-07-05",

@@ -102,3 +102,98 @@ def test_build_quote_out_of_zone_is_metered():
     # Metered fare from the simulated route; `zone is None` above is the real check —
     # a hand-synced "not in <flat prices>" tuple here just re-broke on every recalibration.
     assert q["total"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Uncovered-endpoint guard (Lisa/Longmont bug, 2026-07-05): an endpoint outside
+# every named zone must never let the OTHER endpoint's flat underprice the trip.
+# The matched flat becomes a floor; the metered fare wins when higher.
+# ---------------------------------------------------------------------------
+
+
+def test_longmont_rides_the_boulder_flat():
+    # Lisa's exact route. Longmont is now a boulder-zone term, so the flat
+    # applies directly (no guard) instead of the old core-$110 fall-through.
+    tid = _run(_mk_tenant("bz-longmont"))
+    q = _run(
+        _quote(
+            tid,
+            "6632 Fairways Drive, Longmont, CO 80503, USA",
+            "Denver International Airport, 8500 Peña Blvd, Denver, CO 80249, USA",
+        )
+    )
+    assert q["zone"] == "boulder"
+    assert q["total"] == 165.0  # zone default; owner tunes in Rates
+
+
+def test_uncovered_far_town_meters_above_the_core_flat():
+    # Estes Park is in no zone; DEN matches denver_metro (110). Simulated route =
+    # 29.8 mi / 72.6 min -> metered 12 + 29.8*2.4 + 72.6*0.55 = 123.45 > 110, so
+    # the metered fare must win and the quote must NOT report a zone.
+    tid = _run(_mk_tenant("bz-uncovered-far"))
+    q = _run(
+        _quote(tid, "Estes Park, CO, USA", "Denver International Airport, Denver, CO, USA")
+    )
+    assert q["zone"] is None
+    assert q["is_airport"] is True
+    assert q["total"] == 123.45
+
+
+def test_uncovered_near_town_keeps_the_flat_as_floor():
+    # Evergreen is in no zone; metered (74 after the airport floor) stays below the
+    # core flat, so the flat still applies — the guard never lowers a price.
+    tid = _run(_mk_tenant("bz-uncovered-near"))
+    q = _run(_quote(tid, "Evergreen, CO, USA", "Denver, CO, USA"))
+    assert q["zone"] == "denver_metro"
+    assert q["total"] == 110.0
+
+
+def test_bare_airport_code_still_gets_the_flat():
+    # "DEN" alone matches no zone term but IS an airport keyword: the guard must
+    # treat it as covered and keep today's flat behaviour for the flagship run.
+    tid = _run(_mk_tenant("bz-bare-den"))
+    q = _run(_quote(tid, "6000 S Fraser St, Aurora, CO, USA", "DEN"))
+    assert q["zone"] == "denver_metro"
+    assert q["total"] == 110.0
+
+
+def test_guard_is_not_fooled_by_den_substring_in_street_name():
+    # Audit-critical case: "Garden St" contains the raw substring "den", which the
+    # legacy looks_like_airport would read as an airport keyword and skip the guard,
+    # re-opening the core-flat hole. The guard's word-boundary check must meter it:
+    # sim route 28.7 mi / 62.3 min -> 12 + 28.7*2.4 + 62.3*0.55 = 115.15 > 110.
+    tid = _run(_mk_tenant("bz-garden-st"))
+    q = _run(
+        _quote(
+            tid,
+            "1234 Garden St, Estes Park, CO, USA",
+            "Denver International Airport, Denver, CO, USA",
+        )
+    )
+    assert q["zone"] is None
+    assert q["total"] == 115.15
+
+
+def test_uncovered_stop_triggers_the_guard():
+    # Covered endpoints (Denver -> Aurora) with an uncovered far stop (Lyons):
+    # the stop makes the trip long, so the metered fare (+ stop fee on both paths)
+    # must beat the flat 110 + 15.
+    tid = _run(_mk_tenant("bz-uncovered-stop"))
+    eng, sf = _sf()
+
+    async def go():
+        try:
+            async with sf() as db:
+                return await booking.build_quote(
+                    db,
+                    tenant_id=tid,
+                    pickup="Denver, CO, USA",
+                    dropoff="Aurora, CO, USA",
+                    stops=["Lyons, CO, USA"],
+                )
+        finally:
+            await eng.dispose()
+
+    q = _run(go())
+    assert q["zone"] is None
+    assert q["total"] == 146.26  # metered 131.26 + 15 stop fee > 125 flat+stop

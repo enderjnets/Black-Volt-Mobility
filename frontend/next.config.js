@@ -19,6 +19,17 @@ const DRIVER_HOSTS = (process.env.DRIVER_HOSTS || "driver.blackvoltmobility.com"
 
 const nextConfig = {
   reactStrictMode: true,
+  async headers() {
+    return [
+      {
+        // Committed static assets (hero photos, route maps). Filenames are stable
+        // and content changes ship as new files, so a long edge/browser cache is
+        // safe and turns Cloudflare's 4h REVALIDATE into month-long HITs.
+        source: "/assets/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=2592000" }],
+      },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: [

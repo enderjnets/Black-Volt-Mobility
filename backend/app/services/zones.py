@@ -90,7 +90,15 @@ ZONES: tuple[Zone, ...] = (
         169.0,
         ("loveland", "greeley", "johnstown", "berthoud", "evans", "milliken", "kersey"),
     ),
-    Zone("boulder", "Boulder", 165.0, ("boulder", "pine brook hill", "gunbarrel")),
+    # Longmont/Niwot ride the Boulder flat: same north corridor, similar DEN run
+    # (Lisa/Longmont 2026-07-05 — an unlisted city used to fall through to the core
+    # flat via the DEN endpoint; see the uncovered-endpoint guard in booking).
+    Zone(
+        "boulder",
+        "Boulder",
+        165.0,
+        ("boulder", "pine brook hill", "gunbarrel", "longmont", "niwot"),
+    ),
     # Outer/far metro rings. These MUST precede denver_metro so that on a mixed trip
     # (far pickup → downtown venue) the farther pickup zone wins the price. Ring
     # membership follows the Uber Black →DEN benchmark (2026-07), NOT distance from the
@@ -192,6 +200,15 @@ def _zone_keys_for(address: str | None) -> set[str]:
         if any(re.search(rf"\b{re.escape(term)}\b", city) for term in z.terms):
             hits.add(z.key)
     return hits
+
+
+def covered(address: str | None) -> bool:
+    """True when the address resolves to at least one named zone (the pinned home
+    base counts as covered). An UNCOVERED endpoint means any flat matched via the
+    other endpoint alone is a floor, not the price — see the guard in
+    ``booking.build_quote`` (an unlisted far city must never book at the core flat).
+    """
+    return bool(_zone_keys_for(address))
 
 
 def match_zone(

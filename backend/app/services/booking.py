@@ -3,6 +3,8 @@ persistence. All queries are tenant-scoped."""
 from __future__ import annotations
 
 import logging
+import re
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, or_, select, update
@@ -23,6 +25,19 @@ class RoundTripLockedError(Exception):
 
 # Cancelled/no-show rides never count toward money or activity.
 CANCELLED_STATUSES = (RideStatus.CANCELLED, RideStatus.NO_SHOW)
+
+
+def _airportish(text: str | None) -> bool:
+    """Word-boundary airport keyword match, for the uncovered-endpoint guard in
+    ``build_quote``. ``pricing.looks_like_airport`` is a raw substring check (its
+    "den" keyword hits Garden/Golden/Hidden street names) — fine for picking the
+    airport fare floor, but as a coverage test it would silently re-open the
+    unlisted-town-at-core-flat hole for any such address."""
+    blob = (text or "").lower()
+    return any(
+        re.search(rf"\b{re.escape(k)}\b", blob)
+        for k in get_settings().airport_keywords_list
+    )
 
 
 def earned_ride_filter():
@@ -121,6 +136,30 @@ async def build_quote(
         facts.zone_flat = hit.flat
         facts.zone_key = hit.key
         facts.zone_name = hit.name
+        # Uncovered-endpoint guard: when one endpoint (or stop) is outside every
+        # named zone (e.g. an unlisted far town), the flat above was matched by the
+        # OTHER endpoint alone — treat it as a FLOOR, not the price. Meter the trip
+        # too and charge whichever is higher, so a 40+ mile pickup can never book at
+        # the core flat. Airport endpoints count as covered — via _airportish (word
+        # boundaries), NOT looks_like_airport, whose raw substring "den" would let
+        # any Garden/Golden/Hidden street name bypass the guard.
+        if any(
+            not zones.covered(a) and not _airportish(a)
+            for a in (pickup, dropoff, *(stops or []))
+        ):
+            # is_peak=False: the customer was promised a fixed zone price, and fixed
+            # prices never surge — the guard floors the fare with the CALM metered
+            # rate, it never adds a peak multiplier on top.
+            metered_facts = replace(
+                facts,
+                zone_flat=None,
+                zone_key=None,
+                zone_name=None,
+                is_peak=False,
+                is_airport=pricing.looks_like_airport(pickup, dropoff),
+            )
+            if pricing.quote(rc, metered_facts)["total"] > pricing.quote(rc, facts)["total"]:
+                facts = metered_facts
     else:
         facts.is_airport = pricing.looks_like_airport(pickup, dropoff)
     breakdown = pricing.quote(rc, facts)

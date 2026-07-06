@@ -12,17 +12,22 @@ export function MetaPixel() {
   if (!PIXEL_ID) return null;
   return (
     <>
-      <Script id="meta-pixel" strategy="afterInteractive">
-        {`!function(f,b,e,v,n,t,s)
-        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      {/* Split load: the tiny fbq STUB runs right after hydration (zero network) so
+          every funnel call — PageView, QuoteViewed, InitiateCheckout — is queued from
+          the first moment; the ~242KB fbevents.js SDK loads lazily in idle time, out
+          of the critical path, and drains the queue when it arrives. */}
+      <Script id="meta-pixel-stub" strategy="afterInteractive">
+        {`!function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?
         n.callMethod.apply(n,arguments):n.queue.push(arguments)};
         if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s)}(window,document,'script',
-        'https://connect.facebook.net/en_US/fbevents.js');
+        n.queue=[]}(window);
         fbq('init','${PIXEL_ID}');fbq('track','PageView');`}
       </Script>
+      <Script
+        id="meta-pixel-sdk"
+        src="https://connect.facebook.net/en_US/fbevents.js"
+        strategy="lazyOnload"
+      />
       <noscript>
         {/* eslint-disable-next-line @next/next/no-img-element -- tracking pixel, not an image */}
         <img

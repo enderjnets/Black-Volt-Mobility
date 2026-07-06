@@ -10,6 +10,7 @@ import {
   bookHref,
   getRoute,
   getRouteLabel,
+  heroImgSources,
   routeHero,
   routeMap,
 } from "@/lib/seoRoutes";
@@ -51,6 +52,7 @@ export default async function RidePage({ params }: { params: { slug: string } })
   const path = `/rides/${route.slug}`;
   const priceLabel = priceFrom != null ? `from ${fmtPrice(priceFrom)}` : "Instant quote";
   const hero = routeHero(route);
+  const heroImg = heroImgSources(hero.src); // visible <img> = WebP; OG metadata keeps the .jpg
 
   // Structured data: Service + FAQPage + BreadcrumbList. Helps local SEO and can earn
   // rich results (FAQ accordions, breadcrumbs) in Google.
@@ -124,11 +126,14 @@ export default async function RidePage({ params }: { params: { slug: string } })
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={hero.src}
+          src={heroImg.src}
+          srcSet={heroImg.srcSet}
+          sizes="(max-width: 800px) 100vw, 760px"
           alt={hero.alt}
           width={1200}
           height={750}
           loading="eager"
+          fetchPriority="high"
           decoding="async"
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
         />

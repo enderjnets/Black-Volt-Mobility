@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.70.0 — 2026-07-05 — Pricing: uncovered-endpoint guard + performance pass
+
+**Pricing fix (Lisa/Longmont):** an endpoint outside every named zone (Longmont was unlisted) let the OTHER endpoint's flat win — a ~42-mile Longmont→DEN ride quoted the core flat. Root cause: `zones.match_zone` matches pickup OR dropoff by city name; `pricing.quote` lets `zone_flat` replace the whole metered calc.
+
+- **Uncovered-endpoint guard** in `booking.build_quote` (single funnel for quote/ride/round-trip/events → full parity): when a matched flat coexists with an endpoint that is in no zone (and isn't an airport keyword or the pinned base), the flat becomes a FLOOR — the trip is also metered and the higher total wins. The guard can never lower a price.
+- **Zones:** `longmont` + `niwot` added to the boulder zone terms (same north corridor); new `zones.covered()` helper.
+- Tests: 4 new (Longmont→boulder flat, far uncovered town meters above the flat, near uncovered town keeps the flat floor, bare "DEN" keeps the flagship flat). Zone/pricing suites 44 passed; full backend 653 passed (4 pre-existing PIL failures unrelated).
+
+**Performance pass (Soro measured 8.3s load / 74):** home was 1,078 KB; 786 KB addressable.
+
+- Hero JPEGs → pre-generated WebP (`scripts/gen_hero_webp.py`): coors-field 365→171 KB (73 KB mobile), charging 179→54 KB (23 KB mobile); `srcset`/`sizes` + explicit width/height, `fetchpriority="high"` on LCP heroes, lazy elsewhere. Originals kept as OG images (scraper compatibility). Benefits home + 8 /rides pages + driver profile.
+- Meta Pixel (242 KB) `afterInteractive` → `lazyOnload` (out of the critical path; PageView still fires).
+- `headers()` in next.config.js: `/assets/*` now `Cache-Control: public, max-age=2592000` (Cloudflare HIT instead of 4h REVALIDATE).
+
 ## v0.69.1 — 2026-07-05 — Blog embed lifecycle hardening
 
 **Fix (from post-deploy adversarial audit):** the Soro embed registers a window `popstate` listener and mutates `<head>` (canonical, Blog JSON-LD, `document.title`) — removing its `<script>` tag undoes none of that, so after an SPA exit from `/blog`, back/forward on other pages fired a stale handler (console TypeError, title overwritten) and a stray canonical/JSON-LD lingered in `<head>`.
