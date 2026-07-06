@@ -11,6 +11,12 @@ const rajdhani = Rajdhani({
   subsets: ["latin"],
   weight: ["500", "600", "700"],
   variable: "--font-rajdhani",
+  // The hero H1 is the LCP element; with the default `swap` its final paint waits
+  // for this display font, pushing LCP to ~3.6s on throttled mobile. `optional`
+  // lets the first (uncached) paint use the metric-adjusted fallback and skips the
+  // late swap, so LCP tracks FCP (~0.9s); cached visits still render Rajdhani. CLS
+  // stays 0 via Next's adjustFontFallback.
+  display: "optional",
 });
 
 export const metadata: Metadata = {
