@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.70.0";
+export const CURRENT_VERSION = "0.70.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.70.1",
+    date: "2026-07-05",
+    title: "Even faster pages",
+    changes: [
+      "The homepage and route pages load their main photo sooner and ship less JavaScript up front (the chat assistant now loads on demand), so pages feel quicker — especially on phones.",
+    ],
+  },
   {
     version: "0.70.0",
     date: "2026-07-05",

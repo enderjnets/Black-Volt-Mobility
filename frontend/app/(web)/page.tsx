@@ -38,6 +38,16 @@ export default async function Page() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessLd) }}
       />
+      {/* Preload the LCP hero so it starts downloading before the JS/fonts, not after.
+          React hoists this <link> into <head>; matches the <img> in Landing. */}
+      <link
+        rel="preload"
+        as="image"
+        href="/assets/ev9-coors-field.webp"
+        imageSrcSet="/assets/ev9-coors-field-800w.webp 800w, /assets/ev9-coors-field.webp 1600w"
+        imageSizes="(max-width: 800px) 100vw, 1040px"
+        fetchPriority="high"
+      />
       <Landing zonePrices={zonePrices} />
     </>
   );

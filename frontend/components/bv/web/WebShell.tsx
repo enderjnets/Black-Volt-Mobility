@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
@@ -11,7 +12,12 @@ import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { fetchMe, logout } from "@/lib/auth";
 import { track } from "@/lib/analytics";
-import { ChatAssistant } from "./Chat";
+// Joules chat: code-split out of the shared first-load bundle — the module (panel
+// + streaming + history) loads on the client after hydration, not on the critical
+// path. Its floating launcher appears a beat after paint; nothing else depends on it.
+const ChatAssistant = dynamic(() => import("./Chat").then((m) => m.ChatAssistant), {
+  ssr: false,
+});
 import { ClientTabBar } from "./ClientTabBar";
 import { SEO_ROUTES } from "@/lib/seoRoutes";
 import { ProfileGate } from "./ProfileGate";

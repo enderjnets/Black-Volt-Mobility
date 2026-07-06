@@ -106,6 +106,15 @@ export default async function RidePage({ params }: { params: { slug: string } })
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+      {/* Preload the LCP hero (matches the eager <img> below) so it downloads first. */}
+      <link
+        rel="preload"
+        as="image"
+        href={heroImg.src}
+        imageSrcSet={heroImg.srcSet}
+        imageSizes="(max-width: 800px) 100vw, 760px"
+        fetchPriority="high"
+      />
 
       <nav style={{ fontSize: 13, color: "var(--fg3)", marginBottom: 14 }}>
         <Link href="/rides" style={{ color: "var(--fg3)", textDecoration: "none" }}>

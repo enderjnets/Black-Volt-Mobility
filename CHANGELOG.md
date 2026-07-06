@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.70.1 — 2026-07-05 — Perf pass 2 (Soro Site Speed 88 → target 100)
+
+Follow-up to v0.70.0's perf work (Soro re-check moved 74→88, load 8.3s→3.7s). Remaining lever = the critical-path load; 3 of 4 metrics already "Good".
+
+- **LCP hero preload**: `<link rel="preload" as="image" imagesrcset/imagesizes fetchpriority=high>` on the home + `/rides/[slug]` server pages (React-hoisted to `<head>`), so the hero starts downloading before JS/fonts instead of after.
+- **Joules chat code-split**: `ChatAssistant` now loads via `next/dynamic({ ssr: false })` — its module leaves the shared first-load bundle and loads on the client after hydration (launcher appears a beat after paint; no functional change).
+
+Frontend-only, no backend/migration.
+
 ## v0.70.0 — 2026-07-05 — Pricing: uncovered-endpoint guard + performance pass
 
 **Pricing fix (Lisa/Longmont):** an endpoint outside every named zone (Longmont was unlisted) let the OTHER endpoint's flat win — a ~42-mile Longmont→DEN ride quoted the core flat. Root cause: `zones.match_zone` matches pickup OR dropoff by city name; `pricing.quote` lets `zone_flat` replace the whole metered calc.
