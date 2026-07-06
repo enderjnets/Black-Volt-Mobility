@@ -6,6 +6,8 @@
    a shared eventID. */
 import Script from "next/script";
 
+import { PixelSdkLoader } from "./PixelSdkLoader";
+
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 
 export function MetaPixel() {
@@ -14,8 +16,8 @@ export function MetaPixel() {
     <>
       {/* Split load: the tiny fbq STUB runs right after hydration (zero network) so
           every funnel call — PageView, QuoteViewed, InitiateCheckout — is queued from
-          the first moment; the ~242KB fbevents.js SDK loads lazily in idle time, out
-          of the critical path, and drains the queue when it arrives. */}
+          the first moment; the ~242KB fbevents.js SDK loads on first interaction (or a
+          timeout) via PixelSdkLoader, out of the LCP window, and drains the queue. */}
       <Script id="meta-pixel-stub" strategy="afterInteractive">
         {`!function(f){if(f.fbq)return;var n=f.fbq=function(){n.callMethod?
         n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -23,11 +25,7 @@ export function MetaPixel() {
         n.queue=[]}(window);
         fbq('init','${PIXEL_ID}');fbq('track','PageView');`}
       </Script>
-      <Script
-        id="meta-pixel-sdk"
-        src="https://connect.facebook.net/en_US/fbevents.js"
-        strategy="lazyOnload"
-      />
+      <PixelSdkLoader />
       <noscript>
         {/* eslint-disable-next-line @next/next/no-img-element -- tracking pixel, not an image */}
         <img

@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.70.1";
+export const CURRENT_VERSION = "0.70.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.70.2",
+    date: "2026-07-05",
+    title: "Faster first paint",
+    changes: [
+      "The analytics pixel now loads only after you interact with the page, so the homepage's main headline and photo appear faster on slow connections. Tracking is unchanged.",
+    ],
+  },
   {
     version: "0.70.1",
     date: "2026-07-05",
