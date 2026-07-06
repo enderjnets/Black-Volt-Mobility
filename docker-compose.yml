@@ -108,6 +108,11 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-Black Volt Mobility <noreply@blackvoltmobility.com>}
       PUBLIC_DASHBOARD_URL: ${PUBLIC_DASHBOARD_URL:-https://app.blackvoltmobility.com/dashboard}
+      # Web Push (PWA notifications). Generate once with backend/scripts/gen_vapid.py
+      # and set the keys in .env (never commit them). Empty → push is a silent no-op.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:support@blackvoltmobility.com}
       # Social media module (Phase "Social") — simulated by default; live needs
       # platform OAuth + a BitTrader render worker (see docs/setup-social-media.md).
       SOCIAL_SIMULATED: ${SOCIAL_SIMULATED:-true}
