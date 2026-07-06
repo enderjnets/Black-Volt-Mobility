@@ -12,6 +12,7 @@ from app.models.event import Event, EventSuggestion
 from app.models.notification import Notification, NotificationKind
 from app.models.payment import Payment, PaymentStatus
 from app.models.platform_stat import PlatformStat
+from app.models.push_subscription import PushSubscription
 from app.models.rate_config import RateConfig
 from app.models.review import Review, ReviewInvite, ReviewStatus
 from app.models.ride import PaymentMethod, Ride, RideStatus
@@ -56,6 +57,7 @@ __all__ = [
     "Notification",
     "NotificationKind",
     "PlatformStat",
+    "PushSubscription",
     "SocialAccount",
     "SocialPost",
     "SocialFeedback",

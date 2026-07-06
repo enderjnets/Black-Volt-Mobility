@@ -24,6 +24,7 @@ from app.api.v1.health import router as health_router
 from app.api.v1.me import router as me_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.payments import router as payments_router
+from app.api.v1.push import router as push_router
 from app.api.v1.reviews import router as reviews_router
 from app.api.v1.rides import router as booking_router
 from app.api.v1.social import router as social_router
@@ -134,6 +135,7 @@ app.include_router(team_router, prefix="/api/v1", dependencies=[Depends(require_
 app.include_router(discounts_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(push_router, prefix="/api/v1")
 
 # Owner-uploaded brand assets (logo/photo). The directory must exist before the
 # mount or StaticFiles raises at import; create it up front (idempotent).

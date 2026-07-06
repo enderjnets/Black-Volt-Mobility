@@ -7,6 +7,7 @@ import { AddressEditor } from "./AddressEditor";
 import { RidePreferencesFields } from "./RidePreferences";
 
 import { Icon } from "../Icon";
+import { PushOptIn } from "../PushOptIn";
 import { Button, GoogleG, Pill, Toggle } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -412,6 +413,10 @@ export function Account() {
               <Toggle on={!!profile?.email_consent} setOn={(v) => savePref({ email_consent: v })} />
             </PrefRow>
           </div>
+        </Section>
+
+        <Section title={t("push.title")}>
+          <PushOptIn />
         </Section>
 
         <div style={{ gridColumn: "1 / -1" }}>

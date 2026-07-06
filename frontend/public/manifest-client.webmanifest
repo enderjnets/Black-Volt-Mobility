@@ -1,0 +1,18 @@
+{
+  "name": "Black Volt Mobility",
+  "short_name": "Black Volt",
+  "id": "/?pwa=client",
+  "start_url": "/?utm_source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0A0A0F",
+  "theme_color": "#0A0A0F",
+  "orientation": "portrait",
+  "description": "Premium electric chauffeur, airport & mountain transfers in Denver.",
+  "categories": ["travel", "navigation"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

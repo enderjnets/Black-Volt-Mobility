@@ -60,6 +60,20 @@ async def _review_reminders_job() -> None:
         logger.warning("review_reminders job failed: %s", e)
 
 
+async def _pickup_reminders_job() -> None:
+    """Push a reminder to passengers whose confirmed ride departs soon (all tenants)."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import push
+
+        async with get_session_factory()() as db:
+            n = await push.send_due_pickup_reminders(db)
+            if n:
+                logger.info("pickup reminders pushed: %d", n)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("pickup_reminders job failed: %s", e)
+
+
 async def _events_scan_job() -> None:
     """Daily 06:00 Denver: pull big upcoming events into suggestions; archive past events."""
     try:
@@ -102,6 +116,11 @@ def start() -> None:
         # Auto review-request reminders: email riders ~N hours after their ride completes.
         sched.add_job(
             _review_reminders_job, "interval", minutes=15, id="review_reminders",
+            max_instances=1, coalesce=True,
+        )
+        # Passenger pickup-reminder pushes (PWA). Interval keeps the lead-time tight.
+        sched.add_job(
+            _pickup_reminders_job, "interval", minutes=15, id="pickup_reminders",
             max_instances=1, coalesce=True,
         )
         # Daily featured-events scan + archive (Denver local time). Gated so a

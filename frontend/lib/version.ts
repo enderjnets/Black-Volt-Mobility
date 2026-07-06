@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.70.2";
+export const CURRENT_VERSION = "0.71.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.71.0",
+    date: "2026-07-06",
+    title: "Install the app + push notifications",
+    changes: [
+      "Black Volt is now installable to your phone's home screen — add it from your browser for a full-screen, app-like experience (both the rider site and the driver dashboard).",
+      "Turn on push notifications to get alerts on your device: drivers are notified of new bookings, cancellations, chats, and reviews; riders get ride confirmations, cancellations, refunds, and a heads-up before pickup.",
+    ],
+  },
   {
     version: "0.70.2",
     date: "2026-07-05",

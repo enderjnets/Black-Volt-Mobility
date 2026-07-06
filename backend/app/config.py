@@ -290,6 +290,18 @@ class Settings(BaseSettings):
         """Real email sending requires an explicit opt-out of simulation AND a key."""
         return not self.EMAIL_SIMULATED and bool(self.RESEND_API_KEY)
 
+    # ─── Web Push (VAPID) ────────────────────────────────────────────────────
+    # PWA push notifications. Keys are generated once (py-vapid / openssl) and set
+    # via env on the server — NEVER committed. With no keys, push is a silent no-op
+    # so dev/test builds ship no tracker and nothing breaks.
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_SUBJECT: str = "mailto:support@blackvoltmobility.com"
+
+    @property
+    def push_enabled(self) -> bool:
+        return bool(self.VAPID_PUBLIC_KEY and self.VAPID_PRIVATE_KEY)
+
     # ─── Social media (Phase "Social") ──────────────────────────────────
     # AI-assisted content + owner-approval publishing to Instagram/Facebook
     # (Meta) and TikTok. Heavy video rendering is offloaded to a separate

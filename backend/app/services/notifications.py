@@ -42,6 +42,10 @@ async def emit(
             await db.flush()
             await _prune(db, tenant_id)
         await db.commit()
+        # Mirror the bell to a Web Push for staff devices. Fire-and-forget; never raises.
+        from app.services import push
+
+        push.notify_staff(tenant_id, kind=kind.value)
     except Exception:  # noqa: BLE001 — a notification must never break the caller
         log.warning("notification emit failed (tenant=%s kind=%s)", tenant_id, kind, exc_info=True)
         try:

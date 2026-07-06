@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { Icon } from "../Icon";
+import { InstallHint } from "../InstallHint";
 import { Button, Logo } from "../ui";
 import { VersionButton } from "../../ui/VersionButton";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
@@ -295,6 +296,7 @@ export function WebShell({ children }: { children: ReactNode }) {
         </main>
 
         <ClientTabBar />
+        <InstallHint />
         <ChatAssistant open={chatOpen} setOpen={setChatOpen} />
         {signin && (
           <SignInModal

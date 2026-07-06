@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Icon } from "../Icon";
+import { PushOptIn } from "../PushOptIn";
 import { useI18n } from "@/lib/i18n";
 import {
   listNotifications,
@@ -255,6 +256,7 @@ export function NotificationsBell() {
           ))
         )}
       </div>
+      <PushOptIn compact />
     </div>
   );
 

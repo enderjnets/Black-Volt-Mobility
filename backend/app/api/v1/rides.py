@@ -36,6 +36,7 @@ from app.services import (
     payments,
     payments_square,
     profile,
+    push,
     smart,
     subscriptions,
     zones,
@@ -774,6 +775,16 @@ async def cancel_ride(
             "client_name": (ride.passenger_name or "").strip() or None,
         },
     )
+    # Passenger push: only when STAFF cancelled — if the rider cancelled their own
+    # ride they already know. Best-effort, never raises.
+    if payload.get("role") in auth.STAFF_ROLES and ride.client_id:
+        push.notify_client(
+            ride.tenant_id,
+            ride.client_id,
+            event="ride_cancelled",
+            lang=ride.lang,
+            place=ride.dropoff_text,
+        )
     return _ride_out(ride)
 
 
@@ -801,6 +812,14 @@ async def refund_decision(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     await db.commit()
     await db.refresh(ride)
+    # Passenger push about the refund outcome. Best-effort, never raises.
+    if ride.client_id:
+        push.notify_client(
+            ride.tenant_id,
+            ride.client_id,
+            event="refund_full" if body.fee_pct <= 0 else "refund_partial",
+            lang=ride.lang,
+        )
     out = _ride_out(ride)
     out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))
     return out

@@ -7,6 +7,7 @@
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
+import { PushOptIn } from "../PushOptIn";
 import { Button, Field, Pill, Toggle } from "../ui";
 import { ShareLink } from "./ShareLink";
 import {
@@ -180,6 +181,10 @@ export function Settings() {
             <Field icon="star" type="number" label={t("dash.settings.rating")} value={form.rating} onChange={(v) => set("rating", v)} placeholder="4.98" />
             <Field icon="clock" type="number" label={t("dash.settings.sinceYear")} value={form.since_year} onChange={(v) => set("since_year", v)} placeholder="2021" />
           </div>
+        </Section>
+
+        <Section title={t("push.title")} icon="bell">
+          <PushOptIn />
         </Section>
 
         <Section title={t("dash.settings.reviewsSection")} icon="star">

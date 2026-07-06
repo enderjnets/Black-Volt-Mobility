@@ -143,6 +143,11 @@ class Ride(Base):
     # Google Calendar event id (when the scheduled ride is pushed to the calendar).
     google_event_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    # When the passenger pickup-reminder push was sent (dedup for the scheduler job).
+    pickup_reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Round-trip linkage: on the outbound leg, points at its return leg.
     return_ride_id: Mapped[int | None] = mapped_column(
         ForeignKey("rides.id", ondelete="SET NULL"), nullable=True

@@ -10,6 +10,7 @@ import { Button } from "../ui";
 import { LanguageSwitcher } from "../../ui/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
 import { fetchMe, logout, type Me } from "@/lib/auth";
+import { InstallHint } from "../InstallHint";
 import { DriverTabBar } from "./DriverTabBar";
 import { NotificationsBell } from "./NotificationsBell";
 
@@ -251,6 +252,7 @@ export function DashShell({ children }: { children: ReactNode }) {
         {children}
       </div>
       <DriverTabBar />
+      <InstallHint />
     </div>
   );
 }
