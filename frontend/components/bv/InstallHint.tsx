@@ -5,42 +5,37 @@ import { useCallback, useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { useI18n } from "@/lib/i18n";
 import { isIOS, isStandalone } from "@/lib/push";
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-}
+import { installState, onInstallChange, registerServiceWorker, triggerInstall } from "@/lib/pwaInstall";
 
 const DISMISS_KEY = "bv-install-hint-dismissed";
 
 /**
- * A slim, dismissible "install this app" prompt. On Android/desktop it uses the
- * native `beforeinstallprompt`; on iOS Safari (which has no such event) it shows
- * the "Share → Add to Home Screen" instruction. Renders nothing once installed
- * (standalone) or after the user dismisses it (persisted in localStorage). Sits
- * above the mobile tab bar so it never covers navigation.
+ * A slim, dismissible "install this app" prompt. Registers the service worker on
+ * every load (what makes the app installable at all), then uses Chrome's captured
+ * `beforeinstallprompt`; on iOS Safari (no such event) it shows the "Share → Add to
+ * Home Screen" instruction. Renders nothing once installed (standalone) or after
+ * the user dismisses it. Sits above the mobile tab bar.
  */
 export function InstallHint() {
   const { t } = useI18n();
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
+  const [canInstall, setCanInstall] = useState(false);
   const [showIOS, setShowIOS] = useState(false);
   const [dismissed, setDismissed] = useState(true); // hidden until we decide to show
 
   useEffect(() => {
+    registerServiceWorker();
     if (isStandalone()) return;
     if (typeof localStorage !== "undefined" && localStorage.getItem(DISMISS_KEY) === "1") return;
     setDismissed(false);
 
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as BeforeInstallPromptEvent);
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
+    const sync = () => setCanInstall(installState().canPrompt);
+    sync();
+    const unsub = onInstallChange(sync);
 
     // iOS never fires beforeinstallprompt — offer manual A2HS instructions instead.
     if (isIOS() && !isStandalone()) setShowIOS(true);
 
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+    return unsub;
   }, []);
 
   const dismiss = useCallback(() => {
@@ -53,15 +48,11 @@ export function InstallHint() {
   }, []);
 
   const install = useCallback(async () => {
-    if (!deferred) return;
-    await deferred.prompt();
-    await deferred.userChoice.catch(() => undefined);
-    setDeferred(null);
+    await triggerInstall();
     dismiss();
-  }, [deferred, dismiss]);
+  }, [dismiss]);
 
   if (dismissed) return null;
-  const canInstall = deferred != null;
   if (!canInstall && !showIOS) return null;
 
   return (

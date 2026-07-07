@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.71.1 — 2026-07-06 — Fix PWA installability + explicit Install button
+
+The v0.71.0 PWAs weren't actually installable: the service worker was only registered when a user enabled notifications, and it had no `fetch` handler — so Chrome never met its installability criteria and `beforeinstallprompt` never fired (no install prompt on Android).
+
+- `public/sw.js`: added a no-op `fetch` handler (installability requirement; still caches nothing).
+- `lib/pwaInstall.ts`: shared install store — captures `beforeinstallprompt`/`appinstalled` at load and registers the SW on **every** page visit (via `InstallHint`, mounted in both shells) so the app qualifies as installable.
+- `InstallButton` (new): a permanent "Install app" affordance in the site footer and the driver's Settings — fires the native prompt when available, else shows Add-to-Home-Screen / browser-menu instructions. Hidden once installed. `InstallHint` refactored onto the shared store.
+- i18n `install.button` / `install.menuHint` (EN+ES).
+
 ## v0.71.0 — 2026-07-06 — PWA: installable apps + Web Push (rider + driver)
 
 Phase 1 of the mobile apps: both the rider site (apex) and the driver dashboard (app. host) are now installable PWAs with their own manifest, icons, and service worker, plus Web Push for both audiences.

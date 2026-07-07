@@ -14,6 +14,11 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// A fetch handler is required for Chrome to consider the app installable. We keep
+// it a pure pass-through — no respondWith, so the browser fetches normally and we
+// deliberately cache nothing (no stale app shell).
+self.addEventListener("fetch", () => {});
+
 self.addEventListener("push", (event) => {
   let payload = {};
   try {

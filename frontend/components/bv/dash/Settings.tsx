@@ -7,6 +7,7 @@
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
+import { InstallButton } from "../InstallButton";
 import { PushOptIn } from "../PushOptIn";
 import { Button, Field, Pill, Toggle } from "../ui";
 import { ShareLink } from "./ShareLink";
@@ -185,6 +186,9 @@ export function Settings() {
 
         <Section title={t("push.title")} icon="bell">
           <PushOptIn />
+          <div style={{ marginTop: 12, fontSize: 13, color: "var(--volt)" }}>
+            <InstallButton />
+          </div>
         </Section>
 
         <Section title={t("dash.settings.reviewsSection")} icon="star">

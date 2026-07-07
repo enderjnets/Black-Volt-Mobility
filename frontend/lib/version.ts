@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.71.0";
+export const CURRENT_VERSION = "0.71.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.71.1",
+    date: "2026-07-06",
+    title: "Fix: make the app installable",
+    changes: [
+      "Fixed why the \"Install app\" option wasn't showing on Android/Chrome: the app now registers its service worker on every visit (not only after enabling notifications) and meets Chrome's installability rules.",
+      "Added a clear \"Install app\" button in the footer (and in the driver's Settings) that triggers the install prompt, with Add-to-Home-Screen instructions on iPhone.",
+    ],
+  },
   {
     version: "0.71.0",
     date: "2026-07-06",

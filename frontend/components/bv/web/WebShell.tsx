@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { Icon } from "../Icon";
+import { InstallButton } from "../InstallButton";
 import { InstallHint } from "../InstallHint";
 import { Button, Logo } from "../ui";
 import { VersionButton } from "../../ui/VersionButton";
@@ -385,6 +386,7 @@ export function WebShell({ children }: { children: ReactNode }) {
             <Link href="/blog" style={{ color: "var(--fg2)", textDecoration: "none" }}>
               {t("nav.blog")}
             </Link>
+            <InstallButton style={{ color: "var(--fg2)" }} />
             {SEO_ROUTES.slice(0, 4).map((r) => (
               <Link
                 key={r.slug}
