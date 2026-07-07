@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.72.1 — 2026-07-07 — Fix: event reservation lost after sign-in
+
+Booking an event while signed out abandoned the reservation: after clicking "Pay deposit" the rider signed in with Google (and completed their profile on first login), but the app then sent them to `/account` instead of continuing — no payment, no booking. The dedicated event flow was calling sign-in without a resume callback, so the app fell through to its default post-login destination. It now passes a resume closure (the same pattern the generic `/book` funnel uses): after sign-in and profile completion the deposit continues automatically to the payment step. Frontend-only, no migration.
+
 ## v0.72.0 — 2026-07-07 — Events: round-trip-with-wait only + deposit + smart pickup time
 
 Event rides are now **round trip only** — one price, your driver takes you to the venue, **waits during the show**, and brings you home (no surge). The one-way "ride there" / "ride home" options are gone from the event experience; the landing now shows a single **Book round trip** action that opens a **dedicated event reservation flow** (`/events/[slug]/book`), separate from the generic booking funnel.
