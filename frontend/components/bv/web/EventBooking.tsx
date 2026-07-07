@@ -188,12 +188,10 @@ export default function EventBooking({ ev }: { ev: BookEvent }) {
     }
   }, [scheduledIso, address, venue, ev.return_at, pax]);
 
-  const startPayment = useCallback(async () => {
-    if (!scheduledIso || !agreed) return;
-    if (!user) {
-      openSignIn();
-      return;
-    }
+  // Create the (quoted) deposit ride and advance to the card step. No auth guard here — the
+  // caller/resume closure only reaches this once the rider is signed in (cookie set).
+  const proceedToPay = useCallback(async () => {
+    if (!scheduledIso) return;
     setBusy(true);
     setErr(null);
     try {
@@ -214,7 +212,20 @@ export default function EventBooking({ ev }: { ev: BookEvent }) {
     } finally {
       setBusy(false);
     }
-  }, [scheduledIso, agreed, user, openSignIn, address, venue, ev.return_at, pax]);
+  }, [scheduledIso, address, venue, ev.return_at, pax]);
+
+  const startPayment = useCallback(() => {
+    if (!scheduledIso || !agreed) return;
+    if (!user) {
+      // Google sign-in is a popup (no page navigation), so this page's state survives it.
+      // Pass a resume closure so that after sign-in AND profile completion the deposit
+      // continues automatically to the payment step — otherwise WebShell would send the
+      // rider to /account and the reservation would be abandoned.
+      openSignIn(() => void proceedToPay());
+      return;
+    }
+    void proceedToPay();
+  }, [scheduledIso, agreed, user, openSignIn, proceedToPay]);
 
   const onToken = useCallback(
     async (token: string) => {
