@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.73.0 — 2026-07-07 — Sign in from the PWA + a livelier Joules launcher
+
+Two mobile-UX gaps closed on the rider app.
+
+- **Sign in / register on the PWA.** The header "Sign in" text button is hidden on phones (<900px) and the bottom tab bar had no account entry, so a signed-out visitor had no way to sign in except by hitting the booking wall. Added a compact **account icon** (person) to the mobile header that opens Google sign-in — which also creates the account (there's no separate register). Desktop keeps the text button; the signed-in avatar/menu is unchanged. `SignInModal` copy now reads "Sign in — or create your account —…" (EN+ES).
+- **Joules launcher with life.** The floating chat button looked decorative. It now proactively draws attention: ~7s after load it starts a periodic **wiggle** + **pulse ring** and floats a **rotating one-liner** bubble ("Need a fare quote?" / "Airport transfer?" / "Going to an event?"), plus an unread dot. Clicking the bubble opens the chat; the ✕ (or opening the chat) dismisses it and it stays quiet for the rest of the session (`sessionStorage`). Positioned above the FAB and the tab bar and clamped to the viewport so it works on **web, mobile and installed PWA**; all motion is neutralized under `prefers-reduced-motion`.
+
+Frontend-only, no backend or migration. Files: `WebShell.tsx` (mobile account icon), `Chat.tsx` (nudge/wiggle/dot), `globals.css` (`.bv-mobile-account`, `.bv-chat-nudge`, `bvWiggle`/`bvPulse` keyframes), `i18n.tsx` (`chat.nudge1-3` + `auth.subtitle`).
+
 ## v0.72.1 — 2026-07-07 — Fix: event reservation lost after sign-in
 
 Booking an event while signed out abandoned the reservation: after clicking "Pay deposit" the rider signed in with Google (and completed their profile on first login), but the app then sent them to `/account` instead of continuing — no payment, no booking. The dedicated event flow was calling sign-in without a resume callback, so the app fell through to its default post-login destination. It now passes a resume closure (the same pattern the generic `/book` funnel uses): after sign-in and profile completion the deposit continues automatically to the payment step. Frontend-only, no migration.

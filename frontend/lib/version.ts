@@ -5,11 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.72.1";
+export const CURRENT_VERSION = "0.73.0";
 
 export const CHANGELOG: VersionEntry[] = [
   {
-    version: "0.71.1",
+    version: "0.73.0",
+    date: "2026-07-07",
+    title: "Sign in from your phone + a livelier Joules",
+    changes: [
+      "You can now sign in or create your account right from the phone app: a person icon in the top bar opens Google sign-in (it was only reachable on desktop or by starting a booking before).",
+      "Joules, the chat assistant, now says hi: a few seconds after the page loads it gives its button a gentle nudge and floats a short question (\"Need a fare quote?\") so you know it's there — it settles down as soon as you open or dismiss it, and respects reduced-motion settings.",
+    ],
+  },
+  {
+    version: "0.72.1",
     date: "2026-07-06",
     title: "Fix: make the app installable",
     changes: [

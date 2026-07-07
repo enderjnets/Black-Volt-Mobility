@@ -277,11 +277,33 @@ export function WebShell({ children }: { children: ReactNode }) {
                 )}
               </div>
             ) : (
-              <span className="bv-web-actions-extra">
-                <Button variant="ghost" size="sm" onClick={() => openSignIn()}>
-                  {t("auth.signin")}
-                </Button>
-              </span>
+              <>
+                <span className="bv-web-actions-extra">
+                  <Button variant="ghost" size="sm" onClick={() => openSignIn()}>
+                    {t("auth.signin")}
+                  </Button>
+                </span>
+                {/* Mobile/PWA: the text button is hidden, so surface a compact
+                    account icon that opens Google sign-in (which also registers). */}
+                <button
+                  className="bv-mobile-account"
+                  aria-label={t("auth.signin")}
+                  onClick={() => openSignIn()}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: "50%",
+                    border: "1px solid var(--line-strong)",
+                    background: "var(--obsidian-3)",
+                    cursor: "pointer",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                  }}
+                >
+                  <Icon name="user" size={18} color="var(--silver)" />
+                </button>
+              </>
             )}
             <Button variant="solid" size="sm" icon="zap" onClick={() => router.push("/book")}>
               {t("home.cta.book")}

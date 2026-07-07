@@ -106,6 +106,82 @@ body {
   }
 }
 
+/* Joules launcher: proactive attention (wiggle + pulse ring + nudge bubble).
+   All motion is auto-neutralized by the global prefers-reduced-motion rule below. */
+@keyframes bvWiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-9deg) scale(1.06);
+  }
+  45% {
+    transform: rotate(7deg) scale(1.06);
+  }
+  70% {
+    transform: rotate(-4deg);
+  }
+}
+@keyframes bvPulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes bvNudgeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.bv-chat-launcher.bv-wiggle {
+  animation: bvWiggle 0.7s ease-in-out;
+}
+.bv-chat-launcher.bv-nudging::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--volt);
+  animation: bvPulse 1.8s ease-out infinite;
+  pointer-events: none;
+}
+/* Nudge speech bubble: anchored to the FAB, lifted above the tab bar on mobile
+   (see the max-width:899px block), never wider than the viewport. */
+.bv-chat-nudge {
+  position: fixed;
+  right: 24px;
+  bottom: 92px;
+  z-index: 46;
+  max-width: calc(100vw - 96px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 8px 9px 14px;
+  background: var(--obsidian);
+  border: 1px solid var(--volt-border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-pop), var(--shadow-volt-sm);
+  cursor: pointer;
+  animation: bvNudgeIn 0.3s ease-out;
+}
+/* Sign-in affordance for the mobile PWA header (desktop uses the text button). */
+.bv-mobile-account {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;
@@ -134,6 +210,10 @@ body {
      account flow; keep the logo + primary "Book a ride" CTA. */
   .bv-web-actions-extra {
     display: none !important;
+  }
+  /* ...but keep a compact account icon so the PWA can sign in / register */
+  .bv-mobile-account {
+    display: flex !important;
   }
   .bv-web-header {
     gap: 8px !important;
@@ -173,6 +253,10 @@ body {
   .bv-chat-panel {
     bottom: 160px !important;
     max-height: calc(100dvh - 220px) !important;
+  }
+  /* keep the nudge bubble above the lifted FAB + tab bar */
+  .bv-chat-nudge {
+    bottom: 160px !important;
   }
 }
 

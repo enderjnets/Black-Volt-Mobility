@@ -10,6 +10,8 @@ import { useWeb } from "./WebShell";
 
 type Msg = { role: "user" | "ai"; text: string };
 
+const NUDGE_KEYS = ["chat.nudge1", "chat.nudge2", "chat.nudge3"] as const;
+
 function toBubbles(api: ChatApiMsg[]): Msg[] {
   return api.map((m) => ({ role: m.role === "user" ? "user" : "ai", text: m.body }));
 }
@@ -23,6 +25,50 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
   const [loaded, setLoaded] = useState(false);
   const pendingRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [nudging, setNudging] = useState(false);
+  const [nudgeIdx, setNudgeIdx] = useState(0);
+  const [wiggle, setWiggle] = useState(false);
+
+  const dismissNudge = () => {
+    setNudging(false);
+    try {
+      sessionStorage.setItem("bv_joules_seen", "1");
+    } catch {
+      /* private mode: just won't persist across reloads */
+    }
+  };
+
+  // Proactive nudge: a beat after load, the launcher wiggles and floats a rotating
+  // one-liner so first-time visitors notice Joules. Stops for the session on the
+  // first interaction (open or dismiss). Motion is neutralized under reduced-motion
+  // by the global rule in globals.css.
+  useEffect(() => {
+    if (open || typeof window === "undefined") return;
+    try {
+      if (sessionStorage.getItem("bv_joules_seen")) return;
+    } catch {
+      /* ignore storage access errors */
+    }
+    let cycle: ReturnType<typeof setInterval> | undefined;
+    let wig: ReturnType<typeof setTimeout> | undefined;
+    const kick = () => {
+      setWiggle(true);
+      wig = setTimeout(() => setWiggle(false), 700);
+    };
+    const start = setTimeout(() => {
+      setNudging(true);
+      kick();
+      cycle = setInterval(() => {
+        setNudgeIdx((i) => (i + 1) % NUDGE_KEYS.length);
+        kick();
+      }, 20000);
+    }, 7000);
+    return () => {
+      clearTimeout(start);
+      if (wig) clearTimeout(wig);
+      if (cycle) clearInterval(cycle);
+    };
+  }, [open]);
 
   // Load the persisted history once a signed-in passenger opens the panel.
   useEffect(() => {
@@ -98,10 +144,68 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
 
   return (
     <>
+      {nudging && !open && (
+        <div
+          className="bv-chat-nudge"
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            dismissNudge();
+            setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              dismissNudge();
+              setOpen(true);
+            }
+          }}
+        >
+          <span
+            style={{
+              fontSize: 13.5,
+              fontFamily: "var(--font-sans)",
+              color: "var(--arctic)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {t(NUDGE_KEYS[nudgeIdx])}
+          </span>
+          <button
+            aria-label={lang === "es" ? "Descartar" : "Dismiss"}
+            onClick={(e) => {
+              e.stopPropagation();
+              dismissNudge();
+            }}
+            style={{
+              width: 24,
+              height: 24,
+              flexShrink: 0,
+              borderRadius: "50%",
+              border: "none",
+              background: "transparent",
+              color: "var(--fg3)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+            }}
+          >
+            <Icon name="x" size={13} color="currentColor" />
+          </button>
+        </div>
+      )}
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          dismissNudge();
+          setOpen(!open);
+        }}
         aria-label="Assistant"
-        className="bv-chat-launcher"
+        className={`bv-chat-launcher${nudging && !open ? " bv-nudging" : ""}${
+          wiggle && !open ? " bv-wiggle" : ""
+        }`}
         style={{
           position: "fixed",
           right: 24,
@@ -123,6 +227,22 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
         }}
       >
         <Icon name={open ? "x" : "sparkles"} size={24} color="var(--void)" fill={open ? "none" : "var(--void)"} />
+        {nudging && !open && (
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: 9,
+              right: 9,
+              width: 11,
+              height: 11,
+              borderRadius: "50%",
+              background: "var(--void)",
+              border: "2px solid var(--volt)",
+              boxShadow: "0 0 0 2px var(--volt)",
+            }}
+          />
+        )}
       </button>
 
       {open && (
