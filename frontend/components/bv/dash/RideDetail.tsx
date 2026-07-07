@@ -140,7 +140,7 @@ export function RideDetail({
   onClose: () => void;
   onChanged?: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [ride, setRide] = useState<RD | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -566,6 +566,33 @@ export function RideDetail({
           </div>
         </div>
       </div>
+
+      {/* Event deposit reservation: driver collects the remaining balance in person */}
+      {ride.balance_due_cents != null ? (
+        <div
+          style={{
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            background: "var(--obsidian-3)",
+            border: "1px solid var(--volt)",
+            marginBottom: 16,
+            fontSize: 13.5,
+          }}
+        >
+          <div style={{ fontWeight: 700, color: "var(--volt)", marginBottom: 4 }}>
+            {lang === "es" ? "Reserva de evento · depósito" : "Event reservation · deposit"}
+          </div>
+          <div style={{ color: "var(--fg2)" }}>
+            {lang === "es"
+              ? `Depósito pagado $${Math.round((ride.deposit_cents || 0) / 100)}. Cobra el saldo de $${Math.round(
+                  ride.balance_due_cents / 100,
+                )} el día del evento.`
+              : `Deposit paid $${Math.round((ride.deposit_cents || 0) / 100)}. Collect the $${Math.round(
+                  ride.balance_due_cents / 100,
+                )} balance on the event day.`}
+          </div>
+        </div>
+      ) : null}
 
       {/* Payment method + mark paid */}
       <div style={{ marginBottom: 16 }}>

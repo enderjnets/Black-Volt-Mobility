@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.72.0 — 2026-07-07 — Events: round-trip-with-wait only + deposit + smart pickup time
+
+Event rides are now **round trip only** — one price, your driver takes you to the venue, **waits during the show**, and brings you home (no surge). The one-way "ride there" / "ride home" options are gone from the event experience; the landing now shows a single **Book round trip** action that opens a **dedicated event reservation flow** (`/events/[slug]/book`), separate from the generic booking funnel.
+
+- **1/3 deposit to reserve.** A one-third deposit is charged now (Square) to secure the booking; the balance is collected in person on the event day. Riders read the terms and accept them with a required checkbox before paying — acceptance is recorded server-side (auditable).
+- **48-hour refund policy.** Fully refundable up to 48 hours before the event; within 48 hours the deposit is non-refundable (the driver reserved the night).
+- **Smart pickup time.** The suggested pickup time is computed from **Google-Maps traffic** so you arrive ~30 minutes before showtime — editable by the rider. The return is timed to when the show ends.
+- **AI event duration.** On approval, the driver's wait time is pre-filled from an AI estimate of that specific event's length (still editable).
+- **Driver sees the balance.** The driver ride detail shows "Deposit paid $X · collect $Y balance on the event day" so they charge the remaining two-thirds, not the full fare.
+
+Backend: traffic-aware `duration_in_traffic`, public pickup-suggestion endpoint, `deposit_cents`/`balance_due_cents`/`terms_accepted_at`/`terms_version` on rides (migration 0042), deposit-aware charge + `fee_pct=100` cancellation path. 685 backend tests pass (incl. 11 new). The generic `/book` funnel and existing full-prepay event rides are unchanged.
+
 ## v0.71.1 — 2026-07-06 — Fix PWA installability + explicit Install button
 
 The v0.71.0 PWAs weren't actually installable: the service worker was only registered when a user enabled notifications, and it had no `fetch` handler — so Chrome never met its installability criteria and `beforeinstallprompt` never fired (no install prompt on Android).

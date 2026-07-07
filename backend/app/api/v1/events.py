@@ -137,6 +137,19 @@ async def public_detail(slug: str, db: AsyncSession = Depends(get_db)) -> dict:
     return data
 
 
+@router.get("/public/{slug}/pickup-suggestion")
+async def pickup_suggestion(
+    slug: str,
+    origin: str = Query(min_length=1, max_length=240),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Traffic-aware suggested pickup time for a rider's address (event booking flow)."""
+    out = await events.pickup_suggestion(db, slug=slug, origin=origin.strip())
+    if out is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return out
+
+
 # ─── Admin ─────────────────────────────────────────────────────────────────────
 
 

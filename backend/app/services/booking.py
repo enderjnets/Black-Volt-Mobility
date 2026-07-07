@@ -19,8 +19,17 @@ from app.services import profile as profile_svc
 logger = logging.getLogger("blackvolt.booking")
 
 
+# Version of the per-reservation event terms (deposit + 48h refund policy) the rider accepts.
+# Bump when the terms copy changes so acceptance records stay meaningful.
+EVENT_TERMS_VERSION = "1.0"
+
+
 class RoundTripLockedError(Exception):
     """Raised when a route edit is attempted on a paid round-trip leg."""
+
+
+class EventUnavailableError(Exception):
+    """Raised when a terms-accepted event deposit booking no longer matches a live event."""
 
 
 # Cancelled/no-show rides never count toward money or activity.
@@ -379,15 +388,25 @@ async def create_round_trip(
     vehicle: str | None = None,
     status: RideStatus = RideStatus.QUOTED,
     ride_preferences: dict | None = None,
+    terms_accepted: bool = False,
 ) -> tuple[Ride, Ride]:
     """Create a linked outbound+return pair with per-leg fares that sum to the round-trip
     total (event/night/wait surcharges ride on the outbound leg). Returns (outbound, return).
+
+    When ``terms_accepted`` and the trip matches an event, the booking becomes a DEPOSIT
+    reservation: a 1/3 deposit is charged at payment, the balance is collected in person, and
+    cancellation follows the 48h policy. The deposit metadata is stamped on the outbound leg.
     """
     from app.services import event_pricing
 
     ev = await event_pricing.find_event_for_ride(
         db, pickup=pickup, dropoff=dropoff, when=scheduled_at
     )
+    if terms_accepted and ev is None:
+        # The dedicated event flow always books a real event; if it no longer matches (archived,
+        # passed, or a venue/time mismatch) fail loudly instead of silently charging the full fare
+        # as a hold while the rider was shown a 1/3 deposit.
+        raise EventUnavailableError()
     ret_dt = return_at or (
         event_pricing.default_return_dt(ev) if ev is not None else scheduled_at
     )
@@ -420,6 +439,19 @@ async def create_round_trip(
     ob["round_trip_lines"] = rt["lines"]
     ob["round_trip_return_at"] = ret_dt.isoformat() if hasattr(ret_dt, "isoformat") else ret_dt
     ob["event"] = rt.get("event")
+    if ev is not None and terms_accepted:
+        # Deposit reservation: charge 1/3 now, collect the balance in person on the day.
+        total_cents = int(round(rt["total"] * 100))
+        deposit_cents = int(round(total_cents / 3))
+        outbound.deposit_cents = deposit_cents
+        outbound.balance_due_cents = total_cents - deposit_cents
+        outbound.terms_accepted_at = datetime.now(UTC)
+        outbound.terms_version = EVENT_TERMS_VERSION
+        ob["deposit"] = {
+            "pct": 33,
+            "deposit": round(deposit_cents / 100, 2),
+            "balance": round((total_cents - deposit_cents) / 100, 2),
+        }
     outbound.price_breakdown = ob
     await db.commit()
     await db.refresh(outbound)

@@ -175,7 +175,15 @@ def compose_round_trip(
         "overridden": False,
         "capped": False,
         "uber_black": round(uber_black, 2) if uber_black else None,
-        "event": {"slug": event.slug, "title": event.title} if event else None,
+        "event": (
+            {
+                "slug": event.slug,
+                "title": event.title,
+                "starts_at": _as_utc(event.starts_at).isoformat(),
+            }
+            if event
+            else None
+        ),
         "return_at": return_dt.isoformat(),
     }
     if event is not None and event.round_trip_price is not None:

@@ -41,10 +41,16 @@ async def authorize_for_ride(
         cents = amount
     else:
         cents = int(round((ride.fare_total or 0) * 100))
+    # Event deposit reservation: charge only the 1/3 deposit now; the balance is collected in
+    # person on the day. deposit_cents is stamped at booking (dedicated event flow, terms accepted).
+    is_deposit = getattr(ride, "deposit_cents", None) is not None
+    if is_deposit:
+        cents = int(ride.deposit_cents)
     if cents <= 0:
         raise payments_square.PaymentError("invalid_amount")
     # Event rides are charged in full at booking (captured now), not held — a Square hold
-    # expires in ~6 days, which would fail for a concert booked further out.
+    # expires in ~6 days, which would fail for a concert booked further out. A deposit reservation
+    # is likewise captured now (the deposit), but its balance stays owed (paid stays False).
     is_event = bool((ride.price_breakdown or {}).get("event"))
     res = await payments_square.authorize(
         amount=cents,
@@ -69,7 +75,7 @@ async def authorize_for_ride(
     ride.payment_method = PaymentMethod.SQUARE  # card via Square
     if ride.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
         ride.status = RideStatus.CONFIRMED
-    if is_event:
+    if is_event and not is_deposit:
         ride.paid = True
         ride.paid_at = now
     if ret is not None:
@@ -78,7 +84,7 @@ async def authorize_for_ride(
         ret.payment_method = PaymentMethod.SQUARE
         if ret.status in (RideStatus.REQUESTED, RideStatus.QUOTED):
             ret.status = RideStatus.CONFIRMED
-        if is_event:
+        if is_event and not is_deposit:
             ret.paid = True
             ret.paid_at = now
     await db.commit()
@@ -242,7 +248,7 @@ async def settle_cancellation(
 
     No settleable payment (cash / pay-on-completion) → no-op, returns None.
     """
-    if fee_pct not in (0, 20, 30, 50):
+    if fee_pct not in (0, 20, 30, 50, 100):
         raise payments_square.PaymentError("invalid_fee_pct")
     # The payment always belongs to the ride's owning tenant (the booker), which
     # can differ from the acting tenant on a discount-handoff ride. Scope the
