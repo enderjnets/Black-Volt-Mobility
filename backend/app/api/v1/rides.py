@@ -219,6 +219,8 @@ def _ride_out(r: Ride) -> dict:
         "fare_total": r.fare_total,
         "currency": r.currency,
         "price_breakdown": r.price_breakdown,
+        "deposit_cents": r.deposit_cents,
+        "balance_due_cents": r.balance_due_cents,
         "return_ride_id": r.return_ride_id,
         "is_return": r.is_return,
         "pax": r.pax,

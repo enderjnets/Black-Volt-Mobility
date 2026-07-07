@@ -225,6 +225,9 @@ export interface RideDetail extends RideRow {
   distance_miles: number | null;
   duration_minutes: number | null;
   price_breakdown: Quote | null;
+  // Event deposit reservation: 1/3 charged, balance collected in person (cents). Null otherwise.
+  deposit_cents: number | null;
+  balance_due_cents: number | null;
   lang: string | null;
   notes: string | null;
   google_event_id: string | null;

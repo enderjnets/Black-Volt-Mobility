@@ -8,6 +8,7 @@ Event rides are now **round trip only** — one price, your driver takes you to 
 - **48-hour refund policy.** Fully refundable up to 48 hours before the event; within 48 hours the deposit is non-refundable (the driver reserved the night).
 - **Smart pickup time.** The suggested pickup time is computed from **Google-Maps traffic** so you arrive ~30 minutes before showtime — editable by the rider. The return is timed to when the show ends.
 - **AI event duration.** On approval, the driver's wait time is pre-filled from an AI estimate of that specific event's length (still editable).
+- **Driver sees the balance.** The driver ride detail shows "Deposit paid $X · collect $Y balance on the event day" so they charge the remaining two-thirds, not the full fare.
 
 Backend: traffic-aware `duration_in_traffic`, public pickup-suggestion endpoint, `deposit_cents`/`balance_due_cents`/`terms_accepted_at`/`terms_version` on rides (migration 0042), deposit-aware charge + `fee_pct=100` cancellation path. 685 backend tests pass (incl. 11 new). The generic `/book` funnel and existing full-prepay event rides are unchanged.
 
