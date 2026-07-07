@@ -63,6 +63,8 @@ export interface RideInput {
   confirm?: boolean;
   round_trip?: boolean;
   return_at?: string | null;
+  // Rider accepted the event reservation terms → deposit booking (1/3 now, balance day-of).
+  terms_accepted?: boolean;
 }
 
 // Error carrying the HTTP status so callers can branch on it (e.g. a 401 from

@@ -89,6 +89,15 @@ export interface PublicEvent {
   hero_url: string | null;
 }
 
+export interface PickupSuggestion {
+  pickup_at: string;
+  arrive_by: string;
+  travel_minutes_out: number;
+  return_pickup_at: string;
+  drop_home_minutes: number | null;
+  traffic_aware: boolean;
+}
+
 export interface ScanResult {
   fetched: number;
   kept: number;
@@ -162,4 +171,14 @@ export async function runResearch(id: number): Promise<ResearchResult> {
 // ── public ───────────────────────────────────────────────────────────────────
 export async function listPublicEvents(): Promise<PublicEvent[]> {
   return jget<PublicEvent[]>("/v1/events/public");
+}
+
+export async function getPickupSuggestion(
+  slug: string,
+  origin: string,
+): Promise<PickupSuggestion> {
+  return jget<PickupSuggestion>(
+    `/v1/events/public/${encodeURIComponent(slug)}/pickup-suggestion` +
+      `?origin=${encodeURIComponent(origin)}`,
+  );
 }

@@ -154,6 +154,18 @@ class Ride(Base):
     )
     is_return: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
+    # Event deposit reservation: a 1/3 deposit is charged now (Square) to secure the booking;
+    # the balance is collected in person on the day. Set only on event round trips booked through
+    # the dedicated event flow (terms accepted). Their cancellation follows the 48h/deposit policy
+    # instead of the default windows. NULL on every other ride (unchanged full-prepay/cash paths).
+    deposit_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    balance_due_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Auditable acceptance of the per-reservation terms (deposit + 48h refund policy).
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    terms_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import Event, EventSuggestion, RateConfig
-from app.services import event_pricing, llm, social
+from app.services import event_pricing, llm, maps, social
 from app.services.tenancy import owner_tenant_id
 from app.services.venue_profiles import get_profile
 from app.services.zones import DEFAULT_ZONE_PRICES
@@ -252,6 +252,47 @@ async def _about_text(sug: EventSuggestion, flat: float | None = None) -> str:
     )
 
 
+_DURATION_MIN = 1.5
+_DURATION_MAX = 6.0
+_DURATION_FALLBACK = 3.0
+
+
+async def _estimate_duration_hours(sug: EventSuggestion) -> float:
+    """Ask the LLM how long THIS specific show typically runs (incl. opener), so the driver's
+    wait time (`est_duration_hours`) is pre-filled from research, not a flat default.
+
+    Best-effort: any failure or unparseable answer falls back to 3.0h. Clamped to a sane range.
+    The driver can still edit it in the pricing panel.
+    """
+    kind = "concert"
+    raw = sug.raw if isinstance(sug.raw, dict) else {}
+    taxonomy = " ".join(
+        str(v) for v in (raw.get("type"), raw.get("taxonomy"), raw.get("genre")) if v
+    )
+    prompt = (
+        "You estimate how long a live event runs door-to-door for a ride service planning driver "
+        "wait time. Consider the specific act and venue. Reply with ONLY a single number of hours "
+        "(e.g. 2.5), no words.\n"
+        f"Event: {sug.title}\nPerformer: {sug.performer or 'n/a'}\nVenue: {sug.venue_name}\n"
+        f"Type: {taxonomy or kind}\n"
+        "Typical total time from doors to end including opener/half-time."
+    )
+    for model, base_url, api_key in social._providers():
+        try:
+            text = (
+                await llm.text_complete(
+                    prompt=prompt, model=model, base_url=base_url, api_key=api_key, max_tokens=16
+                )
+            ).strip()
+            m = re.search(r"\d+(?:\.\d+)?", text)
+            if m:
+                val = float(m.group(0))
+                return max(_DURATION_MIN, min(_DURATION_MAX, round(val, 1)))
+        except Exception as e:  # noqa: BLE001 — never block approval on the estimate
+            logger.warning("event duration estimate provider %s failed: %s", model, e)
+    return _DURATION_FALLBACK
+
+
 def _event_topic(ev: Event, flat: float) -> str:
     return (
         f"Event ride: {ev.title} at {ev.venue_name} on {_local(ev.starts_at):%B %d} — flat "
@@ -343,6 +384,7 @@ async def approve_suggestion(
         starts_at=sug.starts_at,
         event_url=sug.event_url,
         status="published",
+        est_duration_hours=await _estimate_duration_hours(sug),
         about_text=await _about_text(sug, await live_flat_price(db, sug.tenant_id)),
     )
     if hero:
@@ -524,3 +566,47 @@ def _public_round_trip_price(ev: Event, flat: float | None = None) -> float:
     if ev.night_fee and event_pricing._after_cutoff(ret_dt, ev.night_cutoff):
         total += float(ev.night_fee)
     return round(total, 2)
+
+
+# Arrive this many minutes before showtime (parking, security, seats — owner decision).
+ARRIVAL_BUFFER_MIN = 30
+
+
+async def pickup_suggestion(db: AsyncSession, *, slug: str, origin: str) -> dict | None:
+    """Suggest an optimal outbound pickup time (and return info) for a rider's address.
+
+    Uses traffic-aware travel time so the rider reaches the venue ~30 min before showtime.
+    Public/landing helper — returns only times/minutes, never internal pricing. None if the
+    event is unknown or still a draft.
+    """
+    tid = await owner_tenant_id(db)
+    ev = (
+        await db.execute(select(Event).where(Event.tenant_id == tid, Event.slug == slug))
+    ).scalar_one_or_none()
+    if ev is None or ev.status == "draft":
+        return None
+
+    venue = ev.venue_address or ev.venue_name
+    starts = ev.starts_at if ev.starts_at.tzinfo else ev.starts_at.replace(tzinfo=dt.UTC)
+    arrive_by = starts - dt.timedelta(minutes=ARRIVAL_BUFFER_MIN)
+    # Anchor the traffic estimate near the trip itself (an hour before the show).
+    out = await maps.route(origin, venue, depart_at=starts - dt.timedelta(hours=1))
+    pickup_at = arrive_by - dt.timedelta(minutes=out.duration_minutes)
+
+    return_pickup_at = event_pricing.default_return_dt(ev)
+    try:
+        home = await maps.route(venue, origin, depart_at=return_pickup_at)
+        drop_home_minutes = round(home.duration_minutes)
+        traffic_aware = bool(out.traffic_aware and home.traffic_aware)
+    except maps.MapsError:  # return leg is informational; never fail the suggestion on it
+        drop_home_minutes = None
+        traffic_aware = bool(out.traffic_aware)
+
+    return {
+        "pickup_at": pickup_at.isoformat(),
+        "arrive_by": arrive_by.isoformat(),
+        "travel_minutes_out": round(out.duration_minutes),
+        "return_pickup_at": return_pickup_at.isoformat(),
+        "drop_home_minutes": drop_home_minutes,
+        "traffic_aware": traffic_aware,
+    }

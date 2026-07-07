@@ -102,6 +102,15 @@ function bookLink(ev: EventDetail, dir: "to" | "from" | "roundtrip"): string {
   return `/book?${p.toString()}`;
 }
 
+function eventBookLink(ev: EventDetail): string {
+  // Dedicated round-trip event flow: reuse the shared ref/utm attribution, drop the
+  // one-way trip params, and retarget to the event's own booking page.
+  const q = bookLink(ev, "roundtrip").split("?")[1] ?? "";
+  const p = new URLSearchParams(q);
+  ["to", "from", "rt", "date", "time", "return_at"].forEach((k) => p.delete(k));
+  return `/events/${ev.slug}/book?${p.toString()}`;
+}
+
 export async function generateMetadata(
   { params }: { params: { slug: string } },
 ): Promise<Metadata> {
@@ -109,7 +118,7 @@ export async function generateMetadata(
   if (!ev) return { title: "Event | Black Volt Mobility" };
   const desc =
     (ev.about_text || "").split("\n").filter(Boolean)[0]?.slice(0, 155) ||
-    `Book a flat $${ev.flat_price} ride to ${ev.venue_name} for ${ev.title} — door-to-door, no surge.`;
+    `Round-trip ride to ${ev.title} at ${ev.venue_name} — your driver waits during the show and brings you home, no surge. A 1/3 deposit books it.`;
   const title = `${ev.title} — Ride to ${ev.venue_name} | Black Volt Mobility`;
   const url = `${SITE_ORIGIN}/events/${ev.slug}`;
   return {
@@ -176,7 +185,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
     offers: {
       "@type": "Offer",
       name: "Black Volt ride to the event",
-      price: String(ev.flat_price),
+      price: String(ev.round_trip_price ?? ev.flat_price),
       priceCurrency: "USD",
       url: `${SITE_ORIGIN}/events/${ev.slug}`,
       availability: "https://schema.org/InStock",
@@ -212,8 +221,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
                 marginBottom: 14,
               }}
             >
-              One-way from ${ev.one_way_from}
-              {ev.round_trip_price ? ` · Round trip $${Math.round(ev.round_trip_price)}` : ""} · no surge
+              Round trip ${Math.round(ev.round_trip_price ?? ev.flat_price)} · driver waits · no surge
             </div>
             <h1 style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1, textShadow: "0 2px 12px rgba(0,0,0,0.6)" }}>
               {ev.title}
@@ -228,13 +236,9 @@ export default async function EventPage({ params }: { params: { slug: string } }
       {/* Primary CTA */}
       <section style={{ ...SECTION, marginBottom: 40 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Link href={bookLink(ev, "to")} style={ctaStyle(true)}>Book your ride to the show</Link>
-          <Link href={bookLink(ev, "from")} style={ctaStyle(false)}>Book your post-show pickup</Link>
-          {ev.round_trip_price ? (
-            <Link href={bookLink(ev, "roundtrip")} style={ctaStyle(false)}>
-              Book round trip · ${Math.round(ev.round_trip_price)}
+          <Link href={eventBookLink(ev)} style={ctaStyle(true)}>
+              Book round trip · ${Math.round(ev.round_trip_price ?? ev.flat_price)} · driver waits
             </Link>
-          ) : null}
         </div>
       </section>
 
@@ -282,13 +286,9 @@ export default async function EventPage({ params }: { params: { slug: string } }
       {/* Bottom CTA */}
       <section style={{ ...SECTION }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Link href={bookLink(ev, "to")} style={ctaStyle(true)}>Book your ride to the show</Link>
-          <Link href={bookLink(ev, "from")} style={ctaStyle(false)}>Book your post-show pickup</Link>
-          {ev.round_trip_price ? (
-            <Link href={bookLink(ev, "roundtrip")} style={ctaStyle(false)}>
-              Book round trip · ${Math.round(ev.round_trip_price)}
+          <Link href={eventBookLink(ev)} style={ctaStyle(true)}>
+              Book round trip · ${Math.round(ev.round_trip_price ?? ev.flat_price)} · driver waits
             </Link>
-          ) : null}
         </div>
       </section>
     </main>

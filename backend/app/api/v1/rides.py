@@ -99,6 +99,9 @@ class RideCreate(QuoteRequest):
     # Optional per-ride preference overrides; validated/defaulted by the schema.
     ride_preferences: profile.RidePreferences | None = None
     confirm: bool = False  # passenger booking → CONFIRMED, else QUOTED
+    # Rider accepted the event reservation terms (deposit + 48h refund). Turns an event round
+    # trip into a deposit reservation (1/3 now, balance day-of). Ignored for non-event trips.
+    terms_accepted: bool = False
 
     _norm_lang = field_validator("lang", mode="before")(_normalize_lang)
 
@@ -170,10 +173,26 @@ _CANCELLATION_FEE_WINDOW = timedelta(hours=24)
 # Event rides commit the driver's whole evening: full refund only 72h+ out, else 50%.
 _EVENT_CANCELLATION_FEE_WINDOW = timedelta(hours=72)
 _EVENT_CANCELLATION_FEE_PCT = 50
+# Event DEPOSIT reservations: fully refundable up to 48h before the event, then the deposit is
+# kept in full (the driver reserved the night). 100 = deposit non-refundable, 0 = full refund.
+_DEPOSIT_REFUND_WINDOW = timedelta(hours=48)
 
 
 def _is_event_ride(r: Ride) -> bool:
     return bool((r.price_breakdown or {}).get("event"))
+
+
+def _event_start_at(r: Ride) -> datetime | None:
+    """The event's start time stamped in the ride breakdown (for the 48h deposit window)."""
+    ev = (r.price_breakdown or {}).get("event") or {}
+    raw = ev.get("starts_at")
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _cancellation_fee_eligible(r: Ride) -> bool:
@@ -394,24 +413,32 @@ async def create_ride(
     ) is not None:
         ride_status = RideStatus.QUOTED
     if body.round_trip:
-        outbound, _ret = await booking.create_round_trip(
-            db,
-            tenant_id=tenant_id,
-            pickup=body.pickup,
-            dropoff=body.dropoff,
-            scheduled_at=body.scheduled_at,
-            return_at=body.return_at,
-            client_id=client_id,
-            passenger_name=body.passenger_name,
-            passenger_phone=body.passenger_phone,
-            pax=body.pax,
-            flight_number=body.flight_number,
-            lang=body.lang,
-            notes=body.notes,
-            vehicle=body.vehicle,
-            status=ride_status,
-            ride_preferences=body.ride_preferences.model_dump() if body.ride_preferences else None,
-        )
+        try:
+            outbound, _ret = await booking.create_round_trip(
+                db,
+                tenant_id=tenant_id,
+                pickup=body.pickup,
+                dropoff=body.dropoff,
+                scheduled_at=body.scheduled_at,
+                return_at=body.return_at,
+                client_id=client_id,
+                passenger_name=body.passenger_name,
+                passenger_phone=body.passenger_phone,
+                pax=body.pax,
+                flight_number=body.flight_number,
+                lang=body.lang,
+                notes=body.notes,
+                vehicle=body.vehicle,
+                status=ride_status,
+                ride_preferences=(
+                    body.ride_preferences.model_dump() if body.ride_preferences else None
+                ),
+                terms_accepted=body.terms_accepted,
+            )
+        except booking.EventUnavailableError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="event_unavailable"
+            ) from e
         return _ride_out(outbound)
     try:
         ride = await booking.create_ride(
@@ -745,22 +772,32 @@ async def cancel_ride(
             if ret.google_event_id:
                 await booking.remove_ride_from_calendar(db, ret)
     is_event = _is_event_ride(ride)
-    window = _EVENT_CANCELLATION_FEE_WINDOW if is_event else _CANCELLATION_FEE_WINDOW
-    fee_eligible = ride.scheduled_at is not None and (ride.scheduled_at - now) < window
+    is_deposit = ride.deposit_cents is not None
     refund_pending = False
-    if not fee_eligible:
-        # Outside the fee window -> make the rider whole right away.
-        await payments.settle_cancellation(db, tenant_id=tenant_id, ride=ride, fee_pct=0)
-    elif is_event:
-        # Events have a fixed policy: within 72h -> automatic 50% refund (no driver choice).
+    if is_deposit:
+        # Event deposit reservation: fully refundable up to 48h before the event; inside 48h the
+        # deposit is non-refundable (fee_pct=100 -> keep it). Keyed to the event start time.
+        ev_start = _event_start_at(ride) or ride.scheduled_at
+        non_refundable = ev_start is not None and (ev_start - now) < _DEPOSIT_REFUND_WINDOW
         await payments.settle_cancellation(
-            db, tenant_id=tenant_id, ride=ride, fee_pct=_EVENT_CANCELLATION_FEE_PCT
+            db, tenant_id=tenant_id, ride=ride, fee_pct=100 if non_refundable else 0
         )
     else:
-        pay = await payments.active_payment_for_ride(
-            db, tenant_id=ride.tenant_id, ride_id=ride.id
-        )
-        refund_pending = pay is not None
+        window = _EVENT_CANCELLATION_FEE_WINDOW if is_event else _CANCELLATION_FEE_WINDOW
+        fee_eligible = ride.scheduled_at is not None and (ride.scheduled_at - now) < window
+        if not fee_eligible:
+            # Outside the fee window -> make the rider whole right away.
+            await payments.settle_cancellation(db, tenant_id=tenant_id, ride=ride, fee_pct=0)
+        elif is_event:
+            # Events have a fixed policy: within 72h -> automatic 50% refund (no driver choice).
+            await payments.settle_cancellation(
+                db, tenant_id=tenant_id, ride=ride, fee_pct=_EVENT_CANCELLATION_FEE_PCT
+            )
+        else:
+            pay = await payments.active_payment_for_ride(
+                db, tenant_id=ride.tenant_id, ride_id=ride.id
+            )
+            refund_pending = pay is not None
     await db.commit()
     await db.refresh(ride)
     await email.send_driver_ride_cancelled(db, ride=ride, refund_pending=refund_pending)
