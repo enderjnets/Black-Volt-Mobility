@@ -288,3 +288,31 @@ body {
     min-width: 0 !important;
   }
 }
+
+/* Event landing: a reserve CTA pinned to the bottom on phones so it stays reachable while
+   the rider scrolls the event details. Hidden on desktop (the inline CTAs are enough). */
+.bv-event-sticky-cta {
+  display: none;
+}
+@media (max-width: 899px) {
+  .bv-event-sticky-cta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    padding: 14px 20px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    background: rgba(10, 10, 15, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line-strong);
+    color: var(--volt);
+    font-weight: 700;
+    font-size: 16px;
+    text-decoration: none;
+  }
+}

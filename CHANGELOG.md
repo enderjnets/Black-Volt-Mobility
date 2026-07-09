@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.75.0 — 2026-07-09 — Event pages lead with the deposit + sticky mobile CTA
+
+Paid Instagram traffic was landing on event pages, reading them, then bouncing without
+booking (78 sessions on the Sam Barber page → 0 reservations). The page led with the full
+round-trip total ($415) and never showed the small deposit that actually reserves the ride,
+and on phones the CTA scrolled out of view. This reframes the offer for mobile conversion.
+
+- **Lead with the deposit, total as breakdown.** Event pages now headline the reservation
+  deposit — a third of the round trip, e.g. "Reserve for $138 today" — with the full
+  round-trip total shown right beneath it. Computed in `app/(web)/events/[slug]/page.tsx`
+  (`deposit = round(round_trip_price / 3)`), matching the exact 1/3 the booking flow charges.
+- **Sticky mobile CTA.** A Reserve button (`.bv-event-sticky-cta` in `app/globals.css`) is
+  pinned to the bottom of the viewport on phones (≤899px) so it stays reachable while the
+  rider scrolls the event details; hidden on desktop where the inline CTAs suffice.
+- **Bilingual.** The new price/CTA copy renders via a small client component
+  (`components/bv/web/EventCta.tsx` + `event.*` keys in `lib/i18n.tsx`) so it localizes to
+  English and Spanish — the landing is a server component and the language lives in
+  localStorage, so the copy that must translate now renders client-side.
+
 ## v0.74.0 — 2026-07-08 — Joules knows the events + is injection-hardened + faster hero
 
 Three things: Joules is now trained on the site's public data (chiefly upcoming

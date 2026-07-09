@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.74.0";
+export const CURRENT_VERSION = "0.75.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.75.0",
+    date: "2026-07-09",
+    title: "Event pages lead with the deposit + sticky mobile CTA",
+    changes: [
+      "Event pages now lead with the small reservation deposit (a third of the round trip) instead of the full price up front — e.g. \"Reserve for $138 today\" — with the full round-trip total shown right below as a breakdown, so the first number you see is the small one.",
+      "On phones a Reserve button now stays pinned to the bottom of the screen while you read the event, so you can book without scrolling back up.",
+      "The new event copy is fully bilingual (English and Spanish).",
+    ],
+  },
   {
     version: "0.74.0",
     date: "2026-07-08",

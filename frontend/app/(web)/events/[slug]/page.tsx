@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import EventCta from "@/components/bv/web/EventCta";
 import RouteTrust from "@/components/bv/web/RouteTrust";
 import { SITE_ORIGIN } from "@/lib/seoRoutes";
 import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
@@ -192,8 +193,13 @@ export default async function EventPage({ params }: { params: { slug: string } }
     },
   };
 
+  // Lead the landing with the reservation deposit (1/3 of the round-trip estimate) instead
+  // of the full total — the total stays visible as a breakdown.
+  const rtTotal = Math.round(ev.round_trip_price ?? ev.flat_price);
+  const deposit = Math.round((ev.round_trip_price ?? ev.flat_price) / 3);
+
   return (
-    <main style={{ paddingBottom: 80 }}>
+    <main style={{ paddingBottom: 96 }}>
       <script
         type="application/ld+json"
         // Escape "<" so dynamic values (title/venue from the events API or admin edits)
@@ -214,15 +220,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
           }}
         >
           <div style={{ ...SECTION, padding: "0 20px 32px", width: "100%" }}>
-            <div
-              style={{
-                display: "inline-block", background: "var(--volt)", color: "var(--obsidian-3)",
-                fontWeight: 700, fontSize: 13, padding: "6px 12px", borderRadius: "var(--radius-full)",
-                marginBottom: 14,
-              }}
-            >
-              Round trip ${Math.round(ev.round_trip_price ?? ev.flat_price)} · driver waits · no surge
-            </div>
+            <EventCta variant="badge" deposit={deposit} total={rtTotal} />
             <h1 style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1, textShadow: "0 2px 12px rgba(0,0,0,0.6)" }}>
               {ev.title}
             </h1>
@@ -236,9 +234,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
       {/* Primary CTA */}
       <section style={{ ...SECTION, marginBottom: 40 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Link href={eventBookLink(ev)} style={ctaStyle(true)}>
-              Book round trip · ${Math.round(ev.round_trip_price ?? ev.flat_price)} · driver waits
-            </Link>
+          <EventCta variant="primary" deposit={deposit} total={rtTotal} href={eventBookLink(ev)} />
         </div>
       </section>
 
@@ -286,11 +282,10 @@ export default async function EventPage({ params }: { params: { slug: string } }
       {/* Bottom CTA */}
       <section style={{ ...SECTION }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Link href={eventBookLink(ev)} style={ctaStyle(true)}>
-              Book round trip · ${Math.round(ev.round_trip_price ?? ev.flat_price)} · driver waits
-            </Link>
+          <EventCta variant="primary" deposit={deposit} total={rtTotal} href={eventBookLink(ev)} />
         </div>
       </section>
+      <EventCta variant="sticky" deposit={deposit} href={eventBookLink(ev)} />
     </main>
   );
 }
