@@ -15,6 +15,7 @@ import { SquareCard } from "@/components/bv/web/SquareCard";
 import { useWeb } from "@/components/bv/web/WebShell";
 import { Button } from "@/components/bv/ui";
 import { createRide, getQuote, type Quote } from "@/lib/booking";
+import { pixelTrack, pixelTrackCustom, purchaseEventId, trackFunnelOnce } from "@/lib/analytics";
 import { getPickupSuggestion, type PickupSuggestion } from "@/lib/events";
 import { useI18n } from "@/lib/i18n";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
@@ -132,6 +133,29 @@ export default function EventBooking({ ev }: { ev: BookEvent }) {
   useEffect(() => {
     getPaymentsConfig().then(setCfg).catch(() => setCfg(null));
   }, []);
+
+  // Funnel + Meta pixel signals for the event flow. Previously this flow emitted nothing, so
+  // event-landing ad campaigns had no InitiateCheckout/Purchase to optimize toward and the
+  // internal funnel was blind for events. Mirrors the general Booking.tsx flow; session-deduped
+  // per stage, pixel value uses the live quote total.
+  useEffect(() => {
+    const value = quote?.total;
+    if (step === "details") {
+      trackFunnelOnce("book_start", { event: ev.slug });
+    } else if (step === "review") {
+      trackFunnelOnce("book_review", { event: ev.slug });
+      if (value != null) pixelTrackCustom("QuoteViewed", { value, currency: "USD" });
+    } else if (step === "pay") {
+      trackFunnelOnce("book_pay", { event: ev.slug });
+      if (value != null) pixelTrack("InitiateCheckout", { value, currency: "USD" });
+    } else if (step === "done") {
+      trackFunnelOnce("book_confirmed", { event: ev.slug, fare: value });
+      if (value != null && rideId != null) {
+        pixelTrack("Purchase", { value, currency: "USD" }, purchaseEventId(rideId));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   // The chosen pickup instant: the suggested ISO shifted by the user's edit to the local time.
   const scheduledIso = useMemo(() => {

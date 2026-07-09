@@ -108,6 +108,24 @@ export function track(type: string, props?: Record<string, unknown>) {
   enqueue({ type, props });
 }
 
+// Fire a funnel stage at most once per browser session, so page reloads and
+// back-and-forth navigation don't inflate stage counts (which would make the
+// conversion math read worse than reality). Keyed off sessionStorage (per tab).
+export function trackFunnelOnce(ev: string, props?: Record<string, unknown>) {
+  if (typeof window !== "undefined") {
+    try {
+      const KEY = "bv_funnel_fired";
+      const fired = (sessionStorage.getItem(KEY) || "").split(",").filter(Boolean);
+      if (fired.includes(ev)) return;
+      fired.push(ev);
+      sessionStorage.setItem(KEY, fired.join(","));
+    } catch {
+      // sessionStorage blocked (private mode) → fall through and still track once.
+    }
+  }
+  track(ev, props);
+}
+
 /* ─── Meta Pixel (browser side of ad measurement) ───────────────────────────
    No-ops unless the base pixel loaded (NEXT_PUBLIC_META_PIXEL_ID set). Purchase
    carries an eventID shared with the server Conversions API so Meta dedups. */

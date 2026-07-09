@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.75.0";
+export const CURRENT_VERSION = "0.76.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.76.0",
+    date: "2026-07-09",
+    title: "Event booking is now measured end to end",
+    changes: [
+      "Booking a ride to an event now records the same steps we already track for regular rides — from viewing the event, to starting a booking, to paying — so we can see where people drop off and which events convert.",
+      "This also lets our ad campaigns for specific events optimize toward real bookings instead of just clicks.",
+    ],
+  },
   {
     version: "0.75.0",
     date: "2026-07-09",

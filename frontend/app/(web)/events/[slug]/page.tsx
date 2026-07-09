@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import EventCta from "@/components/bv/web/EventCta";
+import EventViewContent from "@/components/bv/web/EventViewContent";
 import RouteTrust from "@/components/bv/web/RouteTrust";
 import { SITE_ORIGIN } from "@/lib/seoRoutes";
 import { PUBLIC_PROFILE_SLUG } from "@/lib/tenant";
@@ -286,6 +287,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
         </div>
       </section>
       <EventCta variant="sticky" deposit={deposit} href={eventBookLink(ev)} />
+      <EventViewContent slug={ev.slug} title={ev.title} value={rtTotal} />
     </main>
   );
 }

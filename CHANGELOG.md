@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.76.0 — 2026-07-09 — Event booking is instrumented end to end
+
+The event booking flow (`EventBooking.tsx`) fired **no** analytics — no internal funnel
+events, no Meta pixel `InitiateCheckout`/`Purchase`, no CAPI. So event-landing ad campaigns
+had nothing to optimize toward (a conversions campaign would starve), and our own Insights
+funnel was blind for events. This wires it up, mirroring the general `/book` flow.
+
+- **Funnel + pixel on the event flow.** `EventBooking.tsx` now fires `book_start` → `book_review`
+  (+ `QuoteViewed`) → `book_pay` (+ Meta **InitiateCheckout**, value = live quote total) →
+  `book_confirmed` (+ Meta **Purchase**, deduped with server CAPI via `purchaseEventId`).
+  Session-deduped per stage.
+- **ViewContent on the event landing.** A small client component
+  (`components/bv/web/EventViewContent.tsx`) fires Meta `ViewContent` once per event view — the
+  top-of-funnel signal for event ad campaigns and retargeting.
+- **DRY.** `trackFunnelOnce` moved from `Booking.tsx` into `lib/analytics.ts` (exported) and is
+  now shared by both booking flows; behavior unchanged.
+
 ## v0.75.0 — 2026-07-09 — Event pages lead with the deposit + sticky mobile CTA
 
 Paid Instagram traffic was landing on event pages, reading them, then bouncing without

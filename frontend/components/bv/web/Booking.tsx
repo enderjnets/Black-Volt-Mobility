@@ -13,7 +13,7 @@ import { buildScheduledAt } from "@/lib/datetime";
 import { ApiError, confirmRide, createRide, getQuote, validateDiscount, type Quote, getRateConfig } from "@/lib/booking";
 import { defaultRidePreferences, getProfile, type RidePreferences } from "@/lib/profile";
 import { authorizePayment, getPaymentsConfig, type PaymentsConfig } from "@/lib/payments";
-import { pixelTrack, pixelTrackCustom, purchaseEventId, track } from "@/lib/analytics";
+import { pixelTrack, pixelTrackCustom, purchaseEventId, track, trackFunnelOnce } from "@/lib/analytics";
 import { setRef } from "@/lib/referral";
 import { useWeb } from "./WebShell";
 
@@ -28,24 +28,6 @@ function fmtReturn(iso: string): string {
   } catch {
     return iso;
   }
-}
-
-// Fire a funnel stage at most once per browser session, so page reloads and
-// back-and-forth navigation don't inflate stage counts (which would make the
-// conversion math read worse than reality). Keyed off sessionStorage (per tab).
-function trackFunnelOnce(ev: string, props?: Record<string, unknown>) {
-  if (typeof window !== "undefined") {
-    try {
-      const KEY = "bv_funnel_fired";
-      const fired = (sessionStorage.getItem(KEY) || "").split(",").filter(Boolean);
-      if (fired.includes(ev)) return;
-      fired.push(ev);
-      sessionStorage.setItem(KEY, fired.join(","));
-    } catch {
-      // sessionStorage blocked (private mode) → fall through and still track once.
-    }
-  }
-  track(ev, props);
 }
 
 export function MapPlaceholder({ height = 200 }: { height?: number }) {
