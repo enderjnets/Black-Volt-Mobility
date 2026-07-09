@@ -367,7 +367,7 @@ export function ChatAssistant({ open, setOpen }: { open: boolean; setOpen: (v: b
 
           {msgs.length <= 1 && !typing && (
             <div style={{ display: "flex", gap: 7, padding: "0 16px 10px", flexWrap: "wrap" }}>
-              {["chat.q1", "chat.q2", "chat.q3"].map((k) => (
+              {["chat.q1", "chat.q2", "chat.q3", "chat.q4"].map((k) => (
                 <button
                   key={k}
                   onClick={() => send(t(k))}

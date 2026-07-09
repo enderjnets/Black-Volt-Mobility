@@ -43,8 +43,9 @@ export default async function Page() {
       <link
         rel="preload"
         as="image"
-        href="/assets/ev9-coors-field.webp"
-        imageSrcSet="/assets/ev9-coors-field-800w.webp 800w, /assets/ev9-coors-field.webp 1600w"
+        type="image/avif"
+        href="/assets/ev9-coors-field.avif"
+        imageSrcSet="/assets/ev9-coors-field-800w.avif 800w, /assets/ev9-coors-field.avif 1600w"
         imageSizes="(max-width: 800px) 100vw, 1040px"
         fetchPriority="high"
       />

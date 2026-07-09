@@ -568,6 +568,14 @@ def _public_round_trip_price(ev: Event, flat: float | None = None) -> float:
     return round(total, 2)
 
 
+def public_round_trip_price(ev: Event, flat: float | None = None) -> float:
+    """Public alias for the round-trip estimate — same figure the landing shows.
+
+    Reused by Joules so the assistant quotes exactly the public round-trip price
+    (with wait/night fees folded in) and never the internal fee breakdown."""
+    return _public_round_trip_price(ev, flat)
+
+
 # Arrive this many minutes before showtime (parking, security, seats — owner decision).
 ARRIVAL_BUFFER_MIN = 30
 

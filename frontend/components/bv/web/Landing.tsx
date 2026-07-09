@@ -131,17 +131,24 @@ export function Landing({ zonePrices }: { zonePrices?: Record<string, number> | 
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/assets/ev9-coors-field.webp"
-            srcSet="/assets/ev9-coors-field-800w.webp 800w, /assets/ev9-coors-field.webp 1600w"
-            sizes="(max-width: 800px) 100vw, 1040px"
-            width={1600}
-            height={938}
-            fetchPriority="high"
-            decoding="async"
-            alt="Black Kia EV9 at Coors Field, Denver, at night"
-            style={{ display: "block", width: "100%", height: 420, objectFit: "cover", objectPosition: "center 60%" }}
-          />
+          <picture>
+            <source
+              type="image/avif"
+              srcSet="/assets/ev9-coors-field-800w.avif 800w, /assets/ev9-coors-field.avif 1600w"
+              sizes="(max-width: 800px) 100vw, 1040px"
+            />
+            <img
+              src="/assets/ev9-coors-field.webp"
+              srcSet="/assets/ev9-coors-field-800w.webp 800w, /assets/ev9-coors-field.webp 1600w"
+              sizes="(max-width: 800px) 100vw, 1040px"
+              width={1600}
+              height={938}
+              fetchPriority="high"
+              decoding="async"
+              alt="Black Kia EV9 at Coors Field, Denver, at night"
+              style={{ display: "block", width: "100%", height: 420, objectFit: "cover", objectPosition: "center 60%" }}
+            />
+          </picture>
           <div
             style={{
               position: "absolute",

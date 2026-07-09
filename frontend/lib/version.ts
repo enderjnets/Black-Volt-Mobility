@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.73.0";
+export const CURRENT_VERSION = "0.74.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.74.0",
+    date: "2026-07-08",
+    title: "Joules knows what's on + faster hero",
+    changes: [
+      "Ask Joules \"what concerts or events are coming up?\" and it now answers with the real published events, their date and venue, the round-trip price (with the driver waiting) and the deposit — plus a link to book. It also knows the event/deposit policy, our service area and rider reviews.",
+      "Joules is now hardened against prompt-injection: it politely refuses attempts to make it reveal its instructions or share confidential info (discount codes, other riders' details, internal pricing), and never leaks its own setup.",
+      "Faster home page: the hero image now ships in AVIF (smaller, sharper) and the social-share images were slimmed down.",
+    ],
+  },
   {
     version: "0.73.0",
     date: "2026-07-07",
