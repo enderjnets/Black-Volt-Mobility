@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.77.0 — 2026-07-09 — Event estimate uses the venue's real zone fare
+
+The public event estimate (`events._public_round_trip_price`) priced every leg at the cheapest
+inner **`denver_metro`** flat ($105), but the real `/quote` engine charges each leg at the
+**venue's actual zone** — Red Rocks (Morrison) is `metro_mid` ($115), not `denver_metro`. So the
+landing advertised **$385** (deposit $128) while checkout quotes **~$405**, understating the price
+for the flagship venue (and any venue in an outer zone). The deposit was 1/3 of the wrong number.
+
+- **New `events.venue_leg_fare(db, ev)`** resolves the venue's zone fare via `zones.match_zone`
+  on `ev.venue_address` (string match — no maps calls), falling back to the inner-metro flat when
+  there's no address or no covered zone (never worse than before).
+- `get_public_event` and Joules `_events_block` now price the one-way/round-trip off this venue
+  fare. Red Rocks landing → **$405 / $345** (deposit $135 / $115), matching the real quote.
+- Backend-only, no migration, no frontend code change (the landing is `force-dynamic` and reads
+  the API per request). Tests: `venue_leg_fare` unit + `get_public_event` round-trip; full suite
+  **700 passed**.
+
 ## v0.76.0 — 2026-07-09 — Event booking is instrumented end to end
 
 The event booking flow (`EventBooking.tsx`) fired **no** analytics — no internal funnel

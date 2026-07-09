@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.76.0";
+export const CURRENT_VERSION = "0.77.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.77.0",
+    date: "2026-07-09",
+    title: "Event prices now match the real fare to the venue",
+    changes: [
+      "Event pages now show the true round-trip price for the venue's area instead of a lower city-center estimate — so the price you see up front matches what you're quoted at checkout (e.g. Red Rocks now shows the correct fare for the foothills, not the inner-Denver rate).",
+    ],
+  },
   {
     version: "0.76.0",
     date: "2026-07-09",

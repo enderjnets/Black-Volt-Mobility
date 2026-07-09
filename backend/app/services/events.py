@@ -26,7 +26,7 @@ from app.models import Event, EventSuggestion, RateConfig
 from app.services import event_pricing, llm, maps, social
 from app.services.tenancy import owner_tenant_id
 from app.services.venue_profiles import get_profile
-from app.services.zones import DEFAULT_ZONE_PRICES
+from app.services.zones import DEFAULT_ZONE_PRICES, match_zone
 
 logger = logging.getLogger("blackvolt.events")
 
@@ -46,6 +46,32 @@ async def live_flat_price(db: AsyncSession, tenant_id: int | None = None) -> flo
         await db.execute(select(RateConfig).where(RateConfig.tenant_id == tid))
     ).scalar_one_or_none()
     prices = (rc.zone_prices or {}) if rc else {}
+    try:
+        return float(prices.get("denver_metro", FLAT_PRICE))
+    except (TypeError, ValueError):
+        return float(FLAT_PRICE)
+
+
+async def venue_leg_fare(db: AsyncSession, ev: Event, tenant_id: int | None = None) -> float:
+    """Per-leg fare for the venue's real zone — what the /quote engine actually charges — so the
+    public one-way/round-trip estimate matches checkout instead of assuming the cheapest inner
+    (denver_metro) flat. A Red Rocks venue (Morrison) resolves to metro_mid, not denver_metro, so
+    the old estimate understated the real fare. String-based zone match (no maps calls). Falls
+    back to the inner-metro flat when the venue has no address or matches no covered zone, so it
+    is never worse than the previous behavior."""
+    tid = tenant_id if tenant_id is not None else await owner_tenant_id(db)
+    rc = (
+        await db.execute(select(RateConfig).where(RateConfig.tenant_id == tid))
+    ).scalar_one_or_none()
+    prices = (rc.zone_prices or {}) if rc else {}
+    venue = (ev.venue_address or "").strip()
+    if venue:
+        hit = match_zone(venue, venue, prices)
+        if hit is not None:
+            try:
+                return float(hit.flat)
+            except (TypeError, ValueError):
+                pass
     try:
         return float(prices.get("denver_metro", FLAT_PRICE))
     except (TypeError, ValueError):
@@ -547,7 +573,9 @@ async def get_public_event(db: AsyncSession, *, slug: str) -> dict | None:
     # "passed" only once the landing is actually retired (archive grace window), so the
     # post-show pickup CTA stays live during and just after the show.
     data["passed"] = ev.status == "archived" or ev.starts_at < _now() - _ARCHIVE_GRACE
-    flat = await live_flat_price(db, tid)
+    # Price each leg at the venue's real zone fare (what /quote charges), not the cheapest inner
+    # flat — otherwise the landing understates the true round-trip cost (see venue_leg_fare).
+    flat = await venue_leg_fare(db, ev, tid)
     data["flat_price"] = flat
     data["one_way_from"] = round(flat + (ev.event_fee or 0), 2)
     data["round_trip_price"] = _public_round_trip_price(ev, flat)

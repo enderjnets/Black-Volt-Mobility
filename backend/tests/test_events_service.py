@@ -24,6 +24,7 @@ get_settings.cache_clear()
 
 from app.models import Event, EventSuggestion, SocialPost, Tenant  # noqa: E402
 from app.services import events  # noqa: E402
+from app.services.zones import DEFAULT_ZONE_PRICES  # noqa: E402
 
 _PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
@@ -245,3 +246,45 @@ async def test_public_queries_are_tenant_scoped(db, owner, monkeypatch):
     pub = await events.list_public_events(db)
     assert all(e["slug"] != foreign.slug for e in pub)
     assert await events.get_public_event(db, slug=foreign.slug) is None
+
+
+@pytest.mark.asyncio
+async def test_venue_leg_fare_prices_the_venue_zone(db, owner):
+    # A Red Rocks (Morrison) venue sits in the metro_mid outer ring, which costs more than the
+    # inner denver_metro flat. The public estimate must price the leg off the venue's real zone,
+    # not the cheapest inner flat, so it never understates what /quote actually charges.
+    fut = dt.datetime.now(dt.UTC) + dt.timedelta(days=5)
+
+    def _ev(addr):
+        return Event(
+            tenant_id=owner, slug=f"z-{uuid.uuid4().hex[:6]}", title="Show",
+            venue_name="V", venue_address=addr, starts_at=fut, status="published",
+        )
+
+    rr_fare = await events.venue_leg_fare(db, _ev("W Alameda Pkwy, Morrison, CO 80465"), owner)
+    core_fare = await events.venue_leg_fare(db, _ev("4242 Wynkoop St, Denver, CO 80216"), owner)
+    fallback = await events.venue_leg_fare(db, _ev(None), owner)
+
+    assert rr_fare == float(DEFAULT_ZONE_PRICES["metro_mid"])   # outer ring
+    assert core_fare == float(DEFAULT_ZONE_PRICES["denver_metro"])  # inner metro
+    assert rr_fare > core_fare
+    assert fallback == float(DEFAULT_ZONE_PRICES["denver_metro"])  # no address -> inner fallback
+
+
+@pytest.mark.asyncio
+async def test_get_public_event_round_trip_uses_venue_zone(db, owner):
+    # End to end: a Morrison venue's published round-trip estimate reflects metro_mid, not the
+    # inner flat. With all add-on fees zero, round_trip == 2 * venue leg fare.
+    fut = dt.datetime.now(dt.UTC) + dt.timedelta(days=6)
+    ev = Event(
+        tenant_id=owner, slug=f"rr-{uuid.uuid4().hex[:6]}", title="Show", venue_name="Red Rocks",
+        venue_address="18300 W Alameda Pkwy, Morrison, CO 80465", starts_at=fut, status="published",
+        event_fee=0, night_fee=0, wait_fee_per_hour=0, est_duration_hours=0,
+    )
+    db.add(ev)
+    await db.commit()
+
+    data = await events.get_public_event(db, slug=ev.slug)
+    leg = float(DEFAULT_ZONE_PRICES["metro_mid"])
+    assert data["flat_price"] == leg
+    assert data["round_trip_price"] == 2 * leg

@@ -184,7 +184,6 @@ async def _events_block(db: AsyncSession, tenant_id: int | None) -> str:
     ).scalars().all()
     if not rows:
         return "No upcoming events are listed right now."
-    flat = await events_svc.live_flat_price(db, tenant_id)
     lines = []
     for ev in rows:
         starts = ev.starts_at if ev.starts_at.tzinfo else ev.starts_at.replace(tzinfo=dt.UTC)
@@ -194,8 +193,10 @@ async def _events_block(db: AsyncSession, tenant_id: int | None) -> str:
         venue = _clean(ev.venue_name, 60)
         who = f" ({performer})" if performer and performer.lower() not in title.lower() else ""
         at_venue = f" at {venue}" if venue else ""
-        rt = events_svc.public_round_trip_price(ev, flat)
-        one_way = flat + float(ev.event_fee or 0)
+        # Per-venue zone fare so Joules quotes the same real price the landing/checkout use.
+        venue_flat = await events_svc.venue_leg_fare(db, ev, tenant_id)
+        rt = events_svc.public_round_trip_price(ev, venue_flat)
+        one_way = venue_flat + float(ev.event_fee or 0)
         lines.append(
             f"- {when} — {title}{who}{at_venue}. Round trip with wait ${round(rt)} "
             f"(1/3 deposit to book); one-way from ${round(one_way)}. "
