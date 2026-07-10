@@ -36,6 +36,8 @@ class PublicEventOut(BaseModel):
     venue_name: str
     starts_at: dt.datetime
     hero_url: str | None = None
+    dates_count: int = 1  # >1 → multi-date show; card shows "N fechas · desde $price_from"
+    price_from: float | None = None
 
 
 class SuggestionOut(BaseModel):
@@ -75,6 +77,7 @@ class AdminEventOut(BaseModel):
     est_duration_hours: float = 3
     round_trip_price: float | None = None
     pricing_research: dict | None = None
+    series_key: str | None = None
 
 
 class EventPatch(BaseModel):
@@ -89,6 +92,7 @@ class EventPatch(BaseModel):
     wait_fee_per_hour: float | None = Field(default=None, ge=0)
     est_duration_hours: float | None = Field(default=None, ge=0)
     round_trip_price: float | None = Field(default=None, ge=0)
+    series_key: str | None = Field(default=None, max_length=80)
 
 
 class GeneratePostIn(BaseModel):
@@ -108,6 +112,7 @@ def _admin_event_out(d: dict) -> AdminEventOut:
         est_duration_hours=d.get("est_duration_hours", 3) or 0,
         round_trip_price=d.get("round_trip_price"),
         pricing_research=d.get("pricing_research"),
+        series_key=d.get("series_key"),
     )
 
 
@@ -122,6 +127,7 @@ async def list_public(db: AsyncSession = Depends(get_db)) -> list[PublicEventOut
             slug=r["slug"], title=r["title"], performer=r.get("performer"),
             venue_name=r["venue_name"], starts_at=r["starts_at"],
             hero_url=media_url(r.get("hero_path")),
+            dates_count=r.get("dates_count", 1), price_from=r.get("price_from"),
         )
         for r in rows
     ]

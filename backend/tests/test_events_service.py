@@ -288,3 +288,127 @@ async def test_get_public_event_round_trip_uses_venue_zone(db, owner):
     leg = float(DEFAULT_ZONE_PRICES["metro_mid"])
     assert data["flat_price"] == leg
     assert data["round_trip_price"] == 2 * leg
+
+
+# ── series_key grouping / multi-date pages ──────────────────────────────────────
+
+def _grp_event(
+    tid, *, series_key, starts_at, status="published",
+    addr="W Alameda Pkwy, Morrison, CO 80465", wait=0.0, dur=0.0, event_fee=0.0, night_fee=0.0,
+):
+    return Event(
+        tenant_id=tid, slug=f"g-{uuid.uuid4().hex[:8]}", series_key=series_key, title="Show",
+        venue_name="Red Rocks", venue_address=addr, starts_at=starts_at, status=status,
+        event_fee=event_fee, night_fee=night_fee, wait_fee_per_hour=wait, est_duration_hours=dur,
+    )
+
+
+def test_series_key_for_reproduces_slug_base():
+    # 2am UTC on Jul 10 is 8pm Denver on Jul 9 -> Denver year 2026, matching the approve-flow slug.
+    when = dt.datetime(2026, 7, 10, 2, 0, tzinfo=dt.UTC)
+    assert (
+        events.series_key_for("The Avett Brothers", "red_rocks", when)
+        == "the-avett-brothers-red-rocks-2026"
+    )
+
+
+@pytest.mark.asyncio
+async def test_approve_sets_series_key_and_second_date_joins_group(db):
+    tid = await _mk_tenant(db)
+    day1 = dt.datetime(2027, 7, 10, 2, 0, tzinfo=dt.UTC)
+    day2 = dt.datetime(2027, 7, 11, 2, 0, tzinfo=dt.UTC)
+    s1 = await _mk_suggestion(db, tid, starts_at=day1)
+    s2 = await _mk_suggestion(db, tid, starts_at=day2)
+    o1 = await events.approve_suggestion(db, tenant_id=tid, suggestion_id=s1.id)
+    o2 = await events.approve_suggestion(db, tenant_id=tid, suggestion_id=s2.id)
+    assert o1["slug"] != o2["slug"]                 # distinct landing slugs
+    assert o1["series_key"] == o2["series_key"]     # ...but the same show group
+    assert o1["series_key"] == events.series_key_for("Ed Sheeran", "empower_field", day1)
+
+
+@pytest.mark.asyncio
+async def test_get_public_event_dates_payload_and_canonical(db, owner):
+    key = "grp-" + uuid.uuid4().hex[:6]
+    d1 = dt.datetime.now(dt.UTC) + dt.timedelta(days=5)
+    d2 = dt.datetime.now(dt.UTC) + dt.timedelta(days=6)
+    e1 = _grp_event(owner, series_key=key, starts_at=d1, wait=50.0, dur=1.0)
+    e2 = _grp_event(owner, series_key=key, starts_at=d2, wait=30.0, dur=1.0)
+    db.add_all([e1, e2])
+    await db.commit()
+
+    # request the LATER night; canonical resolves to the soonest, dates come sorted asc.
+    data = await events.get_public_event(db, slug=e2.slug)
+    assert data["canonical_slug"] == e1.slug
+    assert [d["slug"] for d in data["dates"]] == [e1.slug, e2.slug]
+    leg = float(DEFAULT_ZONE_PRICES["metro_mid"])
+    prices = {d["slug"]: d["round_trip_price"] for d in data["dates"]}
+    assert prices[e1.slug] == 2 * leg + 50    # each night keeps its own wait fee
+    assert prices[e2.slug] == 2 * leg + 30
+
+    # requesting the canonical slug returns itself (no redirect signal).
+    assert (await events.get_public_event(db, slug=e1.slug))["canonical_slug"] == e1.slug
+
+
+@pytest.mark.asyncio
+async def test_draft_and_archived_siblings_excluded_from_dates(db, owner):
+    key = "grp-" + uuid.uuid4().hex[:6]
+    now = dt.datetime.now(dt.UTC)
+    live = _grp_event(owner, series_key=key, starts_at=now + dt.timedelta(days=5))
+    draft = _grp_event(owner, series_key=key, starts_at=now + dt.timedelta(days=6), status="draft")
+    old = _grp_event(owner, series_key=key, starts_at=now - dt.timedelta(days=9), status="archived")
+    db.add_all([live, draft, old])
+    await db.commit()
+
+    data = await events.get_public_event(db, slug=live.slug)
+    assert [d["slug"] for d in data["dates"]] == [live.slug]   # only published + upcoming
+    assert data["canonical_slug"] == live.slug
+
+
+@pytest.mark.asyncio
+async def test_all_dates_archived_group_has_no_dates(db, owner):
+    key = "grp-" + uuid.uuid4().hex[:6]
+    past = dt.datetime.now(dt.UTC) - dt.timedelta(days=9)
+    ev = _grp_event(owner, series_key=key, starts_at=past, status="archived")
+    db.add(ev)
+    await db.commit()
+
+    data = await events.get_public_event(db, slug=ev.slug)
+    assert data["dates"] == []
+    assert data["canonical_slug"] == ev.slug   # falls back to itself; no redirect loop
+    assert data["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_public_events_groups_dates(db, owner):
+    key = "grp-" + uuid.uuid4().hex[:6]
+    now = dt.datetime.now(dt.UTC)
+    g1 = _grp_event(owner, series_key=key, starts_at=now + dt.timedelta(days=5), wait=50.0, dur=1.0)
+    g2 = _grp_event(owner, series_key=key, starts_at=now + dt.timedelta(days=6), wait=30.0, dur=1.0)
+    solo = _grp_event(
+        owner, series_key=None, starts_at=now + dt.timedelta(days=7),
+        addr="4242 Wynkoop St, Denver, CO 80216",
+    )
+    db.add_all([g1, g2, solo])
+    await db.commit()
+
+    rows = await events.list_public_events(db)
+    by_slug = {r["slug"]: r for r in rows}
+    assert g1.slug in by_slug and g2.slug not in by_slug   # one card per show (soonest date)
+    assert by_slug[g1.slug]["dates_count"] == 2
+    leg = float(DEFAULT_ZONE_PRICES["metro_mid"])
+    assert by_slug[g1.slug]["price_from"] == min(2 * leg + 50, 2 * leg + 30)
+    assert by_slug[solo.slug]["dates_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_series_group_is_tenant_scoped(db, owner):
+    key = "grp-" + uuid.uuid4().hex[:6]
+    other = await _mk_tenant(db)
+    now = dt.datetime.now(dt.UTC)
+    mine = _grp_event(owner, series_key=key, starts_at=now + dt.timedelta(days=5))
+    theirs = _grp_event(other, series_key=key, starts_at=now + dt.timedelta(days=6))
+    db.add_all([mine, theirs])
+    await db.commit()
+
+    data = await events.get_public_event(db, slug=mine.slug)
+    assert [d["slug"] for d in data["dates"]] == [mine.slug]   # foreign tenant never merges in

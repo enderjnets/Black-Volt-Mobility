@@ -104,6 +104,10 @@ class Event(Base):
     est_duration_hours: Mapped[float] = mapped_column(Float, default=3.0, server_default="3")
     round_trip_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     pricing_research: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Groups the dates of one show (e.g. two Red Rocks nights) so the public site can render a
+    # single page with a date selector instead of one landing per date. NULL = ungrouped (stands
+    # alone). Derived from the base slug (performer-venue-year); see events.series_key_for.
+    series_key: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

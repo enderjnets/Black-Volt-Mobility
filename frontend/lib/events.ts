@@ -40,6 +40,7 @@ export interface AdminEvent {
   est_duration_hours: number;
   round_trip_price: number | null;
   pricing_research: ResearchResult | null;
+  series_key: string | null;
 }
 
 export interface RtLine {
@@ -87,6 +88,8 @@ export interface PublicEvent {
   venue_name: string;
   starts_at: string;
   hero_url: string | null;
+  dates_count: number;
+  price_from: number | null;
 }
 
 export interface PickupSuggestion {

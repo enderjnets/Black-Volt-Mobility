@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.77.0";
+export const CURRENT_VERSION = "0.78.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.78.0",
+    date: "2026-07-10",
+    title: "One page per show for multi-night events + a cleaner events dashboard",
+    changes: [
+      "Shows with more than one date (like a two-night Red Rocks run) now live on a single page with a date picker, instead of a separate page per night. Pick a date and the price, deposit, and booking update to that night — each date keeps its own fare.",
+      "Old links to a specific night still work: they redirect to the unified page with that night already selected, so existing ads keep sending people to the right place.",
+      "The events dashboard now separates active from archived events with a filter (Active / Archived / All), and groups a show's dates into one card — so past events stop cluttering the ones you're promoting.",
+    ],
+  },
   {
     version: "0.77.0",
     date: "2026-07-09",

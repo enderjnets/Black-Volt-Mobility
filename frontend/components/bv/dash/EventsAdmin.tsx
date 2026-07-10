@@ -34,6 +34,7 @@ export function EventsAdmin() {
   const { t } = useI18n();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [tab, setTab] = useState<"suggestions" | "events">("suggestions");
+  const [evFilter, setEvFilter] = useState<"active" | "archived" | "all">("active");
   const [suggestions, setSuggestions] = useState<EventSuggestion[]>([]);
   const [events, setEvents] = useState<AdminEvent[]>([]);
   const [busy, setBusy] = useState<number | "scan" | null>(null);
@@ -171,11 +172,70 @@ export function EventsAdmin() {
       ) : events.length === 0 ? (
         <div style={{ padding: 24, color: "var(--fg3)" }}>{t("dash.events.emptyEvents")}</div>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          {events.map((e) => (
-            <EventCard key={e.id} e={e} onChange={reload} />
-          ))}
-        </div>
+        (() => {
+          const counts = {
+            active: events.filter((e) => e.status !== "archived").length,
+            archived: events.filter((e) => e.status === "archived").length,
+            all: events.length,
+          };
+          const shown =
+            evFilter === "all"
+              ? events
+              : evFilter === "archived"
+                ? events.filter((e) => e.status === "archived")
+                : events.filter((e) => e.status !== "archived");
+          // Collapse the dates of one show (shared series_key) into a single card so a run of
+          // nights stops flooding the list; ungrouped events keep standing alone.
+          const groups: { key: string; items: AdminEvent[] }[] = [];
+          const at = new Map<string, number>();
+          for (const e of shown) {
+            const k = e.series_key || `solo-${e.id}`;
+            if (!at.has(k)) {
+              at.set(k, groups.length);
+              groups.push({ key: k, items: [] });
+            }
+            groups[at.get(k)!].items.push(e);
+          }
+          return (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                {(["active", "archived", "all"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setEvFilter(f)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: "var(--radius-full)",
+                      border: "1px solid var(--line-strong)",
+                      cursor: "pointer",
+                      background: evFilter === f ? "var(--volt)" : "transparent",
+                      color: evFilter === f ? "var(--obsidian-3)" : "var(--silver)",
+                      fontWeight: 600,
+                      fontSize: 12,
+                    }}
+                  >
+                    {`${t(`dash.events.filter.${f}`)} (${counts[f]})`}
+                  </button>
+                ))}
+              </div>
+              {shown.length === 0 ? (
+                <div style={{ padding: 24, color: "var(--fg3)" }}>
+                  {t("dash.events.emptyEvents")}
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {groups.map((g) =>
+                    g.items.length === 1 ? (
+                      <EventCard key={g.items[0].id} e={g.items[0]} onChange={reload} />
+                    ) : (
+                      <EventGroupCard key={g.key} items={g.items} onChange={reload} />
+                    ),
+                  )}
+                </div>
+              )}
+            </>
+          );
+        })()
       )}
     </div>
   );
@@ -233,6 +293,64 @@ function SuggestionCard({
         </Button>
       </div>
     </Card>
+  );
+}
+
+function EventGroupCard({ items, onChange }: { items: AdminEvent[]; onChange: () => void }) {
+  const { t } = useI18n();
+  const [openId, setOpenId] = useState(items[0].id);
+  const head = items[0];
+  const label = [head.performer || head.title, head.venue_name].filter(Boolean).join(" · ");
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          padding: "2px 4px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 700, fontSize: 14, color: "var(--silver)" }}>{label}</span>
+          <Pill tone="muted">{t("dash.events.group.dates", { n: items.length })}</Pill>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {items.map((it) => (
+            <button
+              key={it.id}
+              onClick={() => setOpenId(it.id)}
+              title={it.status}
+              style={{
+                padding: "4px 10px",
+                borderRadius: "var(--radius-full)",
+                border: "1px solid var(--line-strong)",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                background: openId === it.id ? "var(--volt)" : "transparent",
+                color:
+                  openId === it.id
+                    ? "var(--obsidian-3)"
+                    : it.status === "archived"
+                      ? "var(--fg3)"
+                      : "var(--silver)",
+                opacity: it.status === "archived" && openId !== it.id ? 0.6 : 1,
+              }}
+            >
+              {fmtDate(it.starts_at)}
+            </button>
+          ))}
+        </div>
+      </div>
+      {items
+        .filter((it) => it.id === openId)
+        .map((it) => (
+          <EventCard key={it.id} e={it} onChange={onChange} />
+        ))}
+    </div>
   );
 }
 

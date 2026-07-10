@@ -115,6 +115,7 @@ def _event_dict(ev: Event) -> dict:
         "est_duration_hours": ev.est_duration_hours,
         "round_trip_price": ev.round_trip_price,
         "pricing_research": ev.pricing_research,
+        "series_key": ev.series_key,
     }
 
 
@@ -152,6 +153,19 @@ async def _unique_slug(db: AsyncSession, base: str) -> str:
         n += 1
         slug = f"{base}-{n}"
     return slug
+
+
+def series_key_for(
+    performer_or_title: str | None, venue_key: str | None, starts_at: dt.datetime
+) -> str:
+    """Stable grouping key for the dates of one show — the *base* slug (before -N uniquification)
+    the approve flow builds. Two nights of the same act at the same venue in the same year share it,
+    so the public site renders ONE page with a date selector. Must stay byte-for-byte in lock-step
+    with the base computed in approve_suggestion and with the inline copy in migration 0043."""
+    return _slugify(
+        f"{performer_or_title or 'event'}-{(venue_key or 'denver').replace('_', '-')}"
+        f"-{_local(starts_at):%Y}"
+    )
 
 
 def _is_safe_public_url(url: str) -> bool:
@@ -393,15 +407,15 @@ async def approve_suggestion(
         return None
 
     hero = await _download_image(sug.image_url) if sug.image_url else None
-    base = _slugify(
-        f"{sug.performer or sug.title}-{(sug.venue_key or 'denver').replace('_', '-')}"
-        f"-{_local(sug.starts_at):%Y}"
-    )
+    base = series_key_for(sug.performer or sug.title, sug.venue_key, sug.starts_at)
     slug = await _unique_slug(db, base)
     ev = Event(
         tenant_id=tenant_id,
         suggestion_id=sug.id,
         slug=slug,
+        # Every date of the same show shares this key → one public page with a date selector.
+        # A later night computes the identical base and joins the group automatically.
+        series_key=base,
         title=sug.title,
         performer=sug.performer,
         venue_key=sug.venue_key or "generic",
@@ -459,6 +473,7 @@ _EDITABLE = {
     "status",
     "venue_address",
     "night_cutoff",
+    "series_key",
     *_PRICING_NUMERIC,
 }
 _ALLOWED_STATUS = {"draft", "published", "archived"}
@@ -489,6 +504,8 @@ async def update_event(
                 continue
         if key == "night_cutoff" and not _CUTOFF_RE.match(str(val)):
             continue
+        if key == "series_key":
+            val = _slugify(str(val))[:80]  # escape hatch: re-group / split shows manually
         setattr(ev, key, val)
     await db.commit()
     await db.refresh(ev)
@@ -552,7 +569,46 @@ async def list_public_events(db: AsyncSession) -> list[dict]:
             .order_by(Event.starts_at.asc())
         )
     ).scalars().all()
-    return [_event_dict(r) for r in rows]
+    # Collapse the dates of one show into a single card (soonest date = the card shown). price_from
+    # is the cheapest round-trip across the group's dates; dates_count drives the "N fechas" label.
+    groups: dict[str, list[Event]] = {}
+    order: list[str] = []
+    for r in rows:
+        key = r.series_key or r.slug
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(r)
+    out: list[dict] = []
+    for key in order:
+        members = groups[key]
+        data = _event_dict(members[0])  # soonest date (rows already sorted asc)
+        prices = [_public_round_trip_price(m, await venue_leg_fare(db, m, tid)) for m in members]
+        data["dates_count"] = len(members)
+        data["price_from"] = min(prices) if prices else None
+        out.append(data)
+    return out
+
+
+async def _live_siblings(db: AsyncSession, ev: Event, tid: int) -> list[Event]:
+    """Published, not-yet-retired dates of the same show (same series_key), soonest first.
+    Empty for an ungrouped event (series_key NULL) — the caller then treats it as a standalone
+    single date, exactly as before the multi-date feature."""
+    if not ev.series_key:
+        return []
+    rows = (
+        await db.execute(
+            select(Event)
+            .where(
+                Event.tenant_id == tid,
+                Event.series_key == ev.series_key,
+                Event.status == "published",
+                Event.starts_at >= _now() - _ARCHIVE_GRACE,
+            )
+            .order_by(Event.starts_at.asc())
+        )
+    ).scalars().all()
+    return list(rows)
 
 
 async def get_public_event(db: AsyncSession, *, slug: str) -> dict | None:
@@ -580,6 +636,26 @@ async def get_public_event(db: AsyncSession, *, slug: str) -> dict | None:
     data["one_way_from"] = round(flat + (ev.event_fee or 0), 2)
     data["round_trip_price"] = _public_round_trip_price(ev, flat)
     data["return_at"] = event_pricing.default_return_dt(ev).isoformat()
+    # Sibling dates of the same show (published + not yet retired) so the landing can render a date
+    # selector. canonical_slug = the soonest live date — the URL the other dates redirect to; it
+    # rotates forward as earlier dates archive, keeping old ad links (307) alive. Empty `dates`
+    # (ungrouped or all-archived) leaves the page behaving exactly as a single-date landing.
+    sibs = await _live_siblings(db, ev, tid)
+    data["canonical_slug"] = sibs[0].slug if sibs else ev.slug
+    dates: list[dict] = []
+    for sib in sibs:
+        sflat = await venue_leg_fare(db, sib, tid)
+        dates.append(
+            {
+                "slug": sib.slug,
+                "starts_at": sib.starts_at,
+                "doors_at": sib.doors_at,
+                "round_trip_price": _public_round_trip_price(sib, sflat),
+                "one_way_from": round(sflat + float(sib.event_fee or 0), 2),
+                "return_at": event_pricing.default_return_dt(sib).isoformat(),
+            }
+        )
+    data["dates"] = dates
     return data
 
 

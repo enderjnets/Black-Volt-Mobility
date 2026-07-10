@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import EventCta from "@/components/bv/web/EventCta";
+import EventDateSelector from "@/components/bv/web/EventDateSelector";
 import EventViewContent from "@/components/bv/web/EventViewContent";
 import RouteTrust from "@/components/bv/web/RouteTrust";
 import { SITE_ORIGIN } from "@/lib/seoRoutes";
@@ -19,6 +20,15 @@ interface VenueProfile {
   pickup: string[];
   eats: string[];
   parking_pain: string;
+}
+
+interface EventDate {
+  slug: string;
+  starts_at: string;
+  doors_at: string | null;
+  round_trip_price: number;
+  one_way_from: number;
+  return_at: string | null;
 }
 
 interface EventDetail {
@@ -41,6 +51,9 @@ interface EventDetail {
   one_way_from: number;
   round_trip_price: number | null;
   return_at: string | null;
+  // Multi-date grouping (single-date events: canonical_slug === slug, dates === []).
+  canonical_slug?: string;
+  dates?: EventDate[];
 }
 
 async function getEvent(slug: string): Promise<EventDetail | null> {
@@ -113,6 +126,18 @@ function eventBookLink(ev: EventDetail): string {
   return `/events/${ev.slug}/book?${p.toString()}`;
 }
 
+type SearchParams = { [k: string]: string | string[] | undefined };
+
+// Flatten Next.js searchParams into URLSearchParams, preserving utm_* / fbclid for attribution.
+function spToParams(sp: SearchParams | undefined): URLSearchParams {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp ?? {})) {
+    if (typeof v === "string") p.set(k, v);
+    else if (Array.isArray(v) && typeof v[0] === "string") p.set(k, v[0]);
+  }
+  return p;
+}
+
 export async function generateMetadata(
   { params }: { params: { slug: string } },
 ): Promise<Metadata> {
@@ -150,9 +175,44 @@ function TipList({ items }: { items: string[] }) {
   );
 }
 
-export default async function EventPage({ params }: { params: { slug: string } }) {
+export default async function EventPage({
+  params,
+  searchParams,
+}: {
+  params: { slug: string };
+  searchParams: SearchParams;
+}) {
   const ev = await getEvent(params.slug);
   if (!ev) notFound();
+
+  // Multi-date show: every date shares one canonical page. If the visitor hit a non-canonical
+  // date's URL (an old ad link to night 2, say), send them to the canonical page with that night
+  // preselected, preserving UTM/query params so attribution survives. 307 (temporary) on purpose:
+  // the canonical rotates forward as earlier nights archive, so old ad links keep working.
+  if (ev.canonical_slug && ev.canonical_slug !== params.slug) {
+    const q = spToParams(searchParams);
+    q.set("date", denverParts(ev.starts_at).date);
+    redirect(`/events/${ev.canonical_slug}?${q.toString()}`);
+  }
+
+  // Pick the date the visitor asked for (?date=YYYY-MM-DD), else the soonest upcoming. `shown`
+  // overlays that date's slug/time/pricing onto the canonical event so every price surface and the
+  // booking link bind to the chosen night; the show's shared copy and venue stay from `ev`.
+  const dates = ev.dates ?? [];
+  const selDate = typeof searchParams?.date === "string" ? searchParams.date : undefined;
+  const selected =
+    dates.find((d) => denverParts(d.starts_at).date === selDate) ?? dates[0] ?? null;
+  const shown: EventDetail = selected
+    ? {
+        ...ev,
+        slug: selected.slug,
+        starts_at: selected.starts_at,
+        doors_at: selected.doors_at,
+        round_trip_price: selected.round_trip_price,
+        one_way_from: selected.one_way_from,
+        return_at: selected.return_at,
+      }
+    : ev;
 
   if (ev.passed) {
     return (
@@ -176,7 +236,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
     "@context": "https://schema.org",
     "@type": "Event",
     name: ev.title,
-    startDate: ev.starts_at,
+    startDate: shown.starts_at,
     eventStatus: "https://schema.org/EventScheduled",
     location: {
       "@type": "Place",
@@ -187,7 +247,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
     offers: {
       "@type": "Offer",
       name: "Black Volt ride to the event",
-      price: String(ev.round_trip_price ?? ev.flat_price),
+      price: String(shown.round_trip_price ?? shown.flat_price),
       priceCurrency: "USD",
       url: `${SITE_ORIGIN}/events/${ev.slug}`,
       availability: "https://schema.org/InStock",
@@ -196,8 +256,8 @@ export default async function EventPage({ params }: { params: { slug: string } }
 
   // Lead the landing with the reservation deposit (1/3 of the round-trip estimate) instead
   // of the full total — the total stays visible as a breakdown.
-  const rtTotal = Math.round(ev.round_trip_price ?? ev.flat_price);
-  const deposit = Math.round((ev.round_trip_price ?? ev.flat_price) / 3);
+  const rtTotal = Math.round(shown.round_trip_price ?? shown.flat_price);
+  const deposit = Math.round((shown.round_trip_price ?? shown.flat_price) / 3);
 
   return (
     <main style={{ paddingBottom: 96 }}>
@@ -226,16 +286,34 @@ export default async function EventPage({ params }: { params: { slug: string } }
               {ev.title}
             </h1>
             <p style={{ fontSize: 16, marginTop: 8, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>
-              {ev.venue_name} · {fmtWhen(ev.starts_at)}
+              {ev.venue_name} · {fmtWhen(shown.starts_at)}
             </p>
           </div>
         </div>
       </section>
 
+      {dates.length > 1 ? (
+        <section style={{ ...SECTION, marginTop: 20 }}>
+          <EventDateSelector
+            selectedSlug={shown.slug}
+            dates={dates.map((d) => {
+              const q = spToParams(searchParams);
+              q.set("date", denverParts(d.starts_at).date);
+              return {
+                slug: d.slug,
+                startsAt: d.starts_at,
+                price: Math.round(d.round_trip_price),
+                href: `/events/${ev.slug}?${q.toString()}`,
+              };
+            })}
+          />
+        </section>
+      ) : null}
+
       {/* Primary CTA */}
       <section style={{ ...SECTION, marginBottom: 40 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <EventCta variant="primary" deposit={deposit} total={rtTotal} href={eventBookLink(ev)} />
+          <EventCta variant="primary" deposit={deposit} total={rtTotal} href={eventBookLink(shown)} />
         </div>
       </section>
 
@@ -283,10 +361,10 @@ export default async function EventPage({ params }: { params: { slug: string } }
       {/* Bottom CTA */}
       <section style={{ ...SECTION }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <EventCta variant="primary" deposit={deposit} total={rtTotal} href={eventBookLink(ev)} />
+          <EventCta variant="primary" deposit={deposit} total={rtTotal} href={eventBookLink(shown)} />
         </div>
       </section>
-      <EventCta variant="sticky" deposit={deposit} href={eventBookLink(ev)} />
+      <EventCta variant="sticky" deposit={deposit} href={eventBookLink(shown)} />
       <EventViewContent slug={ev.slug} title={ev.title} value={rtTotal} />
     </main>
   );

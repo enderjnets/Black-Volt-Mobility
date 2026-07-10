@@ -103,6 +103,14 @@ export default function UpcomingEvents() {
                 {e.title}
               </div>
               <div style={{ color: "var(--fg3)", fontSize: 13, marginTop: 4 }}>{e.venue_name}</div>
+              {e.dates_count > 1 && e.price_from != null ? (
+                <div style={{ color: "var(--fg3)", fontSize: 12, marginTop: 6 }}>
+                  {t("home.events.multi", {
+                    n: e.dates_count,
+                    price: Math.round(e.price_from),
+                  })}
+                </div>
+              ) : null}
               <div style={{ color: "var(--volt)", fontSize: 13, fontWeight: 600, marginTop: 8 }}>
                 {t("home.events.cta")} →
               </div>

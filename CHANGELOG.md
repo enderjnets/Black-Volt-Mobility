@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.78.0 — 2026-07-10 — Multi-date event pages + a cleaner events dashboard
+
+Two owner-reported problems with `/dashboard/events` and the public event pages:
+
+1. **Archived events cluttered the dashboard.** `GET /events/admin` returned every status ordered
+   by `starts_at asc`, so past/archived events floated to the top and buried the ones being
+   promoted. **Fix:** a client-side filter row on the Events tab — **Active** (default =
+   published + draft) / **Archived** / **All**, with counts.
+2. **Each date of a show was its own page.** A two-night run (Avett at Red Rocks, Jul 10 & 11) was
+   two `Event` rows with slugs `…-2026` and `…-2026-2` → two landings, two ad targets. **Fix:** a
+   lightweight grouping so the dates of one show share a single public page with a date selector.
+
+Implementation (no Event restructuring — still one row per date, so per-date pricing, the `/quote`
+engine, booking, deposit=1/3, and per-date analytics are untouched):
+
+- **New `Event.series_key`** (nullable, indexed; migration **0043** backfills every existing event
+  from the same base slug the approve flow builds — `performer/title-venue-Denver year`). Two nights
+  of the same act/venue/year share it; `NULL` = ungrouped (stands alone, unchanged behaviour).
+  `approve_suggestion` sets it, so a later night joins the group automatically. New helper
+  `events.series_key_for` is the single source of truth (frozen inline copy in the migration).
+- **`get_public_event`** now returns `canonical_slug` (soonest live date — the page URL) and
+  `dates[]` (one entry per published, upcoming sibling with its own `round_trip_price` /
+  `one_way_from`). **`list_public_events`** collapses a show to one card (`dates_count`,
+  `price_from`). Draft/archived/foreign-tenant siblings never appear.
+- **Landing** (`events/[slug]/page.tsx`): a non-canonical date URL 307-redirects to the canonical
+  page with `?date=…` preselected, **preserving UTM/`fbclid`** so running ads keep attribution. A
+  new `EventDateSelector` (client) swaps the price, deposit, JSON-LD, and the **per-date booking
+  link** (`/events/<sibling-slug>/book`) so checkout + Purchase analytics stay per-date. Home
+  section shows "N fechas · desde $price".
+- **Dashboard**: the Events tab groups a show's dates into one card with date chips; publishing a
+  date is what promotes it (existing toggle — no new endpoint). Bilingual EN/ES throughout.
+- Joules needs no change — its per-slug URLs now land on the unified page with the right date
+  preselected via the redirect. Tests: 7 new (series_key grouping, dates payload, canonical
+  redirect, draft/archived exclusion, all-archived, list grouping, tenant scoping); full suite green.
+
 ## v0.77.0 — 2026-07-09 — Event estimate uses the venue's real zone fare
 
 The public event estimate (`events._public_round_trip_price`) priced every leg at the cheapest
