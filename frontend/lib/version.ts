@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.78.0";
+export const CURRENT_VERSION = "0.79.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.79.0",
+    date: "2026-07-11",
+    title: "The \"Install app\" button now works on Safari (iPhone, iPad & Mac)",
+    changes: [
+      "Tapping \"Install app\" in Safari used to do nothing (Safari can't show Chrome's install pop-up). Now it opens a clear step-by-step card showing how to add Black Volt to your device.",
+      "iPhone/iPad get the Add-to-Home-Screen steps via the Share button; Mac Safari gets the correct Add-to-Dock steps — no more misleading \"open the ⋮ menu\" hint that Safari doesn't have.",
+      "The install banner now also appears for Mac Safari users, and its button opens the same instructions.",
+    ],
+  },
   {
     version: "0.78.0",
     date: "2026-07-10",

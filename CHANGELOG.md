@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.79.0 — 2026-07-11 — "Install app" now works on Safari (iOS + macOS)
+
+**Owner-reported bug:** tapping the "Install app" button in Safari — from either the rider site or the
+driver dashboard — did nothing.
+
+**Root cause:** the button was driven entirely by Chrome's `beforeinstallprompt` event, which Safari
+(iOS *and* macOS) never fires. When no prompt was available the button only toggled an 11px grey text
+line (easy to miss → "nothing happens"), and on **macOS Safari** it showed the wrong hint (open the
+"⋮" menu, which Safari doesn't have) because iOS detection didn't cover desktop Safari.
+
+**Fix:**
+
+- **New `isSafari()`** in `lib/push.ts` — detects Safari on iOS and macOS desktop, excluding
+  Chrome/Edge/Firefox/Opera (which all carry "Safari" in their UA).
+- **New `InstallInstructions.tsx`** — a dismissable instruction sheet (bottom sheet, Escape/tap-outside
+  to close) with the correct manual steps and a Share glyph: iOS → tap **Share → Add to Home Screen**;
+  macOS Safari → click **Share → Add to Dock**. Any other prompt-less browser falls back to the generic
+  browser-menu hint.
+- **`InstallButton`** now opens that sheet on Safari instead of the invisible text line. Chrome/Edge keep
+  firing the native prompt exactly as before.
+- **`InstallHint`** banner now also appears for macOS Safari users, and its button opens the same
+  instructions (previously the banner had no actionable button unless the native prompt was available).
+- i18n: added `install.help.*`, `install.ios.s1–3`, `install.mac.s1–2` in EN and ES.
+
+Frontend-only; no backend, migration, or API change.
+
 ## v0.78.0 — 2026-07-10 — Multi-date event pages + a cleaner events dashboard
 
 Two owner-reported problems with `/dashboard/events` and the public event pages:

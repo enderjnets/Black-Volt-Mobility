@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
-import { isIOS, isStandalone } from "@/lib/push";
+import { isStandalone } from "@/lib/push";
 import { installState, onInstallChange, registerServiceWorker, triggerInstall } from "@/lib/pwaInstall";
+import { InstallInstructions } from "./InstallInstructions";
 
 /**
  * A permanent "Install app" affordance for the footer / menu. Unlike the transient
@@ -58,11 +59,7 @@ export function InstallButton({ style }: { style?: React.CSSProperties }) {
         <span aria-hidden style={{ fontSize: "1em" }}>⬇</span>
         {t("install.button")}
       </button>
-      {help && (
-        <span style={{ fontSize: 11, color: "var(--fg3)", maxWidth: 220, lineHeight: 1.4 }}>
-          {isIOS() ? t("install.iosDesc") : t("install.menuHint")}
-        </span>
-      )}
+      {help && <InstallInstructions onClose={() => setHelp(false)} />}
     </span>
   );
 }

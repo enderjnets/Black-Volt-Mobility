@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Icon } from "./Icon";
+import { InstallInstructions } from "./InstallInstructions";
 import { useI18n } from "@/lib/i18n";
-import { isIOS, isStandalone } from "@/lib/push";
+import { isSafari, isStandalone } from "@/lib/push";
 import { installState, onInstallChange, registerServiceWorker, triggerInstall } from "@/lib/pwaInstall";
 
 const DISMISS_KEY = "bv-install-hint-dismissed";
@@ -20,6 +21,7 @@ export function InstallHint() {
   const { t } = useI18n();
   const [canInstall, setCanInstall] = useState(false);
   const [showIOS, setShowIOS] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [dismissed, setDismissed] = useState(true); // hidden until we decide to show
 
   useEffect(() => {
@@ -32,8 +34,8 @@ export function InstallHint() {
     sync();
     const unsub = onInstallChange(sync);
 
-    // iOS never fires beforeinstallprompt — offer manual A2HS instructions instead.
-    if (isIOS() && !isStandalone()) setShowIOS(true);
+    // Safari (iOS + macOS) never fires beforeinstallprompt — offer manual instructions instead.
+    if (isSafari() && !isStandalone()) setShowIOS(true);
 
     return unsub;
   }, []);
@@ -82,28 +84,26 @@ export function InstallHint() {
         <Icon name="bell" size={18} color="var(--volt)" />
       </span>
       <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--arctic)", lineHeight: 1.4 }}>
-        {canInstall ? t("install.desc") : t("install.iosDesc")}
+        {t("install.desc")}
       </span>
-      {canInstall && (
-        <button
-          type="button"
-          onClick={install}
-          style={{
-            flexShrink: 0,
-            padding: "7px 12px",
-            borderRadius: 8,
-            border: "none",
-            background: "var(--volt)",
-            color: "var(--void)",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-            fontFamily: "var(--font-sans)",
-          }}
-        >
-          {t("install.cta")}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={canInstall ? install : () => setShowHelp(true)}
+        style={{
+          flexShrink: 0,
+          padding: "7px 12px",
+          borderRadius: 8,
+          border: "none",
+          background: "var(--volt)",
+          color: "var(--void)",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+          fontFamily: "var(--font-sans)",
+        }}
+      >
+        {t("install.cta")}
+      </button>
       <button
         type="button"
         onClick={dismiss}
@@ -121,6 +121,7 @@ export function InstallHint() {
       >
         ×
       </button>
+      {showHelp && <InstallInstructions onClose={() => setShowHelp(false)} />}
     </div>
   );
 }

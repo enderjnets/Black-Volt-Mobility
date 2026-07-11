@@ -61,6 +61,20 @@ export function isIOS(): boolean {
   );
 }
 
+/**
+ * Any Safari — iOS (all iOS browsers are WebKit) or macOS desktop Safari. Safari never
+ * fires `beforeinstallprompt`, so the Install button must fall back to manual
+ * Add-to-Home-Screen / Add-to-Dock instructions. Chrome, Edge, Firefox and Opera all
+ * carry "Safari" in their UA too, so exclude their engine tokens.
+ */
+export function isSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (isIOS()) return true;
+  const ua = navigator.userAgent;
+  if (/chrome|chromium|crios|android|fxios|edg\/|edgios|opr\//i.test(ua)) return false;
+  return /safari/i.test(ua);
+}
+
 export function notificationPermission(): NotificationPermission | "unsupported" {
   if (!pushSupported()) return "unsupported";
   return Notification.permission;
