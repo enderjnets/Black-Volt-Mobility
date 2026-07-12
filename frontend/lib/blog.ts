@@ -35,6 +35,17 @@ export interface BlogPostDetail extends BlogListItem {
   keyword: string | null;
 }
 
+// Curated brand heroes used when a post has no generated hero image (deterministic per
+// slug so a given article always shows the same one). Zero external dependency.
+const DEFAULT_HEROES = ["/assets/ev9-coors-field.webp", "/assets/ev9-charging.webp"];
+
+export function heroFor(item: { slug: string; hero_url: string | null }): string {
+  if (item.hero_url) return item.hero_url;
+  let h = 0;
+  for (const c of item.slug) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return DEFAULT_HEROES[h % DEFAULT_HEROES.length];
+}
+
 export async function fetchBlogList(lang: string): Promise<BlogListItem[]> {
   try {
     const res = await fetch(

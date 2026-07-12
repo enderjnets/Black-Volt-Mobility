@@ -131,6 +131,34 @@ async def _blog_publish_job() -> None:
         logger.warning("blog_publish job failed: %s", e)
 
 
+async def _blog_speed_job() -> None:
+    """Daily 03:00 Denver: PageSpeed Insights snapshot of the public blog (Speed tab)."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import site_speed
+        from app.services.tenancy import owner_tenant_id
+
+        async with get_session_factory()() as db:
+            out = await site_speed.run_daily(db, tenant_id=await owner_tenant_id(db))
+            logger.info("blog speed: %s", out)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("blog_speed job failed: %s", e)
+
+
+async def _blog_gsc_job() -> None:
+    """Daily 04:00 Denver: Google Search Console snapshot (Analytics tab). No-op until connected."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import gsc
+        from app.services.tenancy import owner_tenant_id
+
+        async with get_session_factory()() as db:
+            out = await gsc.run_daily(db, tenant_id=await owner_tenant_id(db))
+            logger.info("blog gsc: %s", out)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("blog_gsc job failed: %s", e)
+
+
 def start() -> None:
     """Start the scheduler. Best-effort: a missing APScheduler or any startup
     error degrades to 'no background publishing' rather than breaking the app."""
@@ -188,6 +216,16 @@ def start() -> None:
             sched.add_job(
                 _blog_publish_job, "interval", minutes=15,
                 id="blog_publish_due", max_instances=1, coalesce=True,
+            )
+            sched.add_job(
+                _blog_speed_job,
+                CronTrigger(hour=3, minute=0, timezone="America/Denver"),
+                id="blog_daily_speed", max_instances=1, coalesce=True,
+            )
+            sched.add_job(
+                _blog_gsc_job,
+                CronTrigger(hour=4, minute=0, timezone="America/Denver"),
+                id="blog_daily_gsc", max_instances=1, coalesce=True,
             )
         sched.start()
         _scheduler = sched

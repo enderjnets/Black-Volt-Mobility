@@ -6,16 +6,20 @@ owner tenant): Brand DNA config, keywords, posts (generate/edit/publish), and SE
 """
 from __future__ import annotations
 
+import base64
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
+from app.config import get_settings
 from app.db.base import get_db
 from app.models import BlogConfig
 from app.services import blog as blog_service
-from app.services import blog_keywords, blog_writer
+from app.services import blog_keywords, blog_writer, gsc
 from app.services.tenancy import owner_tenant_id
 
 router = APIRouter(prefix="/blog", tags=["blog"])
@@ -247,6 +251,47 @@ async def set_post_status(
     if out is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found_or_invalid")
     return out
+
+
+def _gsc_redirect_uri() -> str:
+    return f"{get_settings().PUBLIC_BASE_URL.rstrip('/')}/api/v1/blog/admin/gsc/callback"
+
+
+@router.get("/admin/gsc/authorize")
+async def gsc_authorize(
+    site_url: str = Query(min_length=1, max_length=240),
+    payload: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return the Google consent URL to connect Search Console for `site_url`
+    (e.g. sc-domain:blackvoltmobility.com or https://blackvoltmobility.com/)."""
+    state = base64.urlsafe_b64encode(site_url.encode()).decode()
+    return {"url": gsc.authorize_url(_gsc_redirect_uri(), state)}
+
+
+@router.get("/admin/gsc/callback")
+async def gsc_callback(
+    code: str = Query(default=""),
+    state: str = Query(default=""),
+    payload: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    site = get_settings().PUBLIC_SITE_URL.rstrip("/")
+    dest = f"{site}/dashboard/blog"
+    if not code or not state:
+        return RedirectResponse(url=f"{dest}?gsc=error")
+    try:
+        site_url = base64.urlsafe_b64decode(state.encode()).decode()
+        tok = await gsc.exchange_code(code, _gsc_redirect_uri())
+        if not tok.get("refresh_token"):
+            return RedirectResponse(url=f"{dest}?gsc=noretoken")
+        await gsc.connect(
+            db, tenant_id=await owner_tenant_id(db),
+            refresh_token=tok["refresh_token"], email=tok.get("email"), site_url=site_url,
+        )
+    except Exception:
+        return RedirectResponse(url=f"{dest}?gsc=error")
+    return RedirectResponse(url=f"{dest}?gsc=connected")
 
 
 @router.get("/admin/analytics")

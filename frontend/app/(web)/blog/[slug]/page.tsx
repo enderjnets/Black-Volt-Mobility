@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { fetchBlogPost, type BlogPostDetail } from "@/lib/blog";
+import { fetchBlogPost, heroFor, type BlogPostDetail } from "@/lib/blog";
 import { renderMarkdown } from "@/lib/markdown";
 import { SITE_ORIGIN } from "@/lib/seoRoutes";
 
@@ -43,7 +43,7 @@ export async function generateMetadata({
       description: post.excerpt || undefined,
       url: `${SITE_ORIGIN}${canonical}`,
       type: "article",
-      images: post.hero_url ? [{ url: post.hero_url }] : undefined,
+      images: [{ url: heroFor(post) }],
     },
   };
 }
@@ -70,7 +70,7 @@ function jsonLd(post: BlogPostDetail, lang: string): string {
       "@type": "BlogPosting",
       headline: post.title,
       description: post.excerpt || undefined,
-      ...(post.hero_url ? { image: [post.hero_url] } : {}),
+      image: [heroFor(post)],
       datePublished: post.published_at || undefined,
       dateModified: post.updated_at || post.published_at || undefined,
       inLanguage: lang,
@@ -140,14 +140,12 @@ export default async function BlogArticle({
         ) : null}
       </div>
 
-      {post.hero_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={post.hero_url}
-          alt={post.hero_alt || post.title}
-          style={{ width: "100%", maxHeight: 380, objectFit: "cover", borderRadius: 14, display: "block", marginBottom: 18 }}
-        />
-      ) : null}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={heroFor(post)}
+        alt={post.hero_alt || post.title}
+        style={{ width: "100%", maxHeight: 380, objectFit: "cover", borderRadius: 14, display: "block", marginBottom: 18 }}
+      />
 
       <h1 style={{ fontSize: 32, fontWeight: 800, color: "var(--arctic)", lineHeight: 1.2, margin: "0 0 10px" }}>
         {post.title}

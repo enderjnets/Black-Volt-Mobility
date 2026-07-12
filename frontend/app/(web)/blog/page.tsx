@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { fetchBlogList } from "@/lib/blog";
+import { fetchBlogList, heroFor } from "@/lib/blog";
 import { SITE_ORIGIN } from "@/lib/seoRoutes";
 
 export const dynamic = "force-dynamic";
@@ -107,15 +107,13 @@ export default async function BlogPage({ searchParams }: { searchParams: SearchP
                 textDecoration: "none",
               }}
             >
-              {p.hero_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={p.hero_url}
-                  alt={p.hero_alt || p.title}
-                  loading="lazy"
-                  style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }}
-                />
-              ) : null}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={heroFor(p)}
+                alt={p.hero_alt || p.title}
+                loading="lazy"
+                style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }}
+              />
               <div style={{ padding: "14px 16px 18px" }}>
                 <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 6 }}>
                   {fmtDate(p.published_at, lang)}

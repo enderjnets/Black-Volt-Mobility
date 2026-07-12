@@ -24,7 +24,13 @@ get_settings.cache_clear()
 
 from app.models import BlogKeyword, BlogPost, Tenant  # noqa: E402
 from app.services import blog as blog_service  # noqa: E402
-from app.services import blog_keywords, blog_publish, blog_writer  # noqa: E402
+from app.services import (  # noqa: E402
+    blog_keywords,
+    blog_publish,
+    blog_writer,
+    gsc,
+    site_speed,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -197,6 +203,31 @@ async def test_publish_due_respects_24h_window(db):
     assert ready.published_at is not None
 
 
+async def test_publish_creates_autoshare_draft(db):
+    from app.models import SocialPost
+
+    tid = await _mk_tenant(db)
+    await blog_service.ensure_config(db, tenant_id=tid)
+    post = BlogPost(
+        tenant_id=tid, slug=f"share-{uuid.uuid4().hex[:6]}", title_en="Ride to DEN",
+        excerpt_en="How to get to the airport in style.", body_md_en="b",
+        status="scheduled", publish_at=_now() - dt.timedelta(minutes=1),
+    )
+    db.add(post)
+    await db.commit()
+    out = await blog_publish.publish_due(db, tenant_id=tid)
+    assert out["published"] == 1
+    await db.refresh(post)
+    assert post.status == "published"
+    # a linked draft social post was created (never auto-posted — draft, owner approves)
+    assert post.social_post_id is not None
+    sp = await db.get(SocialPost, post.social_post_id)
+    assert sp is not None
+    assert sp.status == "draft"
+    assert sp.tenant_id == tid
+    assert "/blog/" in (sp.caption or "")
+
+
 async def test_publish_due_skips_when_manual(db):
     tid = await _mk_tenant(db)
     await blog_service.update_config(db, tenant_id=tid, patch={"autopublish": False})
@@ -311,3 +342,59 @@ async def test_keyword_discovery_scores_and_promotes(db, monkeypatch):
     hi = blog_keywords._score("book ride to den airport", "llm", 200, 20)
     lo = blog_keywords._score("colorado", "llm", 200, 20)
     assert hi > lo
+
+
+# ─── PSI + GSC parsers (F4 integrations) ─────────────────────────────────────────
+
+
+async def test_parse_psi_extracts_scores_and_opportunities():
+    data = {
+        "lighthouseResult": {
+            "categories": {
+                "performance": {"score": 0.92},
+                "seo": {"score": 1.0},
+                "accessibility": {"score": 0.88},
+                "best-practices": {"score": 0.95},
+            },
+            "audits": {
+                "largest-contentful-paint": {"displayValue": "1.8 s", "numericValue": 1800},
+                "cumulative-layout-shift": {"displayValue": "0.02", "numericValue": 0.02},
+                "total-blocking-time": {"displayValue": "120 ms", "numericValue": 120},
+                "first-contentful-paint": {"displayValue": "1.1 s"},
+                "uses-webp-images": {
+                    "title": "Serve images in next-gen formats",
+                    "numericValue": 900,
+                    "details": {"type": "opportunity"},
+                },
+                "tiny-op": {"title": "x", "numericValue": 50, "details": {"type": "opportunity"}},
+            },
+        }
+    }
+    out = site_speed.parse_psi(data)
+    assert out["performance"] == 92
+    assert out["seo"] == 100
+    assert out["lcp"] == "1.8 s"
+    # opportunities > 100ms only, sorted by savings
+    assert out["top_opportunities"] and out["top_opportunities"][0]["savings_ms"] == 900
+    assert all(o["savings_ms"] > 100 for o in out["top_opportunities"])
+
+
+async def test_parse_gsc_summary_and_top_queries():
+    rows = [
+        {"keys": ["denver airport ride"], "clicks": 30, "impressions": 500,
+         "ctr": 0.06, "position": 3.2},
+        {"keys": ["red rocks car service"], "clicks": 10, "impressions": 200,
+         "ctr": 0.05, "position": 5.1},
+    ]
+    out = gsc.parse_gsc(rows)
+    assert out["clicks"] == 40
+    assert out["impressions"] == 700
+    assert out["top_queries"][0]["query"] == "denver airport ride"  # sorted by clicks
+    assert out["top_queries"][0]["ctr"] == 6.0
+
+
+async def test_gsc_run_daily_skips_when_not_connected(db):
+    tid = await _mk_tenant(db)
+    await blog_service.ensure_config(db, tenant_id=tid)
+    out = await gsc.run_daily(db, tenant_id=tid)
+    assert out.get("skipped") == "gsc_not_connected"

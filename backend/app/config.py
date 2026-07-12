@@ -72,6 +72,9 @@ class Settings(BaseSettings):
 
     # Canonical public origin used to build shareable driver links / QR codes.
     PUBLIC_BASE_URL: str = "https://app.blackvoltmobility.com"
+    # Public marketing/apex site (where the SSR blog, /book and landing pages live). Used to
+    # build blog article links for social auto-share. Distinct from PUBLIC_BASE_URL (the app host).
+    PUBLIC_SITE_URL: str = "https://blackvoltmobility.com"
 
     @property
     def google_admin_emails_list(self) -> list[str]:
