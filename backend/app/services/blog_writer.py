@@ -174,6 +174,18 @@ async def generate_article(
         if kw_row is not None:
             keyword_text = kw_row.keyword
     keyword_text = (keyword_text or "").strip()
+    # No explicit keyword → pull the top planned one (the "write next" button path).
+    if not keyword_text and keyword_id is None:
+        kw_row = (
+            await db.execute(
+                select(BlogKeyword)
+                .where(BlogKeyword.tenant_id == tenant_id, BlogKeyword.status == "planned")
+                .order_by(BlogKeyword.score.desc().nullslast(), BlogKeyword.id.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if kw_row is not None:
+            keyword_text = kw_row.keyword
     if not keyword_text:
         return None
 
