@@ -140,6 +140,9 @@ services:
       TICKETMASTER_API_KEY: ${TICKETMASTER_API_KEY:-}
       EVENTS_MIN_SCORE: ${EVENTS_MIN_SCORE:-0.6}
       EVENTS_SCAN_ENABLED: ${EVENTS_SCAN_ENABLED:-true}
+      BLOG_AUTOPILOT_ENABLED: ${BLOG_AUTOPILOT_ENABLED:-true}
+      GOOGLE_PSI_API_KEY: ${GOOGLE_PSI_API_KEY:-}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://blackvoltmobility.com}
       EVENTS_BASE_LAT: ${EVENTS_BASE_LAT:-39.6005}
       EVENTS_BASE_LNG: ${EVENTS_BASE_LNG:--104.7926}
       # Uber Black formula fallback (published Denver rates; tune without a deploy).
