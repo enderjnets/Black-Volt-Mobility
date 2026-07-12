@@ -113,7 +113,7 @@ async def _llm_article(brand: dict, keyword: str, facts: str, cfg, lang: str) ->
             try:
                 raw = await llm.text_complete(
                     prompt=prompt, system=system, model=model, base_url=base_url,
-                    api_key=api_key, max_tokens=2200, timeout=120.0,
+                    api_key=api_key, max_tokens=4000, timeout=120.0,
                 )
             except Exception as e:
                 logger.warning(
