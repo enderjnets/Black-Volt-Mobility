@@ -28,6 +28,10 @@ logger = logging.getLogger("blackvolt.blog.writer")
 # Edit window before a scheduled article auto-publishes (hybrid autopilot).
 _PUBLISH_DELAY = dt.timedelta(hours=24)
 
+# Public-facing company/brand name for article copy. _brand_ctx["name"] is the tenant
+# (driver) name; the blog speaks as the company, so we ground on this instead.
+_BRAND_NAME = "Black Volt Mobility"
+
 
 def _now() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
@@ -54,7 +58,7 @@ def _parse_json(text: str) -> dict | None:
 def _facts_block(brand: dict, allowed_links: set[str]) -> str:
     links = "\n".join(f"- {p}" for p in sorted(allowed_links))
     return (
-        f"Business: {brand['name']} — {brand['tagline']}.\n"
+        f"Business: {_BRAND_NAME} — {brand['tagline']}.\n"
         f"Service: {brand['service_line']}.\n"
         f"Vehicle: {brand['vehicle']} (all-electric, up to 6 passengers, quiet premium cabin).\n"
         f"Area: {brand['service_area']}; airport = {brand['airport']}; {brand['mountain']}.\n"
@@ -102,7 +106,7 @@ async def _llm_article(brand: dict, keyword: str, facts: str, cfg, lang: str) ->
         try:
             raw = await llm.text_complete(
                 prompt=prompt, system=system, model=model, base_url=base_url,
-                api_key=api_key, max_tokens=2200,
+                api_key=api_key, max_tokens=2200, timeout=120.0,
             )
         except Exception as e:
             logger.warning("blog writer LLM provider failed (%s): %s", model, e)
@@ -118,10 +122,10 @@ def _template_article(brand: dict, keyword: str, lang: str) -> dict:
     en = lang == "en"
     kw = keyword.strip()
     if en:
-        title = f"{kw.title()} with {brand['name']}"[:60]
+        title = f"{kw.title()} with {_BRAND_NAME}"[:60]
         body = (
             f"## {kw.title()}\n\n"
-            f"{brand['name']} offers {brand['service_line']}. "
+            f"{_BRAND_NAME} offers {brand['service_line']}. "
             f"Every ride is in a {brand['vehicle']} — quiet, all-electric, and premium.\n\n"
             f"## Why riders choose us\n\n"
             f"Door-to-door service across {brand['service_area']}, on time, every time. "
@@ -129,18 +133,18 @@ def _template_article(brand: dict, keyword: str, lang: str) -> dict:
             f"## Book your ride\n\n"
             f"Ready to go? [Book online](/book) in under a minute."
         )
-        excerpt = f"{brand['name']}: {brand['service_line']}."[:150]
+        excerpt = f"{_BRAND_NAME}: {brand['service_line']}."[:150]
     else:
-        title = f"{kw} con {brand['name']}"[:60]
+        title = f"{kw} con {_BRAND_NAME}"[:60]
         body = (
             f"## {kw}\n\n"
-            f"{brand['name']} ofrece transporte eléctrico premium puerta a puerta en "
+            f"{_BRAND_NAME} ofrece transporte eléctrico premium puerta a puerta en "
             f"{brand['city']}, traslados al aeropuerto (DEN) y a los centros de esquí de Colorado. "
             f"Cada viaje es en un {brand['vehicle']}: silencioso, 100% eléctrico y premium.\n\n"
             f"## Reserva tu viaje\n\n"
             f"¿Listo? [Reserva en línea](/book) en menos de un minuto."
         )
-        excerpt = f"{brand['name']}: transporte eléctrico premium en {brand['city']}."[:150]
+        excerpt = f"{_BRAND_NAME}: transporte eléctrico premium en {brand['city']}."[:150]
     return {
         "title": title,
         "excerpt": excerpt,

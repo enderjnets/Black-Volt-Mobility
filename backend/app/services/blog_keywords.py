@@ -87,7 +87,7 @@ async def _llm_keywords(brand: dict, cfg, lang: str) -> list[dict]:
         try:
             raw = await llm.text_complete(
                 prompt=prompt, system=system, model=model, base_url=base_url,
-                api_key=api_key, max_tokens=900,
+                api_key=api_key, max_tokens=900, timeout=60.0,
             )
         except Exception as e:
             logger.warning("keyword LLM provider failed (%s): %s", model, e)

@@ -16,14 +16,17 @@ class LLMError(RuntimeError):
     pass
 
 
-def _client(base_url: str, api_key: str):
-    """Build an AsyncAnthropic pointed at a provider's anthropic-compatible API."""
+def _client(base_url: str, api_key: str, timeout: float | None = None):
+    """Build an AsyncAnthropic pointed at a provider's anthropic-compatible API.
+
+    `timeout` overrides the default LLM_TIMEOUT_SECONDS — long-form generation (e.g. a
+    full blog article) needs more than the ~30s that's right for interactive features."""
     from anthropic import AsyncAnthropic
 
     return AsyncAnthropic(
         api_key=api_key,
         base_url=base_url,
-        timeout=get_settings().LLM_TIMEOUT_SECONDS,
+        timeout=timeout or get_settings().LLM_TIMEOUT_SECONDS,
         max_retries=1,
     )
 
@@ -76,10 +79,12 @@ async def text_complete(
     base_url: str,
     api_key: str,
     max_tokens: int = 400,
+    timeout: float | None = None,
 ) -> str:
     """Send one text-only user message (with an optional system prompt) and return
     the text. Mirrors `vision_complete` for plain chat/completion work (e.g. the
-    My Stats coach). Raises LLMError on transport/SDK failure or an empty response.
+    My Stats coach). `timeout` overrides the default for long-form generation.
+    Raises LLMError on transport/SDK failure or an empty response.
     NEVER pass an Anthropic OAuth token (CLAUDE.md anti-pattern #1)."""
     if not api_key:
         raise LLMError("text:no_api_key")
@@ -91,7 +96,7 @@ async def text_complete(
     if system:
         kwargs["system"] = system
     try:
-        resp = await _client(base_url, api_key).messages.create(**kwargs)
+        resp = await _client(base_url, api_key, timeout).messages.create(**kwargs)
     except Exception as e:  # SDK / network / API error
         raise LLMError(f"text:{type(e).__name__}") from e
     parts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
