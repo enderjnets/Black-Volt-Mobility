@@ -88,6 +88,49 @@ async def _events_scan_job() -> None:
         logger.warning("events_scan job failed: %s", e)
 
 
+async def _blog_keywords_job() -> None:
+    """Daily 05:00 Denver: discover + score SEO keywords, promote the best to planned."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import blog_keywords
+        from app.services.tenancy import owner_tenant_id
+
+        async with get_session_factory()() as db:
+            out = await blog_keywords.run_daily(db, tenant_id=await owner_tenant_id(db))
+            logger.info("blog keyword discovery: %s", out)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("blog_keywords job failed: %s", e)
+
+
+async def _blog_writer_job() -> None:
+    """Daily 07:00 Denver: write one bilingual article from the top planned keyword."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import blog_writer
+        from app.services.tenancy import owner_tenant_id
+
+        async with get_session_factory()() as db:
+            out = await blog_writer.run_daily(db, tenant_id=await owner_tenant_id(db))
+            logger.info("blog writer: %s", out)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("blog_writer job failed: %s", e)
+
+
+async def _blog_publish_job() -> None:
+    """Every 15 min: publish scheduled articles whose 24h edit window elapsed + auto-share."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import blog_publish
+        from app.services.tenancy import owner_tenant_id
+
+        async with get_session_factory()() as db:
+            out = await blog_publish.publish_due(db, tenant_id=await owner_tenant_id(db))
+            if out.get("published"):
+                logger.info("blog publish: %s", out)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("blog_publish job failed: %s", e)
+
+
 def start() -> None:
     """Start the scheduler. Best-effort: a missing APScheduler or any startup
     error degrades to 'no background publishing' rather than breaking the app."""
@@ -130,6 +173,21 @@ def start() -> None:
                 _events_scan_job,
                 CronTrigger(hour=6, minute=0, timezone="America/Denver"),
                 id="events_daily_scan", max_instances=1, coalesce=True,
+            )
+        if get_settings().BLOG_AUTOPILOT_ENABLED:
+            sched.add_job(
+                _blog_keywords_job,
+                CronTrigger(hour=5, minute=0, timezone="America/Denver"),
+                id="blog_daily_keywords", max_instances=1, coalesce=True,
+            )
+            sched.add_job(
+                _blog_writer_job,
+                CronTrigger(hour=7, minute=0, timezone="America/Denver"),
+                id="blog_daily_writer", max_instances=1, coalesce=True,
+            )
+            sched.add_job(
+                _blog_publish_job, "interval", minutes=15,
+                id="blog_publish_due", max_instances=1, coalesce=True,
             )
         sched.start()
         _scheduler = sched

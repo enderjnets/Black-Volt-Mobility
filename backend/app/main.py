@@ -14,6 +14,7 @@ from app.api.v1.addresses import router as addresses_router
 from app.api.v1.agreements import router as agreements_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.blog import router as blog_router
 from app.api.v1.calendar_link import router as calendar_link_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.dashboard import router as dashboard_router
@@ -123,6 +124,7 @@ app.include_router(calendar_link_router, prefix="/api/v1")
 app.include_router(booking_router, prefix="/api/v1")
 app.include_router(reviews_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
+app.include_router(blog_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
 app.include_router(subscriptions_router, prefix="/api/v1")

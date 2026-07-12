@@ -1,6 +1,7 @@
 """Re-export every model so Alembic autogenerate + the app see them."""
 from app.models.allowed_user import AllowedUser
 from app.models.analytics import AnalyticsEvent
+from app.models.blog import BlogConfig, BlogKeyword, BlogPost, SeoSnapshot
 from app.models.calendar_credential import CalendarCredential
 from app.models.chat import ChatConversation, ChatMessage, ChatRole, ChatStatus
 from app.models.client import Client
@@ -40,6 +41,10 @@ __all__ = [
     "RideStatus",
     "PaymentMethod",
     "AnalyticsEvent",
+    "BlogConfig",
+    "BlogKeyword",
+    "BlogPost",
+    "SeoSnapshot",
     "Payment",
     "PaymentStatus",
     "AllowedUser",
