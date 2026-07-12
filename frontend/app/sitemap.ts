@@ -41,7 +41,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     eventPages = [];
   }
 
-  return [...staticPages, ...routePages, ...eventPages].map((p) => ({
+  // Published blog posts (best-effort — same timeout guard as events).
+  let blogPages: { path: string; priority: 0.6; changeFrequency: "weekly" }[] = [];
+  try {
+    const r = await fetch(`${API}/api/v1/blog/public`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(3000),
+    });
+    if (r.ok) {
+      const posts = (await r.json()) as { slug: string }[];
+      blogPages = posts.map((p) => ({
+        path: `/blog/${p.slug}`,
+        priority: 0.6 as const,
+        changeFrequency: "weekly" as const,
+      }));
+    }
+  } catch {
+    blogPages = [];
+  }
+
+  return [...staticPages, ...routePages, ...eventPages, ...blogPages].map((p) => ({
     url: `${SITE_ORIGIN}${p.path}`,
     changeFrequency: p.changeFrequency,
     priority: p.priority,
