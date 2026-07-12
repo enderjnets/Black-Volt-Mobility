@@ -105,18 +105,24 @@ async def _llm_article(brand: dict, keyword: str, facts: str, cfg, lang: str) ->
         '"faq": [{"q": str, "a": str}], '
         '"internal_links": [{"href": str, "text": str}]}'
     )
-    for model, base_url, api_key in llm.providers():
-        try:
-            raw = await llm.text_complete(
-                prompt=prompt, system=system, model=model, base_url=base_url,
-                api_key=api_key, max_tokens=2200, timeout=120.0,
-            )
-        except Exception as e:
-            logger.warning("blog writer LLM provider failed (%s): %s", model, e)
-            continue
-        data = _parse_json(raw)
-        if data and data.get("title") and data.get("body_md"):
-            return data
+    # Two passes over the provider chain: when the only healthy provider is flaky
+    # (e.g. MiniMax occasionally times out on a long article and the Kimi fallback key
+    # is down), a second attempt salvages the language before we drop to the template.
+    for attempt in range(2):
+        for model, base_url, api_key in llm.providers():
+            try:
+                raw = await llm.text_complete(
+                    prompt=prompt, system=system, model=model, base_url=base_url,
+                    api_key=api_key, max_tokens=2200, timeout=120.0,
+                )
+            except Exception as e:
+                logger.warning(
+                    "blog writer LLM provider failed (%s, attempt %d): %s", model, attempt + 1, e
+                )
+                continue
+            data = _parse_json(raw)
+            if data and data.get("title") and data.get("body_md"):
+                return data
     return None
 
 
