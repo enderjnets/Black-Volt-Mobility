@@ -11,6 +11,7 @@ the prompt — same prompt-injection-safe pattern as social._ai_brief.
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import json
 import logging
@@ -211,7 +212,12 @@ async def generate_article(
     langs = [code for code in order if code in langs]
 
     articles: dict[str, dict] = {}
-    for lang in langs:
+    for i, lang in enumerate(langs):
+        # Space out the two heavy generations — a rapid second MiniMax call otherwise
+        # tends to come back unparseable (rate/connection), dropping that language to
+        # the template. A short pause markedly improves the second language's success.
+        if i > 0:
+            await asyncio.sleep(4)
         data = await _llm_article(brand, keyword_text, facts, cfg, lang)
         if data is None:
             data = _template_article(brand, keyword_text, lang)
