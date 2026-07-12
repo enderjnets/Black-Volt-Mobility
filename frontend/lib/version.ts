@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.79.0";
+export const CURRENT_VERSION = "0.80.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.80.0",
+    date: "2026-07-12",
+    title: "New: the Black Volt Blog — AI-written travel & ride guides",
+    changes: [
+      "Launched a blog of SEO guides for Denver airport transfers, Red Rocks concert rides, and mountain trips — written and kept fresh automatically, in English and Spanish.",
+      "Each guide is a fast, native page (great for Google) with a hero image, FAQ, and a one-tap link to book.",
+      "New owner control room: content calendar, keyword research, Brand DNA, Search Console analytics, and site-speed — all in the dashboard.",
+    ],
+  },
   {
     version: "0.79.0",
     date: "2026-07-11",

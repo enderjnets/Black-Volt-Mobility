@@ -61,18 +61,21 @@ def parse_psi(data: dict) -> dict:
     }
 
 
-async def _fetch(url: str, key: str) -> dict | None:
+async def _fetch(url: str, key: str) -> dict | str | None:
+    """Return the PSI JSON, the sentinel "quota" on 403/429 (keyless rate limit / bad key),
+    or None on any other failure."""
+    params = {
+        "url": url,
+        "strategy": "mobile",
+        "category": ["performance", "seo", "accessibility", "best-practices"],
+    }
+    if key:  # keyless is allowed at low volume; a key just raises the quota
+        params["key"] = key
     try:
         async with httpx.AsyncClient(timeout=60.0) as http:
-            resp = await http.get(
-                _PSI_URL,
-                params={
-                    "url": url,
-                    "key": key,
-                    "strategy": "mobile",
-                    "category": ["performance", "seo", "accessibility", "best-practices"],
-                },
-            )
+            resp = await http.get(_PSI_URL, params=params)
+            if resp.status_code in (403, 429):
+                return "quota"
             resp.raise_for_status()
             return resp.json()
     except Exception as e:
@@ -97,14 +100,15 @@ async def _upsert(db: AsyncSession, *, tenant_id: int, date: str, payload: dict)
 
 
 async def run_daily(db: AsyncSession, *, tenant_id: int) -> dict:
-    """Run PSI against the public site + blog and persist a snapshot."""
+    """Run PSI against the public site + blog and persist a snapshot. Works keyless at low
+    volume; GOOGLE_PSI_API_KEY (free) just raises the quota."""
     settings = get_settings()
-    key = settings.GOOGLE_PSI_API_KEY
-    if not key:
-        return {"skipped": "no_psi_key"}
+    key = settings.GOOGLE_PSI_API_KEY  # optional
     site = settings.PUBLIC_SITE_URL.rstrip("/")
     data = await _fetch(f"{site}/blog", key)
-    if data is None:
+    if data == "quota":
+        return {"skipped": "psi_quota_or_key"}
+    if not isinstance(data, dict):
         return {"skipped": "fetch_failed"}
     payload = parse_psi(data)
     await _upsert(db, tenant_id=tenant_id, date=_denver_date(), payload=payload)

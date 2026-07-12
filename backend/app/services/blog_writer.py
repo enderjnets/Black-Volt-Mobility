@@ -70,13 +70,8 @@ def _facts_block(brand: dict, allowed_links: set[str]) -> str:
 
 async def _llm_article(brand: dict, keyword: str, facts: str, cfg, lang: str) -> dict | None:
     """One LLM generation for a single language. Returns parsed dict or None on failure."""
-    voice = (cfg.voice or "").strip() or (
-        "warm, confident, concierge-level; helpful and specific, never salesy or generic"
-    )
-    audience = (cfg.audience or "").strip() or (
-        "Denver-area travelers, concert-goers, and professionals who value a premium, "
-        "reliable, eco-friendly ride"
-    )
+    voice = (cfg.voice or "").strip() or blog_service._DEFAULT_VOICE
+    audience = (cfg.audience or "").strip() or blog_service._DEFAULT_AUDIENCE
     lang_name = "English" if lang == "en" else "Spanish (neutral Latin American)"
     system = (
         "You are an expert SEO content writer and local-SEO strategist for a premium "

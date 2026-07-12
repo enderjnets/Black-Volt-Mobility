@@ -137,6 +137,15 @@ async def put_config(
     )
 
 
+@router.post("/admin/config/autofill")
+async def autofill_config(
+    payload: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Auto-generate the Brand DNA with the LLM (grounded in the business)."""
+    return await blog_service.autofill_config(db, tenant_id=await owner_tenant_id(db))
+
+
 @router.get("/admin/keywords")
 async def list_keywords(
     kw_status: str | None = Query(default=None, alias="status"),
@@ -276,7 +285,8 @@ async def gsc_callback(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
-    site = get_settings().PUBLIC_SITE_URL.rstrip("/")
+    # The authenticated dashboard lives on the app host (PUBLIC_BASE_URL), not the apex.
+    site = get_settings().PUBLIC_BASE_URL.rstrip("/")
     dest = f"{site}/dashboard/blog"
     if not code or not state:
         return RedirectResponse(url=f"{dest}?gsc=error")
@@ -314,3 +324,14 @@ async def analytics(
     gsc = [r.payload for r in rows if r.kind == "gsc_day"]
     psi = next((r.payload for r in rows if r.kind == "psi"), None)
     return {"gsc": gsc, "psi": psi}
+
+
+@router.post("/admin/speed/run")
+async def run_speed(
+    payload: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Run a PageSpeed Insights audit now and persist the snapshot (Speed tab button)."""
+    from app.services import site_speed
+
+    return await site_speed.run_daily(db, tenant_id=await owner_tenant_id(db))

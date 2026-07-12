@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.80.0 — 2026-07-12 — Volt Blog Autopilot (our own "Soro")
+
+A full AI SEO blog engine that replaces the paid Soro embed (renewal $81 on 2026-10-05).
+Built and deployed across 5 phases (commits `c1373c7`→`6c713ba`); this release also bumps the
+public version and ships the Brand-DNA/GSC/Speed follow-up fixes below.
+
+**The engine (F1–F5):**
+- **Keyword discovery** (daily): Google Autocomplete + LLM topical map, intent scoring, dedupe,
+  auto-promote to the calendar. Grounded in the real business (zones, airport, routes, events).
+- **Bilingual (EN+ES) articles** written by the LLM (Kimi→MiniMax), with a deterministic template
+  fallback so a post is always produced; validated internal links (never a 404); hybrid-24h publish
+  window (edit/veto before it goes live).
+- **Native SSR pages** at `/blog` and `/blog/[slug]` — content is in the HTML (Googlebot sees it),
+  with Article + FAQ + Breadcrumb JSON-LD, hreflang en/es, canonical, sitemap, and curated hero
+  images. This SSR is the core SEO win over Soro's client-side embed.
+- **Auto-share**: on publish, a draft social post (hero + link) enters the existing social→Buffer
+  pipeline for owner approval (never auto-posts).
+- **Analytics/Speed**: Google Search Console (real clicks/impressions/CTR/position = true "Impact")
+  and daily PageSpeed Insights.
+- **Owner dashboard** `/dashboard/blog`: Calendar, Published, Keywords, Brand DNA, Analytics, Speed.
+
+**Follow-up fixes in this release:**
+- Brand DNA is now **auto-seeded** (voice/audience/themes/avoid/image-style) and back-fills older
+  blank rows, so the dashboard is never empty; plus an **"Auto-fill with AI"** button.
+- **Connect Google Search Console** button added to Analytics (the OAuth endpoints existed but had no
+  UI); callback now redirects to the app host where the session lives.
+- **Speed** tab is now usable: runs PageSpeed **keyless** at low volume (a free key just raises the
+  quota), a **"Run audit now"** button, and readable score/metric/opportunity cards.
+
+Autopilot ships **paused** in production pending a working LLM key (see project notes); everything
+degrades gracefully. Backend migration `0044`; 24 blog tests; suite green.
+
 ## v0.79.0 — 2026-07-11 — "Install app" now works on Safari (iOS + macOS)
 
 **Owner-reported bug:** tapping the "Install app" button in Safari — from either the rider site or the

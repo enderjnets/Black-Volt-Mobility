@@ -111,3 +111,9 @@ export const setBlogPostStatus = (id: number, status: string) =>
   jsend<BlogPostT>(`/v1/blog/admin/posts/${id}/status`, "POST", { status });
 
 export const getBlogAnalytics = () => jget<BlogAnalyticsT>("/v1/blog/admin/analytics");
+export const autofillBlogConfig = () =>
+  jsend<BlogConfigT>("/v1/blog/admin/config/autofill", "POST");
+export const runBlogSpeed = () =>
+  jsend<{ ok?: boolean; performance?: number; skipped?: string }>("/v1/blog/admin/speed/run", "POST");
+export const gscAuthorizeUrl = (siteUrl: string) =>
+  jget<{ url: string }>(`/v1/blog/admin/gsc/authorize?site_url=${encodeURIComponent(siteUrl)}`);

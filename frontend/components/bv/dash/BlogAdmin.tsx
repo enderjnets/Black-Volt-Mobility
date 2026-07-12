@@ -6,15 +6,18 @@ import { Button, Card, Field, Pill, Toggle } from "@/components/bv/ui";
 import { useI18n } from "@/lib/i18n";
 import {
   addBlogKeyword,
+  autofillBlogConfig,
   discoverBlogKeywords,
   generateBlogPost,
   getBlogAnalytics,
   getBlogConfig,
+  gscAuthorizeUrl,
   listBlogKeywords,
   listBlogPosts,
   patchBlogPost,
   publishBlogPost,
   putBlogConfig,
+  runBlogSpeed,
   setBlogKeywordStatus,
   setBlogPostStatus,
   type BlogAnalyticsT,
@@ -94,6 +97,16 @@ export function BlogAdmin() {
     getBlogConfig().then(setConfig).catch(() => {});
     reloadPosts();
     reloadKeywords();
+    // Flash the outcome of a returning GSC OAuth redirect (?gsc=connected|error|noretoken).
+    if (typeof window !== "undefined") {
+      const g = new URLSearchParams(window.location.search).get("gsc");
+      if (g) {
+        setMsg(g === "connected" ? t("blog.msg.gscConnected") : t("blog.msg.gscError"));
+        setTimeout(() => setMsg(null), 4000);
+        window.history.replaceState({}, "", "/dashboard/blog");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadPosts, reloadKeywords]);
 
   const flash = (m: string) => {
@@ -187,20 +200,25 @@ export function BlogAdmin() {
       )}
 
       {tab === "brand" && config && (
-        <BrandTab config={config} busy={busy} t={t}
+        <BrandTab
+          key={`${config.voice ?? ""}|${(config.key_themes || []).join(",")}|${(config.avoid_topics || []).join(",")}`}
+          config={config} busy={busy} t={t}
           onSave={(patch) => run(async () => { const c = await putBlogConfig(patch); setConfig(c); flash(t("blog.msg.saved")); })}
+          onAutofill={() => run(async () => { const c = await autofillBlogConfig(); setConfig(c); flash(t("blog.msg.autofilled")); })}
         />
       )}
 
       {tab === "analytics" && (
-        <AnalyticsTab analytics={analytics} t={t}
+        <AnalyticsTab analytics={analytics} config={config} busy={busy} t={t}
           onLoad={() => run(async () => { setAnalytics(await getBlogAnalytics()); })}
+          onConnect={(siteUrl) => run(async () => { const { url } = await gscAuthorizeUrl(siteUrl); window.location.href = url; })}
         />
       )}
 
       {tab === "speed" && (
-        <SpeedTab analytics={analytics} t={t}
+        <SpeedTab analytics={analytics} busy={busy} t={t}
           onLoad={() => run(async () => { setAnalytics(await getBlogAnalytics()); })}
+          onRun={() => run(async () => { const r = await runBlogSpeed(); if (r.skipped) flash(t("blog.speed.hintKey")); setAnalytics(await getBlogAnalytics()); })}
         />
       )}
     </div>
@@ -371,11 +389,13 @@ function KeywordsTab({ keywords, busy, t, onDiscover, onAdd, onStatus, onWrite }
 
 // ─── Brand DNA + autopilot ───────────────────────────────────────────────────────
 
-function BrandTab({ config, busy, t, onSave }: {
+function BrandTab({ config, busy, t, onSave, onAutofill }: {
   config: BlogConfigT; busy: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
   onSave: (patch: Partial<BlogConfigT>) => void;
+  onAutofill: () => void;
 }) {
+  // Re-key on config identity so an autofill/backfill from the server repopulates the fields.
   const [voice, setVoice] = useState(config.voice || "");
   const [audience, setAudience] = useState(config.audience || "");
   const [imageStyle, setImageStyle] = useState(config.image_style || "");
@@ -431,21 +451,26 @@ function BrandTab({ config, busy, t, onSave }: {
           </div>
         </div>
       </Card>
-      <Button
-        disabled={busy}
-        onClick={() =>
-          onSave({
-            voice, audience, image_style: imageStyle,
-            key_themes: themes.split(",").map((s) => s.trim()).filter(Boolean),
-            avoid_topics: avoid.split(",").map((s) => s.trim()).filter(Boolean),
-            cadence_per_week: Math.max(0, Math.min(14, parseInt(cadence, 10) || 0)),
-            autopublish, paused,
-            languages: [en ? "en" : "", es ? "es" : ""].filter(Boolean),
-          })
-        }
-      >
-        {t("blog.action.save")}
-      </Button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Button
+          disabled={busy}
+          onClick={() =>
+            onSave({
+              voice, audience, image_style: imageStyle,
+              key_themes: themes.split(",").map((s) => s.trim()).filter(Boolean),
+              avoid_topics: avoid.split(",").map((s) => s.trim()).filter(Boolean),
+              cadence_per_week: Math.max(0, Math.min(14, parseInt(cadence, 10) || 0)),
+              autopublish, paused,
+              languages: [en ? "en" : "", es ? "es" : ""].filter(Boolean),
+            })
+          }
+        >
+          {t("blog.action.save")}
+        </Button>
+        <Button variant="ghost" disabled={busy} onClick={onAutofill}>
+          ✨ {t("blog.action.autofill")}
+        </Button>
+      </div>
       <p style={{ fontSize: 12, color: "var(--fg3)" }}>
         {t("blog.field.gsc")}: {config.gsc_connected ? (config.gsc_connected_email || "connected") : t("blog.field.gscNo")}
       </p>
@@ -453,49 +478,120 @@ function BrandTab({ config, busy, t, onSave }: {
   );
 }
 
-// ─── Analytics (GSC) + Speed (PSI) — populated in F4 ─────────────────────────────
+// ─── Analytics (GSC) ─────────────────────────────────────────────────────────────
 
-function AnalyticsTab({ analytics, t, onLoad }: {
-  analytics: BlogAnalyticsT | null;
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div style={{ flex: 1, minWidth: 90, textAlign: "center", padding: "10px 6px", borderRadius: 10, background: "var(--obsidian)" }}>
+      <div style={{ fontSize: 20, fontWeight: 800, color: "var(--arctic)" }}>{value}</div>
+      <div style={{ fontSize: 11, color: "var(--fg3)" }}>{label}</div>
+    </div>
+  );
+}
+
+function AnalyticsTab({ analytics, config, busy, t, onLoad, onConnect }: {
+  analytics: BlogAnalyticsT | null; config: BlogConfigT | null; busy: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
-  onLoad: () => void;
+  onLoad: () => void; onConnect: (siteUrl: string) => void;
 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { onLoad(); }, []);
-  const days = analytics?.gsc || [];
+  const [siteUrl, setSiteUrl] = useState("sc-domain:blackvoltmobility.com");
+  const connected = config?.gsc_connected;
+  const latest = (analytics?.gsc || [])[0] as
+    | { clicks?: number; impressions?: number; ctr?: number; top_queries?: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }> }
+    | undefined;
+
+  if (!connected) {
+    return (
+      <Card>
+        <div style={{ fontSize: 13, color: "var(--fg2)", marginBottom: 12, lineHeight: 1.5 }}>{t("blog.empty.analytics")}</div>
+        <Field label={t("blog.gsc.siteUrl")} value={siteUrl} onChange={setSiteUrl} />
+        <div style={{ marginTop: 12 }}>
+          <Button disabled={busy} onClick={() => onConnect(siteUrl)}>🔗 {t("blog.gsc.connect")}</Button>
+        </div>
+      </Card>
+    );
+  }
   return (
-    <div>
-      {days.length === 0 ? (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ fontSize: 12, color: "var(--fg3)" }}>
+        {t("blog.field.gsc")}: {config?.gsc_connected_email || "connected"} · {config?.gsc_site_url}
+      </div>
+      {!latest ? (
         <p style={{ color: "var(--fg3)", fontSize: 13 }}>{t("blog.empty.analytics")}</p>
       ) : (
-        <Card>
-          <pre style={{ margin: 0, color: "var(--fg2)", fontSize: 12, whiteSpace: "pre-wrap" }}>
-            {JSON.stringify(days.slice(0, 7), null, 2)}
-          </pre>
-        </Card>
+        <>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Stat label={t("blog.gsc.clicks")} value={latest.clicks ?? 0} />
+            <Stat label={t("blog.gsc.impressions")} value={latest.impressions ?? 0} />
+            <Stat label="CTR" value={`${latest.ctr ?? 0}%`} />
+          </div>
+          <Card>
+            <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.gsc.topQueries")}</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {(latest.top_queries || []).slice(0, 12).map((q, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+                  <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.query}</span>
+                  <span style={{ color: "var(--fg3)", flexShrink: 0 }}>{q.clicks}c · {q.impressions}i · pos {q.position}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
       )}
     </div>
   );
 }
 
-function SpeedTab({ analytics, t, onLoad }: {
-  analytics: BlogAnalyticsT | null;
+// ─── Speed (PageSpeed Insights) ──────────────────────────────────────────────────
+
+function SpeedTab({ analytics, busy, t, onLoad, onRun }: {
+  analytics: BlogAnalyticsT | null; busy: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
-  onLoad: () => void;
+  onLoad: () => void; onRun: () => void;
 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { onLoad(); }, []);
-  const psi = analytics?.psi;
+  const psi = analytics?.psi as
+    | { performance?: number; seo?: number; accessibility?: number; best_practices?: number; lcp?: string; cls?: string; tbt?: string; fcp?: string; top_opportunities?: Array<{ title?: string; savings_ms?: number }> }
+    | null | undefined;
+
   return (
-    <div>
+    <div style={{ display: "grid", gap: 12 }}>
+      <Button disabled={busy} onClick={onRun}>⚡ {t("blog.action.runSpeed")}</Button>
       {!psi ? (
         <p style={{ color: "var(--fg3)", fontSize: 13 }}>{t("blog.empty.speed")}</p>
       ) : (
-        <Card>
-          <pre style={{ margin: 0, color: "var(--fg2)", fontSize: 12, whiteSpace: "pre-wrap" }}>
-            {JSON.stringify(psi, null, 2)}
-          </pre>
-        </Card>
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Stat label={t("blog.speed.performance")} value={psi.performance ?? "—"} />
+            <Stat label="SEO" value={psi.seo ?? "—"} />
+            <Stat label={t("blog.speed.a11y")} value={psi.accessibility ?? "—"} />
+            <Stat label={t("blog.speed.best")} value={psi.best_practices ?? "—"} />
+          </div>
+          <Card>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, color: "var(--arctic)" }}>
+              <span>LCP: {psi.lcp ?? "—"}</span>
+              <span>CLS: {psi.cls ?? "—"}</span>
+              <span>TBT: {psi.tbt ?? "—"}</span>
+              <span>FCP: {psi.fcp ?? "—"}</span>
+            </div>
+          </Card>
+          {(psi.top_opportunities || []).length > 0 && (
+            <Card>
+              <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.speed.opportunities")}</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {(psi.top_opportunities || []).slice(0, 5).map((o, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+                    <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.title}</span>
+                    <span style={{ color: "var(--fg3)", flexShrink: 0 }}>{o.savings_ms ? `~${Math.round(o.savings_ms)}ms` : ""}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
       )}
     </div>
   );

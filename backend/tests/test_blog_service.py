@@ -16,6 +16,7 @@ os.environ["MINIMAX_API_KEY"] = ""
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
@@ -398,3 +399,103 @@ async def test_gsc_run_daily_skips_when_not_connected(db):
     await blog_service.ensure_config(db, tenant_id=tid)
     out = await gsc.run_daily(db, tenant_id=tid)
     assert out.get("skipped") == "gsc_not_connected"
+
+
+async def test_gsc_authorize_url_has_scope_and_redirect():
+    url = gsc.authorize_url("https://app.example.com/cb", "STATE123")
+    assert "webmasters.readonly" in url
+    assert "redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb" in url
+    assert "state=STATE123" in url
+    assert "access_type=offline" in url
+
+
+# ─── Brand DNA seed/backfill + autofill (follow-up) ──────────────────────────────
+
+
+async def test_ensure_config_seeds_full_brand_dna(db):
+    tid = await _mk_tenant(db)
+    cfg = await blog_service.ensure_config(db, tenant_id=tid)
+    assert cfg.voice and cfg.audience and cfg.image_style
+    assert cfg.key_themes and cfg.avoid_topics
+
+
+async def test_ensure_config_backfills_blank_existing_row(db):
+    from app.models import BlogConfig
+
+    tid = await _mk_tenant(db)
+    # simulate an older row created before the fields existed (all blank)
+    db.add(BlogConfig(tenant_id=tid, embed_token="tok-" + uuid.uuid4().hex[:8]))
+    await db.commit()
+    cfg = await blog_service.ensure_config(db, tenant_id=tid)
+    assert cfg.voice == blog_service._DEFAULT_VOICE
+    assert cfg.audience == blog_service._DEFAULT_AUDIENCE
+    assert cfg.image_style == blog_service._DEFAULT_IMAGE_STYLE
+    assert cfg.avoid_topics == blog_service._DEFAULT_AVOID
+    assert cfg.key_themes == blog_service._DEFAULT_KEY_THEMES
+
+
+async def test_autofill_config_persists_llm_output(db, monkeypatch):
+    from app.services import llm
+
+    tid = await _mk_tenant(db)
+    monkeypatch.setattr(llm, "providers", lambda: [("m", "http://x", "key")])
+
+    async def fake_text_complete(**kw):
+        return (
+            '{"voice": "bold and premium", "audience": "Denver pros", '
+            '"key_themes": ["airport", "red rocks"], "avoid_topics": ["politics"], '
+            '"image_style": "night EV9 cinematic"}'
+        )
+
+    monkeypatch.setattr(llm, "text_complete", fake_text_complete)
+    out = await blog_service.autofill_config(db, tenant_id=tid)
+    assert out["voice"] == "bold and premium"
+    assert out["audience"] == "Denver pros"
+    assert out["key_themes"] == ["airport", "red rocks"]
+    assert out["image_style"] == "night EV9 cinematic"
+
+
+async def test_autofill_config_falls_back_when_no_llm(db):
+    tid = await _mk_tenant(db)
+    # no LLM keys → providers() empty → keeps seeded defaults, no crash
+    out = await blog_service.autofill_config(db, tenant_id=tid)
+    assert out["voice"] == blog_service._DEFAULT_VOICE
+
+
+# ─── Site speed keyless (follow-up) ──────────────────────────────────────────────
+
+
+async def test_site_speed_quota_maps_to_hint(db, monkeypatch):
+    tid = await _mk_tenant(db)
+
+    async def fake_fetch(url, key):
+        return "quota"
+
+    monkeypatch.setattr(site_speed, "_fetch", fake_fetch)
+    out = await site_speed.run_daily(db, tenant_id=tid)
+    assert out.get("skipped") == "psi_quota_or_key"
+
+
+async def test_site_speed_persists_snapshot(db, monkeypatch):
+    from app.models import SeoSnapshot
+
+    tid = await _mk_tenant(db)
+
+    async def fake_fetch(url, key):
+        return {
+            "lighthouseResult": {
+                "categories": {"performance": {"score": 0.9}, "seo": {"score": 1.0}},
+                "audits": {"largest-contentful-paint": {"displayValue": "1.5 s"}},
+            }
+        }
+
+    monkeypatch.setattr(site_speed, "_fetch", fake_fetch)
+    out = await site_speed.run_daily(db, tenant_id=tid)
+    assert out.get("ok") is True
+    assert out.get("performance") == 90
+    row = (
+        await db.execute(
+            select(SeoSnapshot).where(SeoSnapshot.tenant_id == tid, SeoSnapshot.kind == "psi")
+        )
+    ).scalar_one_or_none()
+    assert row is not None and row.payload["performance"] == 90
