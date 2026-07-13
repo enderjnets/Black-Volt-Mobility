@@ -499,3 +499,28 @@ async def test_site_speed_persists_snapshot(db, monkeypatch):
         )
     ).scalar_one_or_none()
     assert row is not None and row.payload["performance"] == 90
+
+
+# ─── LLM JSON parsing ────────────────────────────────────────────────────────────
+
+
+async def test_parse_json_tolerates_raw_newlines_and_fences():
+    # MiniMax pretty-prints JSON with literal newlines inside body_md and wraps
+    # it in a ```json fence — the strict parser rejected this and dropped every
+    # article to the template. The parser must recover title + body.
+    raw = (
+        "```json\n"
+        '{\n'
+        '  "title": "Denver Airport Black Car",\n'
+        '  "excerpt": "Ride in style.",\n'
+        '  "body_md": "## Intro\n\nA premium ride to DEN.\n\n## Why us\n\nAll-electric.",\n'
+        '  "faq": [{"q": "How?", "a": "Book online."}],\n'
+        '  "internal_links": [{"href": "/book", "text": "Book"}]\n'
+        '}\n'
+        "```"
+    )
+    data = blog_writer._parse_json(raw)
+    assert data is not None
+    assert data["title"] == "Denver Airport Black Car"
+    assert "premium ride" in data["body_md"].lower()
+    assert data["faq"][0]["q"] == "How?"

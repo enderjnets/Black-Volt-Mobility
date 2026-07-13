@@ -50,8 +50,12 @@ def _parse_json(text: str) -> dict | None:
     start, end = t.find("{"), t.rfind("}")
     if start == -1 or end == -1 or end <= start:
         return None
+    # strict=False so literal newlines/tabs inside string values are tolerated:
+    # MiniMax pretty-prints its JSON with raw newlines inside `body_md`, which the
+    # default strict parser rejects ("Invalid control character") — that dropped
+    # EVERY article to the template. Kimi escaped them; MiniMax doesn't.
     try:
-        return json.loads(t[start : end + 1])
+        return json.loads(t[start : end + 1], strict=False)
     except Exception:
         return None
 

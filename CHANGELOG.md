@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.80.1 — 2026-07-12 — Blog writer: fix article generation (bilingual)
+
+The article writer dropped **every** post to the short fallback template — in both
+English and Spanish. Root cause: `blog_writer._parse_json` used strict JSON parsing,
+but MiniMax pretty-prints its response with **literal newlines inside string values**
+(e.g. `body_md`), which the strict parser rejects (`Invalid control character`). Kimi
+escaped them; MiniMax does not — and prod runs MiniMax-only (Kimi key returns
+`AuthenticationError`). Verified against live MiniMax output: strict parse → `None`
+(template); `json.loads(..., strict=False)` → full 900-word article, EN and ES.
+
+- `backend/app/services/blog_writer.py`: `_parse_json` now parses with `strict=False`
+  (tolerates raw newlines/tabs in strings) while keeping the code-fence/prose stripping.
+- Regression test `test_parse_json_tolerates_raw_newlines_and_fences`.
+
+No migration. This does **not** un-pause autopilot on its own — that stays an owner
+toggle in the dashboard once article quality is confirmed.
+
 ## v0.80.0 — 2026-07-12 — Volt Blog Autopilot (our own "Soro")
 
 A full AI SEO blog engine that replaces the paid Soro embed (renewal $81 on 2026-10-05).

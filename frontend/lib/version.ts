@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.80.0";
+export const CURRENT_VERSION = "0.80.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.80.1",
+    date: "2026-07-12",
+    title: "Blog Autopilot now writes full articles again (bilingual)",
+    changes: [
+      "Fixed the article writer dropping every post to a short template: the AI's formatted response wasn't being read correctly, so real 900-word guides never made it through. Now full English and Spanish articles generate reliably.",
+    ],
+  },
   {
     version: "0.80.0",
     date: "2026-07-12",
