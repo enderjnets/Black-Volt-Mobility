@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.80.1";
+export const CURRENT_VERSION = "0.80.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.80.2",
+    date: "2026-07-12",
+    title: "Public blog: Soro articles are back (coexisting with our engine)",
+    changes: [
+      "The public blog was showing our new engine only — which is still empty while we finish it — so the articles Soro publishes had disappeared. Soro is now back on the blog and keeps auto-publishing as before; our own posts will appear above Soro's as we publish them.",
+    ],
+  },
   {
     version: "0.80.1",
     date: "2026-07-12",

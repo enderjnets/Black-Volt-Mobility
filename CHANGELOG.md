@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.80.2 — 2026-07-12 — Public blog: restore Soro (coexistence during transition)
+
+The F2 SSR `/blog` page replaced the route that used to render the paid Soro embed,
+so Soro's already-published articles vanished from `blackvoltmobility.com/blog` while
+our own engine had no published owner-tenant posts yet (autopilot paused). Soro is
+paid and must keep auto-publishing until our engine is polished, so the two now
+**coexist** on the public blog.
+
+- `frontend/components/bv/web/SoroBlog.tsx`: added `showHeader?: boolean` prop
+  (default `true`) so the embed can render without its own `<h1>` on a shared page.
+- `frontend/app/(web)/blog/page.tsx`: renders our SSR posts (when present) then the
+  Soro embed below (`<SoroBlog showHeader={false} />`), under a "More from our blog" /
+  "Más de nuestro blog" divider when we have our own posts. Removed the misleading
+  empty-state text (Soro fills the page meanwhile).
+
+Cutover (F6) later removes the `<SoroBlog>` block once our engine's articles are the
+sole content — at which point the Soro subscription can be cancelled.
+
 ## v0.80.1 — 2026-07-12 — Blog writer: fix article generation (bilingual)
 
 The article writer dropped **every** post to the short fallback template — in both

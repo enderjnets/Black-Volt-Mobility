@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { SoroBlog } from "@/components/bv/web/SoroBlog";
 import { fetchBlogList, heroFor } from "@/lib/blog";
 import { SITE_ORIGIN } from "@/lib/seoRoutes";
 
@@ -22,6 +23,7 @@ const T = {
     read: "Read guide",
     empty: "New guides are on the way — check back soon.",
     other: "Leer en español",
+    soroHeading: "More from our blog",
   },
   es: {
     title: "Blog — Black Volt Mobility · Traslados EV de Lujo en Denver",
@@ -30,6 +32,7 @@ const T = {
     read: "Leer guía",
     empty: "Pronto habrá nuevas guías — vuelve pronto.",
     other: "Read in English",
+    soroHeading: "Más de nuestro blog",
   },
 };
 
@@ -90,9 +93,7 @@ export default async function BlogPage({ searchParams }: { searchParams: SearchP
         {t.sub}
       </p>
 
-      {posts.length === 0 ? (
-        <p style={{ color: "var(--fg3)" }}>{t.empty}</p>
-      ) : (
+      {posts.length > 0 && (
         <div style={{ display: "grid", gap: 18 }}>
           {posts.map((p) => (
             <Link
@@ -132,6 +133,25 @@ export default async function BlogPage({ searchParams }: { searchParams: SearchP
           ))}
         </div>
       )}
+
+      {/* Coexistence: while we polish our own engine, the paid Soro embed keeps
+          auto-publishing on the public blog. Our SSR posts (above) appear as they
+          are published; Soro's articles render below. Cutover removes this block. */}
+      {posts.length > 0 && (
+        <h2
+          style={{
+            fontSize: 20,
+            fontWeight: 700,
+            color: "var(--arctic)",
+            margin: "40px 0 20px",
+            paddingTop: 24,
+            borderTop: "1px solid var(--hairline, #23232b)",
+          }}
+        >
+          {t.soroHeading}
+        </h2>
+      )}
+      <SoroBlog showHeader={false} />
     </section>
   );
 }
