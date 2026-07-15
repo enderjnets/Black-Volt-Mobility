@@ -209,6 +209,10 @@ export interface RideRow {
   payment_method?: string;
   paid?: boolean;
   paid_at?: string | null;
+  // Gratuity recorded manually post-ride. null = no tip. tip_method may differ
+  // from payment_method (e.g. fare on Venmo, cash tip).
+  tip?: number | null;
+  tip_method?: PaymentMethod | null;
   overdue?: boolean;
   assigned_driver?: AssignedDriver;
 }
@@ -262,6 +266,9 @@ export interface RideEdit {
   status?: string;
   payment_method?: PaymentMethod;
   paid?: boolean;
+  // tip: send 0 to clear a recorded tip (backend maps 0 -> null).
+  tip?: number;
+  tip_method?: PaymentMethod;
   pickup?: string;
   dropoff?: string;
   scheduled_at?: string | null;

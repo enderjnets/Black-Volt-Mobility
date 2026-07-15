@@ -50,7 +50,7 @@ async def week_earnings(db: AsyncSession, *, tenant_id: int, monday: date) -> di
     end = start + timedelta(days=6)
     rows = (
         await db.execute(
-            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total), 0.0))
+            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
             .where(
                 Ride.tenant_id == tenant_id,
                 booking.earned_ride_filter(),
@@ -87,7 +87,7 @@ async def weeks_summary(db: AsyncSession, *, tenant_id: int, count: int = 12) ->
     ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
     rows = (
         await db.execute(
-            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total), 0.0))
+            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
             .where(
                 Ride.tenant_id == tenant_id,
                 booking.earned_ride_filter(),
@@ -143,7 +143,7 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
     # Revenue = earned rides (completed or paid) whose service day is today.
     revenue_today = (
         await db.execute(
-            select(func.coalesce(func.sum(Ride.fare_total), 0.0)).where(
+            select(func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0)).where(
                 t, earned, ride_day == today
             )
         )
@@ -272,7 +272,7 @@ async def list_clients(db: AsyncSession, *, tenant_id: int) -> list[dict]:
     # Lifetime spend per client = paid rides (any method), in dollars.
     spend_rows = (
         await db.execute(
-            select(Ride.client_id, func.coalesce(func.sum(Ride.fare_total), 0.0))
+            select(Ride.client_id, func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
             .where(
                 Ride.tenant_id == tenant_id,
                 Ride.client_id.isnot(None),
@@ -356,7 +356,7 @@ async def client_detail(db: AsyncSession, *, tenant_id: int, client_id: int) -> 
     )
     active = [r for r in rides if r.status not in _CANCELLED]
     rides_count = len(active)
-    spend = round(sum((r.fare_total or 0.0) for r in rides if r.paid), 2)
+    spend = round(sum((r.fare_total or 0.0) + (r.tip or 0.0) for r in rides if r.paid), 2)
     last = max((r.scheduled_at or r.created_at for r in active), default=None)
     latest_lang = next(
         (r.lang for r in sorted(rides, key=lambda r: r.created_at, reverse=True) if r.lang),
@@ -569,7 +569,7 @@ async def team_stats_by_tenant(db: AsyncSession) -> dict[int, dict]:
     ).all()
     rev_rows = (
         await db.execute(
-            select(Ride.tenant_id, func.coalesce(func.sum(Ride.fare_total), 0.0))
+            select(Ride.tenant_id, func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
             .where(Ride.tenant_id.isnot(None), Ride.paid.is_(True))
             .group_by(Ride.tenant_id)
         )
@@ -696,7 +696,7 @@ async def team_member_detail(
 
     revenue_total = (
         await db.execute(
-            select(func.coalesce(func.sum(Ride.fare_total), 0.0)).where(t, Ride.paid.is_(True))
+            select(func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0)).where(t, Ride.paid.is_(True))
         )
     ).scalar_one()
     out["revenue_total"] = round(float(revenue_total), 2)

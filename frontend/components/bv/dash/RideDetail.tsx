@@ -156,6 +156,11 @@ export function RideDetail({
   const [suNoRead, setSuNoRead] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Tip editor state (gratuity recorded manually at the end of a ride).
+  const [tipOpen, setTipOpen] = useState(false);
+  const [tipDraft, setTipDraft] = useState("");
+  const [tipMethod, setTipMethod] = useState<PaymentMethod>("cash");
+
   const load = () => getRideDetail(rideId).then(setRide).catch(() => setErr("load"));
   useEffect(() => {
     load();
@@ -176,6 +181,14 @@ export function RideDetail({
     }
   };
   const changeStatus = (status: string) => patch({ status });
+
+  // Commit a tip. amount === 0 clears it (backend maps 0 -> null and drops method).
+  const saveTip = async (amount: number) => {
+    if (!Number.isFinite(amount) || amount < 0) return;
+    await patch(amount > 0 ? { tip: amount, tip_method: tipMethod } : { tip: 0 });
+    setTipOpen(false);
+    setTipDraft("");
+  };
 
   const del = async () => {
     if (typeof window !== "undefined" && !window.confirm(t("dash.ride.deleteConfirm"))) return;
@@ -557,6 +570,11 @@ export function RideDetail({
         <div>
           <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t("book.fare")}</div>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 24, color: "var(--volt)" }}>${Math.round(ride.fare_total || 0)}</div>
+          {ride.tip ? (
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--success)", marginTop: 2 }}>
+              +${Math.round(ride.tip)} {t("dash.ride.tip").toLowerCase()}
+            </div>
+          ) : null}
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t("dash.ride.payment")}</div>
@@ -620,6 +638,116 @@ export function RideDetail({
           <Icon name={ride.paid ? "circle-check" : "circle-dot"} size={16} color="currentColor" />
           {ride.paid ? t("dash.ride.markUnpaid") : t("dash.ride.markPaid")}
         </button>
+      </div>
+
+      {/* Tip: gratuity the passenger added at the end of the ride. Recorded
+          manually; counts toward earnings. tip_method may differ from the fare's. */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, minHeight: 22 }}>
+          <div style={{ fontSize: 12, color: "var(--fg3)" }}>{t("dash.ride.tip")}</div>
+          {ride.tip && !tipOpen ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--success)" }}>
+                ${Math.round(ride.tip)}
+                {ride.tip_method ? ` · ${t(`dash.method.${ride.tip_method}`)}` : ""}
+              </span>
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setTipMethod((ride.tip_method || ride.payment_method || "cash") as PaymentMethod);
+                  setTipDraft(String(Math.round(ride.tip || 0)));
+                  setTipOpen(true);
+                }}
+                style={{ fontSize: 12, color: "var(--silver)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}
+              >
+                {t("dash.ride.tipEdit")}
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => saveTip(0)}
+                style={{ fontSize: 12, color: "var(--fg3)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                {t("dash.ride.tipRemove")}
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {!ride.tip && !tipOpen ? (
+          <button
+            disabled={busy}
+            onClick={() => {
+              setTipMethod((ride.payment_method || "cash") as PaymentMethod);
+              setTipDraft("");
+              setTipOpen(true);
+            }}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 13px", borderRadius: "var(--radius-md)", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-sans)", width: "100%", justifyContent: "center", background: "var(--obsidian-3)", color: "var(--silver)", border: "1px dashed var(--line-strong)" }}
+          >
+            <Icon name="plus" size={15} color="currentColor" />
+            {t("dash.ride.tipAdd")}
+          </button>
+        ) : null}
+
+        {tipOpen ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {METHODS.map((m) => {
+                const on = tipMethod === m;
+                return (
+                  <button
+                    key={m}
+                    disabled={busy}
+                    onClick={() => setTipMethod(m)}
+                    style={{ padding: "6px 12px", borderRadius: "var(--radius-full)", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "var(--font-sans)", background: on ? "var(--volt-bg-20)" : "var(--obsidian-3)", color: on ? "var(--volt)" : "var(--silver)", border: `1px solid ${on ? "var(--volt-border)" : "var(--line-strong)"}` }}
+                  >
+                    {t(`dash.method.${m}`)}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {[5, 10, 20].map((amt) => (
+                <button
+                  key={amt}
+                  disabled={busy}
+                  onClick={() => saveTip(amt)}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: "var(--radius-md)", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "var(--font-display)", background: "var(--obsidian-3)", color: "var(--arctic)", border: "1px solid var(--line-strong)" }}
+                >
+                  ${amt}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ position: "relative", flex: 1 }}>
+                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: "var(--fg3)" }}>$</span>
+                <input
+                  inputMode="decimal"
+                  value={tipDraft}
+                  placeholder={t("dash.ride.tipCustom")}
+                  onChange={(e) => setTipDraft(e.target.value.replace(/[^0-9.]/g, ""))}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px 9px 24px", borderRadius: "var(--radius-md)", background: "var(--obsidian-3)", color: "var(--arctic)", border: "1px solid var(--line-strong)", fontSize: 14, fontFamily: "var(--font-sans)" }}
+                />
+              </div>
+              <button
+                disabled={busy || !(parseFloat(tipDraft) > 0)}
+                onClick={() => saveTip(parseFloat(tipDraft))}
+                style={{ padding: "9px 16px", borderRadius: "var(--radius-md)", cursor: parseFloat(tipDraft) > 0 ? "pointer" : "not-allowed", fontSize: 13.5, fontWeight: 700, fontFamily: "var(--font-sans)", whiteSpace: "nowrap", background: parseFloat(tipDraft) > 0 ? "var(--volt-bg-20)" : "var(--obsidian-3)", color: parseFloat(tipDraft) > 0 ? "var(--volt)" : "var(--fg3)", border: `1px solid ${parseFloat(tipDraft) > 0 ? "var(--volt-border)" : "var(--line-strong)"}` }}
+              >
+                {t("dash.ride.tipSave")}
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setTipOpen(false);
+                  setTipDraft("");
+                }}
+                style={{ padding: "9px 12px", borderRadius: "var(--radius-md)", cursor: "pointer", fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)", background: "transparent", color: "var(--fg3)", border: "1px solid var(--line-strong)" }}
+              >
+                {t("dash.ride.tipCancel")}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {err && (

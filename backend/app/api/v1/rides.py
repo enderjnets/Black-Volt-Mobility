@@ -125,6 +125,10 @@ class RidePatch(RideEdit):
     status: RideStatus | None = None
     payment_method: PaymentMethod | None = None
     paid: bool | None = None
+    # Gratuity recorded manually post-ride. tip=0 is an explicit "clear" (0 != None,
+    # so it survives exclude_none). tip_method may differ from payment_method.
+    tip: float | None = Field(default=None, ge=0)
+    tip_method: PaymentMethod | None = None
 
 
 class RateConfigBody(BaseModel):
@@ -236,6 +240,10 @@ def _ride_out(r: Ride) -> dict:
         ),
         "paid": r.paid,
         "paid_at": r.paid_at.isoformat() if r.paid_at else None,
+        "tip": r.tip,
+        "tip_method": (
+            r.tip_method.value if isinstance(r.tip_method, PaymentMethod) else r.tip_method
+        ),
         "cancelled_at": r.cancelled_at.isoformat() if r.cancelled_at else None,
         "cancellation_fee_eligible": _cancellation_fee_eligible(r),
         "google_event_id": r.google_event_id,
@@ -629,6 +637,13 @@ async def patch_ride(
             ride.paid_at = datetime.now(UTC)
         if not body.paid:
             ride.paid_at = None
+    # Tip: a positive amount is recorded; 0 clears it (and drops the method).
+    if body.tip is not None:
+        ride.tip = body.tip if body.tip > 0 else None
+        if ride.tip is None:
+            ride.tip_method = None
+    if body.tip_method is not None and ride.tip:
+        ride.tip_method = body.tip_method
     # A paid ride whose pickup time has passed auto-closes as completed (an
     # explicit cancel/no-show still wins — those are never "overdue").
     booking.complete_if_overdue_paid(ride)

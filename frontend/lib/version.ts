@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.80.2";
+export const CURRENT_VERSION = "0.81.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.81.0",
+    date: "2026-07-15",
+    title: "Record customer tips on a ride",
+    changes: [
+      "You can now log a tip a customer leaves at the end of a ride. Open the ride, and under the payment method there's a new \"Add tip\" — pick how it was paid (it defaults to the ride's payment method, but you can change it — e.g. a cash tip on a card ride) and tap $5 / $10 / $20 or type a custom amount.",
+      "Tips count toward your earnings: the day's revenue, weekly totals, per-client spend and My Stats now include them. Your average fare stays fare-only so pricing isn't skewed.",
+      "The tip shows on the ride card as \"+$X\" under the fare, and you can edit or remove it anytime.",
+    ],
+  },
   {
     version: "0.80.2",
     date: "2026-07-12",

@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.81.0 — 2026-07-15 — Record customer tips on a ride
+
+Customers sometimes add a tip at the end of a ride. There was no way to record it —
+the ride modal only had fare, payment method and paid. Drivers can now log a tip in
+the same place, including how it was paid (which may differ from the fare's method,
+e.g. a cash tip on a card ride). Tips count as earnings.
+
+- `backend/app/models/ride.py`: new `tip` (Float, nullable) and `tip_method` (reuses
+  the existing `payment_method` enum) columns. NULL = no tip.
+- `backend/migrations/versions/0045_ride_tip.py`: adds both columns; `tip_method`
+  references the existing enum with `create_type=False`.
+- `backend/app/api/v1/rides.py`: `RidePatch` accepts `tip` (ge=0) + `tip_method`;
+  `patch_ride` records them and treats `tip=0` as an explicit clear (drops the
+  method too); `_ride_out` serializes both.
+- `backend/app/services/dashboard.py` + `funnel.py`: earned-revenue rollups now sum
+  `fare_total + coalesce(tip, 0)` (revenue today, weekly totals, per-client spend,
+  team revenue, My Stats). `avg_fare` / `value_per_client` stay fare-only so pricing
+  and coaching targets aren't skewed by tips.
+- `frontend/components/bv/dash/RideDetail.tsx`: a Tip block under the payment method
+  with quick $5 / $10 / $20 chips, a custom amount, and a method selector (defaults
+  to the fare's method). Shows "+$X" on the fare card; editable/removable.
+- `frontend/lib/booking.ts` + `lib/i18n.tsx`: `tip`/`tip_method` types; EN + ES
+  strings.
+- Tests: `backend/tests/test_ride_update.py` covers record, clear (tip=0), default,
+  negative rejection, and tip-included-in-revenue.
+
 ## v0.80.2 — 2026-07-12 — Public blog: restore Soro (coexistence during transition)
 
 The F2 SSR `/blog` page replaced the route that used to render the paid Soro embed,

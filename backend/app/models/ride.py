@@ -136,6 +136,16 @@ class Ride(Base):
     )
     paid: Mapped[bool] = mapped_column(default=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Gratuity the passenger added at the end of the ride, entered manually by the
+    # driver. Kept separate from fare_total (fare drives pricing/quotes; the tip must
+    # not) but counted as earnings in revenue rollups. NULL = no tip recorded; the API
+    # clears back to NULL when the driver zeroes it out. tip_method records how the tip
+    # was paid, which may differ from the fare's payment_method (e.g. fare on Venmo,
+    # cash tip). Reuses the existing payment_method enum.
+    tip: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tip_method: Mapped[PaymentMethod | None] = mapped_column(
+        pg_enum(PaymentMethod, name="payment_method"), nullable=True
+    )
     # When the ride was cancelled (set on the cancel transition). Drives the
     # <24h cancellation-fee rule and is the audit anchor for refund decisions.
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

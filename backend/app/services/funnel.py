@@ -130,7 +130,7 @@ async def _earned_revenue_between(
     return float(
         (
             await db.execute(
-                select(func.coalesce(func.sum(Ride.fare_total), 0.0)).where(
+                select(func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0)).where(
                     Ride.tenant_id == tenant_id,
                     earned_ride_filter(),
                     ride_day >= start,
@@ -163,7 +163,7 @@ async def _value_per_client(db: AsyncSession, *, tenant_id: int) -> tuple[float 
     total, n_clients = (
         await db.execute(
             select(
-                func.coalesce(func.sum(Ride.fare_total), 0.0),
+                func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0),
                 func.count(func.distinct(Ride.client_id)),
             ).where(
                 Ride.tenant_id == tenant_id,
@@ -172,6 +172,8 @@ async def _value_per_client(db: AsyncSession, *, tenant_id: int) -> tuple[float 
             )
         )
     ).one()
+    # avg_fare (a.k.a. value_per_client) measures pricing, not take-home earnings, so
+    # it stays fare-only — tips would inflate it and distort quote/coaching targets.
     avg_fare = float(
         (
             await db.execute(
@@ -245,7 +247,7 @@ async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
         await db.execute(
             select(
                 func.date(func.coalesce(Ride.scheduled_at, Ride.created_at)).label("d"),
-                func.coalesce(func.sum(Ride.fare_total), 0.0),
+                func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0),
             )
             .where(
                 Ride.tenant_id == tenant_id,

@@ -71,6 +71,57 @@ def test_patch_keeps_status_and_payment_path():
     assert d["pax"] == 4 and d["payment_method"] == "venmo" and d["paid"] is True
 
 
+def test_new_ride_has_no_tip():
+    c = _owner()
+    when = datetime.now(UTC) + timedelta(days=5)
+    rid = _mk(c, "Cherry Creek", "DEN", when)
+    d = c.get(f"/api/v1/rides/{rid}").json()
+    assert d["tip"] is None and d["tip_method"] is None
+
+
+def test_patch_records_tip_and_method():
+    c = _owner()
+    when = datetime.now(UTC) + timedelta(days=5)
+    rid = _mk(c, "Cherry Creek", "DEN", when)
+    # Tip method may differ from the fare's payment method (cash tip on a card ride).
+    r = c.patch(f"/api/v1/rides/{rid}", json={"tip": 15, "tip_method": "cash"})
+    assert r.status_code == 200, r.text
+    d = c.get(f"/api/v1/rides/{rid}").json()
+    assert d["tip"] == 15 and d["tip_method"] == "cash"
+
+
+def test_patch_tip_zero_clears_amount_and_method():
+    c = _owner()
+    when = datetime.now(UTC) + timedelta(days=5)
+    rid = _mk(c, "Cherry Creek", "DEN", when)
+    c.patch(f"/api/v1/rides/{rid}", json={"tip": 15, "tip_method": "venmo"})
+    r = c.patch(f"/api/v1/rides/{rid}", json={"tip": 0})
+    assert r.status_code == 200, r.text
+    d = c.get(f"/api/v1/rides/{rid}").json()
+    assert d["tip"] is None and d["tip_method"] is None
+
+
+def test_negative_tip_rejected():
+    c = _owner()
+    when = datetime.now(UTC) + timedelta(days=5)
+    rid = _mk(c, "Cherry Creek", "DEN", when)
+    r = c.patch(f"/api/v1/rides/{rid}", json={"tip": -5})
+    assert r.status_code == 422, r.text
+
+
+def test_tip_counts_toward_revenue_today():
+    c = _owner()
+    when = datetime.now(UTC) + timedelta(hours=1)  # today's service day
+    rid = _mk(c, "Cherry Creek", "DEN", when)
+    assert c.patch(f"/api/v1/rides/{rid}", json={"paid": True}).status_code == 200
+    before = c.get("/api/v1/dashboard/stats").json()["today"]["revenue"]
+    r = c.patch(f"/api/v1/rides/{rid}", json={"tip": 20, "tip_method": "cash"})
+    assert r.status_code == 200, r.text
+    after = c.get("/api/v1/dashboard/stats").json()["today"]["revenue"]
+    # The same ride is in both sums; the only delta is the newly-added tip.
+    assert round(after - before, 2) == 20.0
+
+
 def test_preview_detects_conflict_and_does_not_persist():
     c = _owner()
     base = datetime.now(UTC) + timedelta(days=6, hours=3)
