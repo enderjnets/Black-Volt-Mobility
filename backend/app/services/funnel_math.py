@@ -167,23 +167,42 @@ def required_activity(
     target = max(0.0, target_clients)
     days = max(1.0, working_days)
 
-    def conv_for(overall: float) -> float:
-        # overall is always > 0 thanks to the Beta prior, so this never divides
-        # by zero — but clamp defensively.
-        return target / overall if overall > 1e-9 else float("inf")
+    # The smoothed `.point` rates are always > 0 (Beta prior), but the interval
+    # *bounds* are Wilson intervals whose lower edge can legitimately be exactly
+    # 0 (e.g. zero wins from 30 contacts so far). Dividing target by ~0 would
+    # demand an unbounded number of conversations → float("inf"), which is not
+    # JSON-serializable and crashes the projection endpoint. Keep the sentinel
+    # finite; the per-day bounds below then cap it to a credible cadence.
+    _degenerate = COACH_MAX_PER_DAY * days
 
-    contacts = target / rates.convert.point if rates.convert.point > 1e-9 else float("inf")
-    pitches = contacts / rates.contact.point if rates.contact.point > 1e-9 else float("inf")
+    def conv_for(overall: float) -> float:
+        return target / overall if overall > 1e-9 else _degenerate
+
+    contacts = target / rates.convert.point if rates.convert.point > 1e-9 else _degenerate
+    pitches = contacts / rates.contact.point if rates.contact.point > 1e-9 else _degenerate
     conversations = conv_for(rates.overall_point)
+    per_day = conversations / days
+
+    # Worst-case (low) rates ⇒ need MORE conversations; best-case ⇒ fewer. Cap
+    # each bound at a credible daily cadence (same rationale as COACH_MAX_PER_DAY),
+    # floored at the central estimate so a bound is never reported as easier than
+    # the point estimate. A ~0 worst-case rate collapses the upper bound onto the
+    # ceiling rather than blowing up to infinity.
+    ceiling = max(per_day, COACH_MAX_PER_DAY)
+
+    def per_day_for(overall: float) -> float:
+        if overall <= 1e-9:
+            return ceiling
+        return min((target / overall) / days, ceiling)
+
     return RequiredActivity(
         target_clients=target,
         contacts=contacts,
         pitches=pitches,
         conversations=conversations,
-        conversations_per_day=conversations / days,
-        # Worst-case (low) rates ⇒ need MORE conversations; best-case ⇒ fewer.
-        conversations_per_day_low=conv_for(rates.overall_high) / days,
-        conversations_per_day_high=conv_for(rates.overall_low) / days,
+        conversations_per_day=per_day,
+        conversations_per_day_low=per_day_for(rates.overall_high),
+        conversations_per_day_high=per_day_for(rates.overall_low),
     )
 
 

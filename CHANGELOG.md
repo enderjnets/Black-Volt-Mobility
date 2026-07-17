@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.81.1 — 2026-07-17 — Fix: goal projection crashed for zero-conversion accounts
+
+Setting a client/revenue goal and opening the projection ("how many conversations
+a day to hit it") returned a 500 for any account that had logged activity but not
+closed a single client yet. The Wilson lower bound of a not-yet-observed conversion
+rate is ~0, so `required_activity` divided the target by ~0 and produced
+`float("inf")`, which is not JSON-serializable — the endpoint crashed on serialize.
+
+- `backend/app/services/funnel_math.py`: `required_activity` now caps the required
+  daily effort at a credible ceiling (`max(central estimate, COACH_MAX_PER_DAY)`)
+  instead of returning infinity, mirroring the existing coaching guard. The central
+  estimate and healthy-data bands are unchanged; only the degenerate worst-case is
+  capped. All effort fields are now provably finite (no `inf`/`nan` reaches JSON).
+- `backend/tests/test_funnel_math.py`: regression test asserting the zero-conversion
+  projection stays finite, JSON-serializable, and correctly ordered.
+- Fixes `test_project_by_clients` (and the state-dependent `test_project_by_revenue`
+  failure) — full suite now 738 passed, 0 failed.
+
 ## v0.81.0 — 2026-07-15 — Record customer tips on a ride
 
 Customers sometimes add a tip at the end of a ride. There was no way to record it —

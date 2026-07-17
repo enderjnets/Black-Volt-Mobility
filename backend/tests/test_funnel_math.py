@@ -1,4 +1,7 @@
 """Unit tests for the pure funnel math (no DB, no framework)."""
+import json
+import math
+
 from app.services import funnel_math as fm
 
 
@@ -74,6 +77,33 @@ def test_required_activity_band_order():
         <= req.conversations_per_day
         <= req.conversations_per_day_high
     )
+
+
+def test_required_activity_zero_conversion_stays_finite():
+    # Regression: with no wins yet (0 clients from 30 contacts), the Wilson lower
+    # bound of the conversion rate collapses to ~0, so the worst-case overall rate
+    # is below the 1e-9 guard. Dividing target by that used to yield float("inf"),
+    # which is not JSON serializable and crashed the projection endpoint. Every
+    # field must now be finite, and the band must stay correctly ordered.
+    rates = fm.funnel_rates(conversations=100, pitches=60, contacts=30, clients=0)
+    assert rates.overall_low < 1e-9  # the degenerate condition that triggered the bug
+    req = fm.required_activity(target_clients=10, rates=rates, working_days=22)
+    values = [
+        req.contacts,
+        req.pitches,
+        req.conversations,
+        req.conversations_per_day,
+        req.conversations_per_day_low,
+        req.conversations_per_day_high,
+    ]
+    assert all(math.isfinite(v) for v in values)
+    assert (
+        req.conversations_per_day_low
+        <= req.conversations_per_day
+        <= req.conversations_per_day_high
+    )
+    # The whole dataclass must round-trip through strict JSON (no NaN/Infinity).
+    json.dumps(values)
 
 
 def test_bigger_target_needs_more_conversations():

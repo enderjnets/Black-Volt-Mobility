@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.81.0";
+export const CURRENT_VERSION = "0.81.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.81.1",
+    date: "2026-07-17",
+    title: "Fix: goal projection no longer errors before your first close",
+    changes: [
+      "Setting a client or revenue goal and viewing the projection used to fail if you'd logged activity but hadn't closed anyone yet. The \"how many conversations a day\" estimate now shows a sensible capped number instead of erroring.",
+    ],
+  },
   {
     version: "0.81.0",
     date: "2026-07-15",
