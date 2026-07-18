@@ -481,6 +481,28 @@ def is_overdue(ride: Ride, now: datetime | None = None) -> bool:
     return sched < (now or datetime.now(UTC))
 
 
+# The passenger<->driver ride chat opens once a ride is booked and stays usable
+# until shortly after completion, so a rider can still reach the driver about a
+# just-finished trip. Not-yet-booked or cancelled/no-show rides have no thread.
+CHAT_OPEN_STATUSES = (RideStatus.CONFIRMED, RideStatus.ASSIGNED, RideStatus.EN_ROUTE)
+CHAT_COMPLETED_GRACE = timedelta(hours=48)
+
+
+def chat_window_open(ride: Ride, now: datetime | None = None) -> bool:
+    """Whether new messages may be posted to a ride's thread right now. Reading
+    history is always allowed; this only gates posting."""
+    if ride.status in CHAT_OPEN_STATUSES:
+        return True
+    if ride.status == RideStatus.COMPLETED:
+        ref = ride.updated_at  # refreshed on the transition to COMPLETED
+        if ref is None:
+            return False
+        if ref.tzinfo is None:
+            ref = ref.replace(tzinfo=UTC)
+        return (now or datetime.now(UTC)) - ref <= CHAT_COMPLETED_GRACE
+    return False
+
+
 def complete_if_overdue_paid(ride: Ride, now: datetime | None = None) -> bool:
     """Auto-close a ride once it is both paid and past its pickup time (e.g. a
     Square capture or a recorded cash payment on a ride whose time has passed).

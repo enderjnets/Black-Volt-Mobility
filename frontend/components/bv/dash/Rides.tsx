@@ -32,6 +32,13 @@ export function Rides() {
     };
   }, [reload]);
 
+  // Deep-link from a ride-message push/notification: ?open=<ride_id> opens the drawer.
+  useEffect(() => {
+    const open = new URLSearchParams(window.location.search).get("open");
+    const id = open ? Number(open) : NaN;
+    if (Number.isFinite(id) && id > 0) setDetail(id);
+  }, []);
+
   const shown = filter === "all" ? rides : rides.filter((r) => r.status === filter);
 
   return (

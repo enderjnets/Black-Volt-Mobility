@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.81.1";
+export const CURRENT_VERSION = "0.82.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.82.0",
+    date: "2026-07-17",
+    title: "Message your driver right from the trip",
+    changes: [
+      "Riders and their driver can now chat about a specific ride, inside the app — no more texting a phone number. On your trip, tap \"Message\" to open the conversation; the driver sees it on the ride and can reply.",
+      "You get a push notification when the other person messages, and unread messages show a badge on the trip. Chat opens when the ride is booked and stays open until shortly after it's completed.",
+    ],
+  },
   {
     version: "0.81.1",
     date: "2026-07-17",

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Icon } from "../Icon";
+import { RideChatPanel } from "../RideChat";
 import { Card } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import { cancelRide, listRides, type RideRow } from "@/lib/booking";
@@ -17,17 +18,20 @@ function ActionBtn({
   label,
   onClick,
   disabled,
+  badge,
 }: {
   icon: string;
   label: string;
   onClick?: () => void;
   disabled?: boolean;
+  badge?: number;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       style={{
+        position: "relative",
         flex: 1,
         display: "flex",
         alignItems: "center",
@@ -48,6 +52,28 @@ function ActionBtn({
     >
       <Icon name={icon} size={18} color={disabled ? "var(--fg3)" : "var(--volt)"} />
       {label}
+      {!!badge && badge > 0 && (
+        <span
+          style={{
+            position: "absolute",
+            top: 4,
+            right: 8,
+            minWidth: 18,
+            height: 18,
+            padding: "0 5px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--volt)",
+            color: "var(--void)",
+            borderRadius: "var(--radius-full)",
+            fontSize: 11,
+            fontWeight: 700,
+          }}
+        >
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -79,9 +105,6 @@ function StatusBadge({ status, label }: { status: string; label: string }) {
 function telHref(phone: string) {
   return `tel:${phone.replace(/[^\d+]/g, "")}`;
 }
-function smsHref(phone: string) {
-  return `sms:${phone.replace(/[^\d+]/g, "")}`;
-}
 
 function fmtWhen(iso: string | null | undefined, lang: string): string {
   if (!iso) return "";
@@ -107,12 +130,14 @@ function UpcomingCard({
   lang,
   onCancel,
   cancelling,
+  onMessage,
 }: {
   ride: RideRow;
   t: (k: string) => string;
   lang: string;
   onCancel: () => void;
   cancelling: boolean;
+  onMessage: () => void;
 }) {
   const driver = ride.assigned_driver;
   const phone = driver?.phone || null;
@@ -196,8 +221,9 @@ function UpcomingCard({
             <ActionBtn
               icon="message-circle"
               label={t("trips.message")}
-              disabled={!phone}
-              onClick={phone ? () => { window.location.href = smsHref(phone); } : undefined}
+              disabled={!ride.chat_open}
+              badge={ride.unread_messages}
+              onClick={ride.chat_open ? onMessage : undefined}
             />
           </div>
         </div>
@@ -287,6 +313,7 @@ export function Trips() {
   const [rides, setRides] = useState<RideRow[] | null>(null);
   const [error, setError] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [chatRide, setChatRide] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setError(false);
@@ -398,6 +425,7 @@ export function Trips() {
               lang={lang}
               onCancel={() => handleCancel(r)}
               cancelling={cancellingId === r.id}
+              onMessage={() => setChatRide(r.id)}
             />
           ))}
         </div>
@@ -409,6 +437,17 @@ export function Trips() {
             ))}
           </div>
         </Card>
+      )}
+
+      {chatRide != null && (
+        <RideChatPanel
+          rideId={chatRide}
+          viewer="client"
+          onClose={() => {
+            setChatRide(null);
+            void load();
+          }}
+        />
       )}
     </div>
   );

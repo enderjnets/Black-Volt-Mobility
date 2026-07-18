@@ -27,6 +27,7 @@ from app.api.v1.notifications import router as notifications_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.push import router as push_router
 from app.api.v1.reviews import router as reviews_router
+from app.api.v1.ride_messages import router as ride_messages_router
 from app.api.v1.rides import router as booking_router
 from app.api.v1.social import router as social_router
 from app.api.v1.subscriptions import router as subscriptions_router
@@ -122,6 +123,7 @@ app.include_router(addresses_router, prefix="/api/v1")
 app.include_router(agreements_router, prefix="/api/v1")
 app.include_router(calendar_link_router, prefix="/api/v1")
 app.include_router(booking_router, prefix="/api/v1")
+app.include_router(ride_messages_router, prefix="/api/v1")
 app.include_router(reviews_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
 app.include_router(blog_router, prefix="/api/v1")

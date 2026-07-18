@@ -24,7 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import current_payload, require_auth, require_staff, resolve_tenant_id
 from app.config import get_settings
 from app.db.base import get_db
-from app.models import NotificationKind, PaymentMethod, Ride, RideStatus
+from app.models import (
+    NotificationKind,
+    PaymentMethod,
+    Ride,
+    RideMessageSender,
+    RideStatus,
+)
 from app.services import (
     auth,
     booking,
@@ -43,6 +49,9 @@ from app.services import (
 )
 from app.services import (
     legal as legal_svc,
+)
+from app.services import (
+    ride_messages as ride_messages_svc,
 )
 from app.services.discounts import DiscountError
 
@@ -207,7 +216,7 @@ def _cancellation_fee_eligible(r: Ride) -> bool:
     return (r.scheduled_at - r.cancelled_at) < _CANCELLATION_FEE_WINDOW
 
 
-def _ride_out(r: Ride) -> dict:
+def _ride_out(r: Ride, *, unread_messages: int = 0) -> dict:
     return {
         "id": r.id,
         "status": r.status.value if isinstance(r.status, RideStatus) else r.status,
@@ -248,6 +257,8 @@ def _ride_out(r: Ride) -> dict:
         "cancellation_fee_eligible": _cancellation_fee_eligible(r),
         "google_event_id": r.google_event_id,
         "overdue": booking.is_overdue(r),
+        "chat_open": booking.chat_window_open(r),
+        "unread_messages": unread_messages,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
 
@@ -506,9 +517,13 @@ async def list_rides(
     drivers = await dashboard.assigned_drivers(
         db, ids=[(r.assigned_tenant_id or r.tenant_id) for r in rides]
     )
+    reader_side = RideMessageSender.client if is_passenger else RideMessageSender.driver
+    unread = await ride_messages_svc.unread_counts(
+        db, ride_ids=[r.id for r in rides], reader_side=reader_side
+    )
     out = []
     for r in rides:
-        d = _ride_out(r)
+        d = _ride_out(r, unread_messages=unread.get(r.id, 0))
         nm, ph = names.get(r.client_id, (None, None)) if r.client_id else (None, None)
         d["client_name"] = nm or r.passenger_name
         d["client_phone"] = ph or r.passenger_phone
@@ -541,7 +556,15 @@ async def get_ride(
     if booking.complete_if_overdue_paid(ride):
         await db.commit()
         await db.refresh(ride)
-    out = _ride_out(ride)
+    reader_side = (
+        RideMessageSender.client
+        if payload.get("role") == auth.ROLE_PASSENGER
+        else RideMessageSender.driver
+    )
+    unread = await ride_messages_svc.unread_counts(
+        db, ride_ids=[ride.id], reader_side=reader_side
+    )
+    out = _ride_out(ride, unread_messages=unread.get(ride.id, 0))
     out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))
     did = ride.assigned_tenant_id or ride.tenant_id
     if did:

@@ -19,6 +19,7 @@ const KIND_ICON: Record<NotificationKind, string> = {
   ride_cancelled: "alert-circle",
   chat_escalated: "alert-circle",
   chat_message: "message-circle",
+  ride_message: "message-circle",
   review_new: "star",
   discount_redeemed: "tag",
   subscription_payment_failed: "credit-card",
@@ -29,6 +30,7 @@ const KIND_HREF: Record<NotificationKind, string> = {
   ride_cancelled: "/dashboard/rides",
   chat_escalated: "/dashboard/inbox",
   chat_message: "/dashboard/inbox",
+  ride_message: "/dashboard/rides",
   review_new: "/dashboard/reviews",
   discount_redeemed: "/dashboard/discounts",
   subscription_payment_failed: "/dashboard/settings",
@@ -113,6 +115,8 @@ export function NotificationsBell() {
           return t("dash.notif.k.chat_escalated", { name });
         case "chat_message":
           return t("dash.notif.k.chat_message", { name });
+        case "ride_message":
+          return t("dash.notif.k.ride_message", { name });
         case "review_new":
           return t("dash.notif.k.review_new", { rating: s("rating") || "5" });
         case "discount_redeemed":
@@ -154,7 +158,9 @@ export function NotificationsBell() {
       setUnread((u) => Math.max(0, u - 1));
       markNotificationRead(n.id).catch(() => {});
     }
-    router.push(KIND_HREF[n.kind] ?? "/dashboard");
+    const base = KIND_HREF[n.kind] ?? "/dashboard";
+    const rideId = (n.data as { ride_id?: number } | undefined)?.ride_id;
+    router.push(n.kind === "ride_message" && rideId ? `${base}?open=${rideId}` : base);
   };
 
   const onMarkAll = () => {

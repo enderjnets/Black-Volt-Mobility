@@ -196,6 +196,7 @@ export interface AssignedDriver {
 export interface RideRow {
   id: number;
   status: string;
+  client_id?: number | null;
   passenger_name: string | null;
   client_name?: string | null;
   client_phone?: string | null;
@@ -214,6 +215,11 @@ export interface RideRow {
   tip?: number | null;
   tip_method?: PaymentMethod | null;
   overdue?: boolean;
+  // Passenger<->driver chat: how many messages from the other party are unread
+  // by the viewer, and whether new messages may still be posted (booked..48h
+  // after completion). Both are computed server-side per viewer.
+  unread_messages?: number;
+  chat_open?: boolean;
   assigned_driver?: AssignedDriver;
 }
 

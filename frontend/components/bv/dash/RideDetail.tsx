@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
+import { RideChatThread } from "../RideChat";
 import { Button } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -564,6 +565,37 @@ export function RideDetail({
         const prefs = ride.ride_preferences ?? ride.client?.preferences;
         return prefs ? <RidePreferencesSummary value={prefs} /> : null;
       })()}
+
+      {/* Messages with the rider (only for rides tied to a passenger account) */}
+      {ride.client_id && (ride.chat_open || (ride.unread_messages ?? 0) > 0) && (
+        <div
+          style={{
+            padding: "12px 14px",
+            borderRadius: "var(--radius-md)",
+            background: "var(--obsidian-2)",
+            border: "1px solid var(--line-strong)",
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 10,
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+              color: "var(--fg3)",
+            }}
+          >
+            <Icon name="message-circle" size={15} color="var(--volt)" />
+            {t("ride.chat.title")}
+          </div>
+          <RideChatThread rideId={ride.id} viewer="driver" height={260} onActivity={onChanged} />
+        </div>
+      )}
 
       {/* Fare + payment */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: "var(--radius-md)", background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", marginBottom: 16 }}>

@@ -6,6 +6,7 @@ export type NotificationKind =
   | "ride_cancelled"
   | "chat_escalated"
   | "chat_message"
+  | "ride_message"
   | "review_new"
   | "discount_redeemed"
   | "subscription_payment_failed";

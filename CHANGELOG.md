@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.82.0 — 2026-07-17 — Per-ride passenger↔driver messaging (Fase A of native apps)
+
+Riders and their assigned driver can now exchange messages tied to a single ride —
+the ride *is* the conversation. First deployable phase of the mobile-app roadmap
+(client app to the stores); delivers value today on web + the driver PWA, with no
+store dependency.
+
+**Backend**
+- `app/models/ride_message.py` + migration `0046_ride_messages`: new `ride_messages`
+  table (tenant-scoped, FK CASCADE to rides, `sender` enum client|driver, `read_at`
+  for live unread counts). Adds the `ride_message` value to `notification_kind`
+  (in an autocommit block, per Postgres enum rules). Migration is reversible.
+- `app/services/ride_messages.py` + `app/api/v1/ride_messages.py`: `GET/POST
+  /rides/{id}/messages`. Sender side is derived from the session, never the body;
+  passengers touch only their own ride (403/404 otherwise), staff act as the driver.
+  Posting is gated to the chat window (`booking.chat_window_open`: booked →
+  completed+48h) with a 10/min·60/h rate limit. Opening the thread stamps `read_at`
+  on the other party's messages. Client→driver rings the staff bell + Web Push;
+  driver→client pushes the rider — both best-effort, never break the send.
+- `GET /rides` and `GET /rides/{id}` now expose `unread_messages` + `chat_open`
+  per viewer (one grouped query, no N+1).
+- 13 new API tests (authorization, window, read-tracking, rate limit, fan-out
+  routing). Full backend suite: 751 passed, 0 failed.
+
+**Frontend**
+- `components/bv/RideChat.tsx`: reusable thread + composer (on-brand bubbles,
+  polls every 6s while visible) and a mobile-first bottom-sheet panel.
+- `/trips`: the "Message" button now opens the in-app ride chat with an unread
+  badge (Call stays a `tel:` link). Driver drawer (`RideDetail`) gets a Messages
+  section. The bell maps `ride_message` and deep-links to `/dashboard/rides?open=<id>`.
+- i18n EN + ES for all new strings.
+
 ## v0.81.1 — 2026-07-17 — Fix: goal projection crashed for zero-conversion accounts
 
 Setting a client/revenue goal and opening the projection ("how many conversations

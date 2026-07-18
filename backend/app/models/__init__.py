@@ -17,6 +17,7 @@ from app.models.push_subscription import PushSubscription
 from app.models.rate_config import RateConfig
 from app.models.review import Review, ReviewInvite, ReviewStatus
 from app.models.ride import PaymentMethod, Ride, RideStatus
+from app.models.ride_message import RideMessage, RideMessageSender
 from app.models.social import (
     SocialAccount,
     SocialFeedback,
@@ -40,6 +41,8 @@ __all__ = [
     "Ride",
     "RideStatus",
     "PaymentMethod",
+    "RideMessage",
+    "RideMessageSender",
     "AnalyticsEvent",
     "BlogConfig",
     "BlogKeyword",

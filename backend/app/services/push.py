@@ -43,6 +43,7 @@ _STAFF_COPY: dict[str, tuple[str, str, str]] = {
     "ride_cancelled": ("Ride cancelled", "A ride was cancelled.", "/dashboard/rides"),
     "chat_escalated": ("Chat needs you", "A customer chat was escalated.", "/dashboard/inbox"),
     "chat_message": ("New message", "A customer sent a message.", "/dashboard/inbox"),
+    "ride_message": ("New ride message", "A rider messaged you about a ride.", "/dashboard/rides"),
     "review_new": ("New review", "A customer left a review.", "/dashboard/reviews"),
     "discount_redeemed": ("Discount redeemed", "A discount code was redeemed.", "/dashboard/rides"),
     "subscription_payment_failed": (
@@ -69,6 +70,10 @@ _CLIENT_COPY: dict[str, dict[str, tuple[str, str]]] = {
     "pickup_reminder": {
         "en": ("Your ride is coming up", "Pickup at {place} soon — we'll be there."),
         "es": ("Tu viaje se acerca", "Recogida en {place} pronto — ahí estaremos."),
+    },
+    "ride_message": {
+        "en": ("Message from your driver", "Open your trip to reply."),
+        "es": ("Mensaje de tu chofer", "Abre tu viaje para responder."),
     },
 }
 

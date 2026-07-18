@@ -39,9 +39,9 @@ def _reset_ride_data():
             # My Stats + coach aggregates (e.g. which stage is the bottleneck), so
             # reset them too for deterministic funnel/coach tests.
             await conn.execute(
-                "TRUNCATE rides, payments, driver_funnel_logs, platform_stats, "
-                "driver_goals, social_posts, social_interactions, social_accounts, "
-                "document_consents, reviews, review_invites, events, "
+                "TRUNCATE rides, ride_messages, payments, driver_funnel_logs, "
+                "platform_stats, driver_goals, social_posts, social_interactions, "
+                "social_accounts, document_consents, reviews, review_invites, events, "
                 "event_suggestions, chat_conversations, chat_messages, notifications, "
                 "push_subscriptions, clients "
                 "RESTART IDENTITY CASCADE"
