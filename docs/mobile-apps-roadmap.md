@@ -81,9 +81,14 @@ zero backend changes.
   sessions + `/auth/me` fix + native token/TTL, and FCM push plumbing (migration 0047, `services/fcm.py`,
   `platform` column). Retrocompatible and a no-op until the Android OAuth client ID + Firebase creds
   exist. 766 backend tests pass. **This is the "backend deployable first" step of the Android track.**
-- **Remaining for Android:** (a) Capacitor shell + native Google Sign-In/push wiring — needs
-  **Android Studio + JDK on the build machine** (not installed in the current env); (b) Firebase
-  project (#4) for real push; (c) Google Play Console (#3) for submission.
+- **Fase B Android shell** — ✅ shipped 2026-07-18 (`bee8245`). `mobile/` Capacitor 8 project; a
+  **debug APK builds cleanly** (`com.blackvoltmobility.app`, SDK 36, loads the live site over HTTPS).
+  `frontend/lib/native.ts` detects the native app (deployed to prod). Build:
+  `cd mobile/android && ./gradlew assembleDebug` (JAVA_HOME = Android Studio's bundled JDK).
+- **Remaining for Android:** (a) native Google Sign-In + FCM push wiring in the frontend — code is
+  ready to write but needs the **Android OAuth client ID** and **Firebase project** to function;
+  (b) Google Play Console (#3) for submission. Without native sign-in the app can browse/book but
+  can't log in with Google (the webview blocks web OAuth — that's what the native plugin fixes).
 - **Owner: begin the account paperwork (#1–#4 above) now** — it's the multi-week critical path.
   For Android specifically the order is cheaper/faster: **Google Play ($25) + Firebase (free)** don't
   need the Apple D-U-N-S, so Android can reach the store well before iOS.
