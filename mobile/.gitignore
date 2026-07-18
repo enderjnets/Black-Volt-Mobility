@@ -1,0 +1,3 @@
+node_modules/
+# Capacitor copies the web bundle here on sync; it's a placeholder for us anyway.
+android/app/src/main/assets/public/

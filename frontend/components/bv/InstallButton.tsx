@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useI18n } from "@/lib/i18n";
+import { isNativeApp } from "@/lib/native";
 import { isStandalone } from "@/lib/push";
 import { installState, onInstallChange, registerServiceWorker, triggerInstall } from "@/lib/pwaInstall";
 import { InstallInstructions } from "./InstallInstructions";
@@ -18,9 +19,16 @@ export function InstallButton({ style }: { style?: React.CSSProperties }) {
   const { t } = useI18n();
   const [canPrompt, setCanPrompt] = useState(false);
   const [standalone, setStandalone] = useState(false);
+  const [native, setNative] = useState(false);
   const [help, setHelp] = useState(false);
 
   useEffect(() => {
+    // Inside the native app there's nothing to "install", and push arrives via
+    // FCM — so skip the web-push service worker and hide the button.
+    if (isNativeApp()) {
+      setNative(true);
+      return;
+    }
     registerServiceWorker();
     setStandalone(isStandalone());
     const sync = () => setCanPrompt(installState().canPrompt);
@@ -37,7 +45,7 @@ export function InstallButton({ style }: { style?: React.CSSProperties }) {
     setHelp((v) => !v);
   }, [canPrompt]);
 
-  if (standalone) return null;
+  if (standalone || native) return null;
 
   const linkStyle: React.CSSProperties = {
     display: "inline-flex",

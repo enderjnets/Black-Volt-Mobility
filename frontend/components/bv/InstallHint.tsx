@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { InstallInstructions } from "./InstallInstructions";
 import { useI18n } from "@/lib/i18n";
+import { isNativeApp } from "@/lib/native";
 import { isSafari, isStandalone } from "@/lib/push";
 import { installState, onInstallChange, registerServiceWorker, triggerInstall } from "@/lib/pwaInstall";
 
@@ -25,6 +26,8 @@ export function InstallHint() {
   const [dismissed, setDismissed] = useState(true); // hidden until we decide to show
 
   useEffect(() => {
+    // No "add to home screen" prompt inside the native app.
+    if (isNativeApp()) return;
     registerServiceWorker();
     if (isStandalone()) return;
     if (typeof localStorage !== "undefined" && localStorage.getItem(DISMISS_KEY) === "1") return;

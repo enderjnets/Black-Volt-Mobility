@@ -1,5 +1,20 @@
 # Changelog
 
+## Mobile (Android) — 2026-07-18 — Capacitor shell: buildable native Android app
+
+Fase B for Android. A Capacitor wrapper that loads the live site as a native app;
+a debug APK builds cleanly (`com.blackvoltmobility.app`, SDK 36). No web change.
+
+- `mobile/` — Capacitor 8 project. `capacitor.config.js` loads `server.url`
+  (production, or `CAP_SERVER_URL` for a dev stack), HTTPS-only, with
+  `allowNavigation` for the site + Square 3-D Secure + Google. Splash/status bar
+  in brand `#0A0A0F`; UA marked `BlackVoltApp`. `mobile/android/` native project
+  committed (build artifacts / `local.properties` gitignored).
+- `frontend/lib/native.ts` — `isNativeApp()` / `nativePlatform()` (reads the
+  Capacitor global + UA marker; no `@capacitor` import, SSR-safe). The "Install
+  app" button and the add-to-home-screen hint hide inside the native app, and the
+  web-push service worker is skipped there (push will arrive via FCM).
+
 ## Backend infra — 2026-07-18 — Android-ready: multi-audience Google, Bearer sessions, FCM push
 
 Groundwork so the upcoming native **Android** client app can authenticate and receive push.
