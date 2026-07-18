@@ -14,8 +14,16 @@ from app.services.tenancy import get_default_tenant
 
 
 def current_payload(request: Request) -> dict | None:
-    """Decode the session cookie → payload, or None."""
-    return auth.decode_token(request.cookies.get(auth.COOKIE_NAME))
+    """Decode the session → payload, or None. The web uses the httpOnly cookie;
+    the native app (no reliable cookies in a WKWebView with a remote origin) sends
+    the same signed token as `Authorization: Bearer`. Cookie wins when both exist."""
+    payload = auth.decode_token(request.cookies.get(auth.COOKIE_NAME))
+    if payload is not None:
+        return payload
+    header = request.headers.get("authorization") or ""
+    if header.lower().startswith("bearer "):
+        return auth.decode_token(header[7:].strip())
+    return None
 
 
 def require_auth(request: Request) -> dict:

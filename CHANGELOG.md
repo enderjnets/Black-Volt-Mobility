@@ -1,5 +1,26 @@
 # Changelog
 
+## Backend infra — 2026-07-18 — Android-ready: multi-audience Google, Bearer sessions, FCM push
+
+Groundwork so the upcoming native **Android** client app can authenticate and receive push.
+**No user-visible change** (the customer app version stays 0.82.0); every change is
+retrocompatible and a no-op until the native OAuth client ID / FCM credentials exist.
+
+- **Multi-audience Google Sign-In** — `verify_google_id_token` now accepts a token whose `aud` is
+  the web client ID **or** any ID in the new `GOOGLE_CLIENT_IDS` (CSV) setting, so the same passenger
+  login works from the web button and the native app. Empty → identical to today (web ID only).
+- **Bearer sessions** — `deps.current_payload` falls back to `Authorization: Bearer` when there's no
+  cookie (a WKWebView with a remote origin can't rely on cookies); the cookie still wins. `/auth/me`
+  now honours it too. `POST /auth/login/google` returns the session token in the body **only** when
+  the caller sends `X-BV-Native: 1`, and native passenger sessions get a 180-day TTL (web keeps 7 days).
+- **Native push (FCM HTTP v1)** — `push_subscriptions.platform` column (migration 0047, existing rows
+  = `webpush`; `p256dh`/`auth` now nullable), `services/fcm.py` sender, and a branch in
+  `push._send_one` that routes `platform="fcm"` rows to FCM. Every existing call-site (chat push,
+  pickup reminders, ride events) is untouched; the driver PWA's Web Push is unchanged. `POST
+  /push/subscribe` accepts `{platform, endpoint, keys?}`. No-op without `FCM_*` env.
+- Tests: `test_android_backend.py` (Bearer, multi-audience accept/reject, native token+TTL, FCM
+  subscribe + delivery routing). Full backend suite: 766 passed, 0 failed. Migration 0047 reversible.
+
 ## v0.82.0 — 2026-07-17 — Per-ride passenger↔driver messaging (Fase A of native apps)
 
 Riders and their assigned driver can now exchange messages tied to a single ride —

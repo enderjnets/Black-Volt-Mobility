@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import Client, PushSubscription
+from app.services import fcm
 
 log = logging.getLogger("blackvolt.push")
 
@@ -217,11 +218,23 @@ async def _fanout(
 
 
 async def _send_one(sub: PushSubscription, payload: dict) -> str:
-    """Deliver one push in a worker thread (pywebpush is sync). Returns:
+    """Deliver one push in a worker thread (both channels are sync). Returns:
     - "sent"  — delivered;
-    - "prune" — endpoint gone (404/410), caller should delete the row;
-    - "keep"  — transient error, logged, subscription retained."""
+    - "prune" — endpoint/token gone, caller should delete the row;
+    - "keep"  — transient error, logged, subscription retained.
+
+    Routes by ``sub.platform``: "fcm" → the native app via FCM HTTP v1; anything
+    else → Web Push (pywebpush) as before. Every call-site is unchanged."""
     settings = get_settings()
+    if sub.platform == "fcm":
+        return await asyncio.to_thread(
+            fcm.send,
+            sub.endpoint,
+            payload.get("title", ""),
+            payload.get("body", ""),
+            payload.get("url", "/"),
+            payload.get("tag", "bv"),
+        )
     try:
         from pywebpush import webpush
 

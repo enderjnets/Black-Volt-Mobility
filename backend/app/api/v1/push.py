@@ -35,7 +35,10 @@ class PushKeys(BaseModel):
 
 class SubscribeBody(BaseModel):
     endpoint: str = Field(min_length=1, max_length=2000)
-    keys: PushKeys
+    # Web Push keys — required for "webpush", omitted for "fcm" (the native app,
+    # whose registration token lives in `endpoint`).
+    keys: PushKeys | None = None
+    platform: str = Field(default="webpush", pattern="^(webpush|fcm)$")
 
 
 class UnsubscribeBody(BaseModel):
@@ -44,9 +47,12 @@ class UnsubscribeBody(BaseModel):
 
 @router.get("/config")
 async def push_config() -> dict:
-    """Public: whether push is enabled and the VAPID public key for the browser."""
+    """Public: whether *Web Push* is enabled and the VAPID public key for the
+    browser. (FCM for the native app doesn't use this endpoint — the app gets its
+    token from the OS.)"""
     s = get_settings()
-    return {"enabled": s.push_enabled, "public_key": s.VAPID_PUBLIC_KEY}
+    web_enabled = bool(s.VAPID_PUBLIC_KEY and s.VAPID_PRIVATE_KEY)
+    return {"enabled": web_enabled, "public_key": s.VAPID_PUBLIC_KEY}
 
 
 @router.post("/subscribe")
@@ -69,16 +75,22 @@ async def subscribe(
         audience, client_id = "staff", None
         tenant_id = await resolve_tenant_id(db, payload)
 
+    if body.platform == "webpush" and body.keys is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="missing_keys")
+    p256dh = body.keys.p256dh if body.keys else None
+    auth_k = body.keys.auth if body.keys else None
+
     ua = (request.headers.get("user-agent") or "")[:300] or None
-    # Atomic upsert by endpoint (the browser mints one per device) — concurrency-safe,
-    # so a double-tap can't 500 on the unique constraint.
+    # Atomic upsert by endpoint (the browser/app mints one per device) —
+    # concurrency-safe, so a double-tap can't 500 on the unique constraint.
     values = {
         "tenant_id": tenant_id,
         "audience": audience,
+        "platform": body.platform,
         "client_id": client_id,
         "endpoint": body.endpoint,
-        "p256dh": body.keys.p256dh,
-        "auth": body.keys.auth,
+        "p256dh": p256dh,
+        "auth": auth_k,
         "ua": ua,
     }
     stmt = pg_insert(PushSubscription).values(**values).on_conflict_do_update(
@@ -86,9 +98,10 @@ async def subscribe(
         set_={
             "tenant_id": tenant_id,
             "audience": audience,
+            "platform": body.platform,
             "client_id": client_id,
-            "p256dh": body.keys.p256dh,
-            "auth": body.keys.auth,
+            "p256dh": p256dh,
+            "auth": auth_k,
             "ua": ua,
         },
     )

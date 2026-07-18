@@ -31,14 +31,21 @@ class PushSubscription(Base):
     # "staff" (driver/owner) or "client" (passenger). Kept as a plain string — not a
     # pg enum — so adding an audience later needs no migration.
     audience: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    # Delivery channel (plain string, same rationale as audience): "webpush" for a
+    # browser/PWA (uses p256dh+auth), "fcm" for the native app (endpoint holds the
+    # FCM registration token; no VAPID keys).
+    platform: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="webpush"
+    )
     # Set only for client subscriptions; NULL for staff.
     client_id: Mapped[int | None] = mapped_column(
         ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    # The push endpoint + its keys, exactly as the browser's PushSubscription reports.
+    # The push endpoint (Web Push URL, or the FCM registration token) — globally
+    # unique, the natural upsert key. p256dh/auth are the Web Push keys; NULL for FCM.
     endpoint: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    p256dh: Mapped[str] = mapped_column(Text, nullable=False)
-    auth: Mapped[str] = mapped_column(Text, nullable=False)
+    p256dh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth: Mapped[str | None] = mapped_column(Text, nullable=True)
     ua: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

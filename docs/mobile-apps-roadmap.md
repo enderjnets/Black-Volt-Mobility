@@ -77,7 +77,15 @@ zero backend changes.
 ## Status
 
 - **Fase A** — ✅ shipped v0.82.0 (`46ab29b`), live + verified in prod.
-- **Fases B / C / D** — not started. **Owner: begin the account paperwork (#1–#4 above) now** — it's
-  the multi-week critical path; the rest can proceed in parallel and slots in once accounts exist.
+- **Fase C backend (Android part)** — ✅ shipped 2026-07-18. Multi-audience Google Sign-In, `Bearer`
+  sessions + `/auth/me` fix + native token/TTL, and FCM push plumbing (migration 0047, `services/fcm.py`,
+  `platform` column). Retrocompatible and a no-op until the Android OAuth client ID + Firebase creds
+  exist. 766 backend tests pass. **This is the "backend deployable first" step of the Android track.**
+- **Remaining for Android:** (a) Capacitor shell + native Google Sign-In/push wiring — needs
+  **Android Studio + JDK on the build machine** (not installed in the current env); (b) Firebase
+  project (#4) for real push; (c) Google Play Console (#3) for submission.
+- **Owner: begin the account paperwork (#1–#4 above) now** — it's the multi-week critical path.
+  For Android specifically the order is cheaper/faster: **Google Play ($25) + Firebase (free)** don't
+  need the Apple D-U-N-S, so Android can reach the store well before iOS.
 
 Full technical plan: `~/.claude/plans/atomic-plotting-hare.md`. Memory: `project_blackvolt_ride_messaging.md`.

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import session_is_admin
+from app.api.deps import current_payload, session_is_admin
 from app.config import get_settings
 from app.db.base import get_db
 from app.models.allowed_user import ROLE_ADMIN
@@ -38,6 +38,12 @@ def _set_cookie(response: Response, token: str) -> None:
     )
 
 
+def _is_native(request: Request) -> bool:
+    """The native app sets this header so we return the session token in the body
+    (a WKWebView with a remote origin can't rely on cookies — it uses Bearer)."""
+    return request.headers.get("x-bv-native", "").strip() == "1"
+
+
 class PasswordLogin(BaseModel):
     password: str
 
@@ -65,7 +71,12 @@ class GoogleLogin(BaseModel):
 
 
 @router.post("/login/google")
-async def login_google(body: GoogleLogin, response: Response, db: AsyncSession = Depends(get_db)):
+async def login_google(
+    body: GoogleLogin,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Google login. Allow-listed emails (admin or active driver) sign into the
     dashboard as the OWNER of their own tenant — provisioned on first sign-in.
     Everyone else becomes a passenger (their Client is find-or-created)."""
@@ -74,6 +85,7 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
     except auth.GoogleAuthError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e
     email = info["email"]
+    native = _is_native(request)
 
     allowed = await auth.resolve_user_access(db, email)
     if allowed is not None:
@@ -95,6 +107,7 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
             "tenant": their_tenant.slug if their_tenant else None,
             "email": email,
             "is_admin": is_admin,
+            **({"token": token} if native else {}),
         }
 
     # Not on the access list (or deactivated) → passenger. Designated-driver rule:
@@ -113,7 +126,12 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
         first_name=given or None, last_name=family or None,
     )
     token = auth.make_token(
-        role=auth.ROLE_PASSENGER, tenant_id=tenant_id, email=email, client_id=client.id
+        role=auth.ROLE_PASSENGER,
+        tenant_id=tenant_id,
+        email=email,
+        client_id=client.id,
+        # The app keeps a long-lived Bearer session; the web keeps the default cookie TTL.
+        ttl_hours=(get_settings().AUTH_TTL_HOURS_APP if native else None),
     )
     _set_cookie(response, token)
     return {
@@ -121,6 +139,7 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
         "role": auth.ROLE_PASSENGER,
         "client": {"id": client.id, "name": client.name, "email": client.email},
         "profile_complete": profile.is_complete(client),
+        **({"token": token} if native else {}),
     }
 
 
@@ -128,7 +147,7 @@ async def login_google(body: GoogleLogin, response: Response, db: AsyncSession =
 async def me(request: Request, db: AsyncSession = Depends(get_db)):
     """Current session + public config (google_client_id, auth_enabled)."""
     settings = get_settings()
-    payload = auth.decode_token(request.cookies.get(auth.COOKIE_NAME))
+    payload = current_payload(request)
     base = {
         "authenticated": payload is not None,
         "auth_enabled": settings.AUTH_ENABLED,

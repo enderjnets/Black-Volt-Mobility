@@ -135,11 +135,13 @@ class GoogleAuthError(Exception):
 def verify_google_id_token(id_token_str: str) -> dict:
     """Validate a Google ID token; return {email, sub, name, given_name, family_name}.
 
-    Checks signature against Google's keys, `aud` == GOOGLE_CLIENT_ID, and that
-    the email is verified. Raises GoogleAuthError otherwise.
+    Checks signature against Google's keys, that `aud` is one of the accepted
+    client IDs (web + native), and that the email is verified. Raises
+    GoogleAuthError otherwise.
     """
     s = get_settings()
-    if not s.GOOGLE_CLIENT_ID:
+    accepted = s.google_client_ids_list
+    if not accepted:
         raise GoogleAuthError("google_signin_not_configured")
     if not id_token_str:
         raise GoogleAuthError("missing_id_token")
@@ -149,11 +151,13 @@ def verify_google_id_token(id_token_str: str) -> dict:
     except ImportError as e:
         raise GoogleAuthError(f"google_auth_library_missing: {e}") from e
     try:
-        claims = google_id_token.verify_oauth2_token(
-            id_token_str, google_requests.Request(), s.GOOGLE_CLIENT_ID
-        )
+        # Verify signature/issuer/expiry without pinning a single audience, then
+        # check `aud` against the accepted set ourselves (web + native client IDs).
+        claims = google_id_token.verify_oauth2_token(id_token_str, google_requests.Request())
     except ValueError as e:
         raise GoogleAuthError(f"invalid_id_token: {e}") from e
+    if claims.get("aud") not in accepted:
+        raise GoogleAuthError("audience_mismatch")
     if not claims.get("email_verified"):
         raise GoogleAuthError("email_not_verified")
     email = (claims.get("email") or "").lower().strip()

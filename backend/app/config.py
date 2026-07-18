@@ -47,8 +47,17 @@ class Settings(BaseSettings):
     DASHBOARD_PASSWORD: str = ""
     AUTH_SECRET: str = ""  # token signing key; derived from the password if empty
     AUTH_TTL_HOURS: int = 168  # 7 days
+    # Longer session for the native app (its Bearer token is stored on-device and
+    # sign-in is more disruptive than on the web). Only native passenger sessions
+    # use it; the web cookie keeps AUTH_TTL_HOURS.
+    AUTH_TTL_HOURS_APP: int = 4320  # 180 days
 
     GOOGLE_CLIENT_ID: str = ""
+    # Extra accepted Sign-In audiences (native iOS/Android OAuth client IDs),
+    # comma-separated. A Google ID token is accepted when its `aud` matches
+    # GOOGLE_CLIENT_ID or any of these, so the same passenger login works from the
+    # web GIS button and the native app. Empty → only GOOGLE_CLIENT_ID is accepted.
+    GOOGLE_CLIENT_IDS: str = ""
     GOOGLE_ADMIN_EMAILS: str = ""  # comma-separated; pinned owner/driver admins
     # Comma-separated emails of principals (dueños) exempt from signing the driver
     # agreement. The master/password owner session is always exempt; add a Google
@@ -293,6 +302,18 @@ class Settings(BaseSettings):
         """Real email sending requires an explicit opt-out of simulation AND a key."""
         return not self.EMAIL_SIMULATED and bool(self.RESEND_API_KEY)
 
+    @property
+    def google_client_ids_list(self) -> list[str]:
+        """All accepted Google Sign-In audiences: GOOGLE_CLIENT_ID plus any extra
+        native client IDs. Falls back to just GOOGLE_CLIENT_ID."""
+        extra = [x.strip() for x in self.GOOGLE_CLIENT_IDS.split(",") if x.strip()]
+        base = [self.GOOGLE_CLIENT_ID] if self.GOOGLE_CLIENT_ID else []
+        out: list[str] = []
+        for c in base + extra:
+            if c not in out:
+                out.append(c)
+        return out
+
     # ─── Web Push (VAPID) ────────────────────────────────────────────────────
     # PWA push notifications. Keys are generated once (py-vapid / openssl) and set
     # via env on the server — NEVER committed. With no keys, push is a silent no-op
@@ -301,9 +322,21 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = ""
     VAPID_SUBJECT: str = "mailto:support@blackvoltmobility.com"
 
+    # ─── Native push (Firebase Cloud Messaging, HTTP v1) ─────────────────────
+    # Delivers push to the native app (Android now, iOS later) alongside Web Push
+    # for the PWA. FCM_CREDENTIALS_JSON_B64 is base64 of the Firebase service
+    # account JSON, set via env — NEVER committed. With no creds, FCM is a no-op.
+    FCM_PROJECT_ID: str = ""
+    FCM_CREDENTIALS_JSON_B64: str = ""
+
+    @property
+    def fcm_enabled(self) -> bool:
+        return bool(self.FCM_PROJECT_ID and self.FCM_CREDENTIALS_JSON_B64)
+
     @property
     def push_enabled(self) -> bool:
-        return bool(self.VAPID_PUBLIC_KEY and self.VAPID_PRIVATE_KEY)
+        """True when at least one delivery channel is configured (Web Push or FCM)."""
+        return bool((self.VAPID_PUBLIC_KEY and self.VAPID_PRIVATE_KEY) or self.fcm_enabled)
 
     # ─── Social media (Phase "Social") ──────────────────────────────────
     # AI-assisted content + owner-approval publishing to Instagram/Facebook
