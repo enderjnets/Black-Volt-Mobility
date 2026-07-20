@@ -65,7 +65,9 @@ export function SignInModal({
       void registerFcm();
       onSignedIn("google");
     } else {
-      setErr(t("auth.googleFailed"));
+      // Surface the real reason (plugin error / backend detail) so native login
+      // failures are diagnosable on-device instead of a generic message.
+      setErr(r.error ? `Google: ${r.error}` : t("auth.googleFailed"));
       setBusy(false);
     }
   };
@@ -152,7 +154,6 @@ export function SignInModal({
             ) : (
               <GoogleSignInButton clientId={GOOGLE_CLIENT_ID} onCredential={onCredential} />
             )}
-            {err && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 8 }}>{err}</div>}
           </div>
         ) : (
           <button
@@ -186,6 +187,12 @@ export function SignInModal({
               </>
             )}
           </button>
+        )}
+
+        {err && (
+          <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 8, wordBreak: "break-word" }}>
+            {err}
+          </div>
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0" }}>

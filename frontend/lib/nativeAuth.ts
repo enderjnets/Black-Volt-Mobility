@@ -41,7 +41,15 @@ export async function nativeGoogleSignIn(
     // backend needs — so we keep the default (no scopes).
     const res = await sl.login({ provider: "google" });
     const idToken = res?.result?.idToken;
-    if (!idToken) return { ok: false, error: "no_id_token" };
+    if (!idToken) {
+      let shape = "";
+      try {
+        shape = JSON.stringify(res).slice(0, 240);
+      } catch {
+        shape = String(res);
+      }
+      return { ok: false, error: "no_id_token · " + shape };
+    }
 
     // The native fetch interceptor also adds X-BV-Native; we set it explicitly too so
     // the backend returns the session token in the body regardless of interceptor timing.
@@ -52,13 +60,13 @@ export async function nativeGoogleSignIn(
     });
     if (!r.ok) {
       const d = (await r.json().catch(() => ({}))) as { detail?: string };
-      return { ok: false, error: d.detail || "login_failed" };
+      return { ok: false, error: `backend ${r.status}: ${d.detail || "login_failed"}` };
     }
     const data = (await r.json().catch(() => ({}))) as { token?: string };
     if (data.token) await setToken(data.token);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: (e as Error)?.message || "google_error" };
+    return { ok: false, error: "login_threw · " + ((e as Error)?.message || String(e)) };
   }
 }
 
