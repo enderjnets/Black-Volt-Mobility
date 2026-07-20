@@ -65,9 +65,10 @@ export function SignInModal({
       void registerFcm();
       onSignedIn("google");
     } else {
-      // Surface the real reason (plugin error / backend detail) so native login
-      // failures are diagnosable on-device instead of a generic message.
-      setErr(r.error ? `Google: ${r.error}` : t("auth.googleFailed"));
+      // Customer-facing: a friendly message. Full technical detail (plugin error /
+      // backend reason) goes to the console/logcat for on-device debugging.
+      if (r.error) console.error("[native-google] login failed:", r.error);
+      setErr(t("auth.googleFailed"));
       setBusy(false);
     }
   };
