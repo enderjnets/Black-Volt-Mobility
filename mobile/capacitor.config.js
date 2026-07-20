@@ -31,6 +31,9 @@ const config = {
   },
   android: {
     allowMixedContent: false,
+    // Dark WebView background so no white shows at the edges / on overscroll
+    // before or around the (already-dark) page.
+    backgroundColor: '#0A0A0F',
     // Lets the site detect the native app (belt-and-braces with
     // Capacitor.isNativePlatform()).
     appendUserAgent: 'BlackVoltApp',
@@ -41,6 +44,12 @@ const config = {
       launchAutoHide: true,
       backgroundColor: '#0A0A0F',
       showSpinner: false,
+    },
+    StatusBar: {
+      // Solid dark status bar with light icons, not overlaying the WebView.
+      style: 'DARK',
+      backgroundColor: '#0A0A0F',
+      overlaysWebView: false,
     },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],
