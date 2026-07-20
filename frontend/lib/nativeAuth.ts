@@ -35,10 +35,11 @@ export async function nativeGoogleSignIn(
   if (!sl || !WEB_CLIENT_ID) return { ok: false, error: "native_unavailable" };
   try {
     await ensureInit();
-    const res = await sl.login({
-      provider: "google",
-      options: { scopes: ["email", "profile"] },
-    });
+    // No `scopes` here on purpose: requesting extra OAuth scopes forces a MainActivity
+    // modification in @capgo/capacitor-social-login. The basic Google login already
+    // returns an ID token carrying email / email_verified / name / sub — all the
+    // backend needs — so we keep the default (no scopes).
+    const res = await sl.login({ provider: "google" });
     const idToken = res?.result?.idToken;
     if (!idToken) return { ok: false, error: "no_id_token" };
 
