@@ -62,7 +62,9 @@ captures/
 .cxx/
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+# Keep the Firebase config out of git: it carries a client API key and is only
+# needed on the local build machine (web deploy on the VPS never uses it).
+google-services.json
 
 # Freeline
 freeline.py
