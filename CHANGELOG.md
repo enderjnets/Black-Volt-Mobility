@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.83.0 — 2026-07-20 — Android app: native Google sign-in + FCM push
+
+Fase C for Android. Wires the native capabilities the backend was already armed for.
+All new code is **guarded by `isNativeApp()` → a complete no-op on the web** (the
+fetch interceptor is never even installed off-native), and ships through the normal
+web deploy because the native app loads the live site.
+
+- **Native Google Sign-In** — inside the Android app the sign-in modal now uses the
+  phone's Google account picker (`@capgo/capacitor-social-login`) instead of the web
+  GIS button. It obtains a Google ID token, exchanges it at `POST /auth/login/google`
+  with `X-BV-Native: 1`, and stores the returned session token.
+- **Bearer + native header interceptor** — `lib/nativeFetch.ts` wraps `window.fetch`
+  once (native only) to add `Authorization: Bearer <token>` and `X-BV-Native: 1` to
+  same-origin `/api` calls; the token is persisted via `@capacitor/preferences`.
+- **FCM push** — `lib/nativePush.ts` requests the notification permission, registers
+  the device with FCM (`@capacitor/push-notifications`) and mirrors the token to
+  `POST /push/subscribe {platform:"fcm"}`, so ride updates and driver messages arrive
+  even when the app is closed.
+- `mobile/` — added `@capgo/capacitor-social-login`, `@capacitor/push-notifications`,
+  `@capacitor/preferences` and `cap sync`'d.
+
 ## Mobile (Android) — 2026-07-18 — Capacitor shell: buildable native Android app
 
 Fase B for Android. A Capacitor wrapper that loads the live site as a native app;

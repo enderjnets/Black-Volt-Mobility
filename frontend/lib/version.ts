@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.82.0";
+export const CURRENT_VERSION = "0.83.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.83.0",
+    date: "2026-07-20",
+    title: "Sign in and get ride alerts in the Android app",
+    changes: [
+      "In the Black Volt Android app you can now sign in with your Google account using the phone's native account picker — one tap, no typing.",
+      "Once you're signed in, the app registers for push notifications, so ride updates and driver messages reach you even when the app is closed.",
+    ],
+  },
   {
     version: "0.82.0",
     date: "2026-07-17",

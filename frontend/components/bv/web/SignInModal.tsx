@@ -7,6 +7,9 @@ import { GoogleG } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import { loginGoogle } from "@/lib/auth";
 import { getRef } from "@/lib/referral";
+import { isNativeApp } from "@/lib/native";
+import { nativeGoogleSignIn } from "@/lib/nativeAuth";
+import { registerFcm } from "@/lib/nativePush";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 
 export interface BvUser {
@@ -47,6 +50,21 @@ export function SignInModal({
     const r = await loginGoogle(idToken, getRef());
     if (r.ok) onSignedIn("google");
     else {
+      setErr(t("auth.googleFailed"));
+      setBusy(false);
+    }
+  };
+
+  // Native app: use the OS Google account picker (SocialLogin plugin) instead of the
+  // web GIS button; on success also register the device for FCM push.
+  const onNativeGoogle = async () => {
+    setBusy(true);
+    setErr(null);
+    const r = await nativeGoogleSignIn(getRef());
+    if (r.ok) {
+      void registerFcm();
+      onSignedIn("google");
+    } else {
       setErr(t("auth.googleFailed"));
       setBusy(false);
     }
@@ -127,7 +145,7 @@ export function SignInModal({
           {t("auth.subtitle")}
         </p>
 
-        {GOOGLE_CLIENT_ID ? (
+        {!isNativeApp() && GOOGLE_CLIENT_ID ? (
           <div style={{ minHeight: 44 }}>
             {busy ? (
               <div style={{ fontSize: 14, color: "var(--silver)", padding: "12px 0" }}>{t("auth.googleSigningIn")}</div>
@@ -138,7 +156,7 @@ export function SignInModal({
           </div>
         ) : (
           <button
-            onClick={goDemo}
+            onClick={isNativeApp() ? onNativeGoogle : goDemo}
             disabled={busy}
             style={{
               width: "100%",

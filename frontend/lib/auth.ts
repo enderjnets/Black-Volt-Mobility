@@ -51,4 +51,7 @@ export async function loginGoogle(
 
 export async function logout(): Promise<void> {
   await jpost("/v1/auth/logout");
+  // Native app: also drop the stored bearer token (no-op on web).
+  const { clearToken } = await import("./nativeToken");
+  await clearToken();
 }

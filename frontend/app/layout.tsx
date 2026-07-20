@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Rajdhani } from "next/font/google";
 
 import { AnalyticsTracker } from "@/components/bv/AnalyticsTracker";
+import NativeBootstrap from "@/components/bv/NativeBootstrap";
 import { MetaPixel } from "@/components/bv/MetaPixel";
 import { LanguageProvider } from "@/lib/i18n";
 import "./globals.css";
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MetaPixel />
         <LanguageProvider>
           <AnalyticsTracker />
+          <NativeBootstrap />
           {children}
         </LanguageProvider>
       </body>
