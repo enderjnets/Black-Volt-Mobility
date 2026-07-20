@@ -61,6 +61,9 @@ services:
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
       AUTH_SECRET: ${AUTH_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Extra accepted Google Sign-In audiences (comma-separated), e.g. the
+      # native Android/iOS OAuth clients. Merged with GOOGLE_CLIENT_ID.
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
       GOOGLE_ADMIN_EMAILS: ${GOOGLE_ADMIN_EMAILS:-}
       # Maps (Phase 2)
       MAPS_SIMULATED: ${MAPS_SIMULATED:-true}
@@ -113,6 +116,11 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:support@blackvoltmobility.com}
+      # Native push (Android/iOS) via Firebase Cloud Messaging HTTP v1. Set both
+      # in .env (service account creds base64 + project id, never commit them).
+      # Empty → FCM sends are a silent no-op.
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_CREDENTIALS_JSON_B64: ${FCM_CREDENTIALS_JSON_B64:-}
       # Social media module (Phase "Social") — simulated by default; live needs
       # platform OAuth + a BitTrader render worker (see docs/setup-social-media.md).
       SOCIAL_SIMULATED: ${SOCIAL_SIMULATED:-true}
