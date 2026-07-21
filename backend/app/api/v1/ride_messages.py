@@ -18,7 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_auth, resolve_tenant_id
 from app.db.base import get_db
-from app.models import Client, NotificationKind, Ride, RideMessage, RideMessageSender
+from app.models import (
+    Client,
+    ClientNotificationKind,
+    NotificationKind,
+    Ride,
+    RideMessage,
+    RideMessageSender,
+)
 from app.services import auth, booking, notifications, push, ratelimit
 from app.services import ride_messages as ride_messages_svc
 
@@ -133,6 +140,19 @@ async def post_ride_message(
             data={"ride_id": ride.id, "client_name": name, "snippet": text[:80]},
         )
     else:
-        push.notify_client(ride.tenant_id, ride.client_id, event="ride_message", lang=ride.lang)
+        push.notify_client(
+            ride.tenant_id,
+            ride.client_id,
+            event="ride_message",
+            lang=ride.lang,
+            ride_id=ride.id,
+        )
+        await notifications.emit_client(
+            db,
+            client_id=ride.client_id,
+            tenant_id=ride.tenant_id,
+            kind=ClientNotificationKind.ride_message,
+            data={"ride_id": ride.id, "snippet": text[:80]},
+        )
 
     return _out(msg)

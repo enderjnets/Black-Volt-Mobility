@@ -17,6 +17,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.blog import router as blog_router
 from app.api.v1.calendar_link import router as calendar_link_router
 from app.api.v1.chat import router as chat_router
+from app.api.v1.client_notifications import router as client_notifications_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.discounts import router as discounts_router
 from app.api.v1.events import router as events_router
@@ -139,6 +140,7 @@ app.include_router(team_router, prefix="/api/v1", dependencies=[Depends(require_
 app.include_router(discounts_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(client_notifications_router, prefix="/api/v1")
 app.include_router(push_router, prefix="/api/v1")
 
 # Owner-uploaded brand assets (logo/photo). The directory must exist before the

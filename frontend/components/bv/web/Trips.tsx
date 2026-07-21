@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
 import { RideChatPanel } from "../RideChat";
@@ -326,6 +326,21 @@ export function Trips() {
     setRides(null);
     load();
   }, [load]);
+
+  // Deep-link from a push / the bell: `/trips?chat=<ride_id>` opens that ride's
+  // chat once the trips have loaded. Applied once, then the URL is cleaned so a
+  // refresh or back-navigation doesn't reopen it.
+  const chatParamApplied = useRef(false);
+  useEffect(() => {
+    if (chatParamApplied.current || !rides) return;
+    const c = new URLSearchParams(window.location.search).get("chat");
+    if (c) {
+      const id = Number(c);
+      if (rides.some((r) => r.id === id)) setChatRide(id);
+      window.history.replaceState(null, "", "/trips");
+    }
+    chatParamApplied.current = true;
+  }, [rides]);
 
   const handleCancel = async (ride: RideRow) => {
     const within24h =

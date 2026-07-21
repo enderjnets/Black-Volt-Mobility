@@ -6,6 +6,7 @@ from app.models.calendar_credential import CalendarCredential
 from app.models.chat import ChatConversation, ChatMessage, ChatRole, ChatStatus
 from app.models.client import Client
 from app.models.client_address import ClientAddress
+from app.models.client_notification import ClientNotification, ClientNotificationKind
 from app.models.discount import DiscountCampaign, DiscountCode
 from app.models.document_consent import DocumentConsent
 from app.models.driver_funnel import DriverFunnelLog, DriverGoal
@@ -62,6 +63,8 @@ __all__ = [
     "DriverGoal",
     "Event",
     "EventSuggestion",
+    "ClientNotification",
+    "ClientNotificationKind",
     "Notification",
     "NotificationKind",
     "PlatformStat",

@@ -134,6 +134,22 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 11, color: "var(--fg3)" }}>{r.time}</span>
             <StatusPill status={r.overdue ? "overdue" : r.status} />
+            {(r.unreadMessages ?? 0) > 0 && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--volt)",
+                }}
+                title={t("dash.ride.unreadMessages")}
+              >
+                <Icon name="message-circle" size={12} color="var(--volt)" />
+                {r.unreadMessages}
+              </span>
+            )}
             {r.flight && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--silver)" }}>
                 <Icon name="plane" size={11} color="var(--volt)" />
@@ -215,7 +231,25 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
         )}
       </div>
       <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--arctic)" }}>${r.fare}</div>
-      <StatusPill status={r.overdue ? "overdue" : r.status} />
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+        <StatusPill status={r.overdue ? "overdue" : r.status} />
+        {(r.unreadMessages ?? 0) > 0 && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+              fontSize: 11,
+              fontWeight: 700,
+              color: "var(--volt)",
+            }}
+            title={t("dash.ride.unreadMessages")}
+          >
+            <Icon name="message-circle" size={12} color="var(--volt)" />
+            {r.unreadMessages}
+          </span>
+        )}
+      </span>
       <div style={{ display: "flex", justifyContent: "center" }}>
         {canNavigate && (
           <button

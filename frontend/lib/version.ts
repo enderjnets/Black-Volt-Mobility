@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.84.0";
+export const CURRENT_VERSION = "0.85.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.85.0",
+    date: "2026-07-21",
+    title: "Never miss a message from your driver",
+    changes: [
+      "Passengers now have a notification bell in the top bar: the moment your driver sends a message about your ride, a badge appears — tap it and you're taken straight into that ride's chat to reply.",
+      "The bell also shows refund updates when a ride is cancelled, so you're always in the loop even if you don't have push notifications on.",
+      "Drivers now see an unread-message count on each ride in the dashboard, so a waiting passenger message never slips by.",
+      "Fixed the driver dashboard bell: opening it on a phone now shows the full list of notifications instead of only the 'turn on notifications' prompt.",
+    ],
+  },
   {
     version: "0.84.0",
     date: "2026-07-20",

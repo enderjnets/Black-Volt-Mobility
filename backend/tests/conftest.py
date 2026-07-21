@@ -43,7 +43,7 @@ def _reset_ride_data():
                 "platform_stats, driver_goals, social_posts, social_interactions, "
                 "social_accounts, document_consents, reviews, review_invites, events, "
                 "event_suggestions, chat_conversations, chat_messages, notifications, "
-                "push_subscriptions, clients "
+                "client_notifications, push_subscriptions, clients "
                 "RESTART IDENTITY CASCADE"
             )
         finally:

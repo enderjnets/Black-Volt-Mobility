@@ -13,6 +13,7 @@ export interface Ride {
   status: RideUiStatus;
   overdue?: boolean; // pickup time passed, still active — needs confirmation
   flight: string | null;
+  unreadMessages?: number; // unread passenger→driver chat messages on this ride
 }
 
 export const BV_RIDES: Ride[] = [

@@ -21,6 +21,7 @@ const ChatAssistant = dynamic(() => import("./Chat").then((m) => m.ChatAssistant
   ssr: false,
 });
 import { ClientTabBar } from "./ClientTabBar";
+import { ClientNotificationsBell } from "./NotificationsBell";
 import { SEO_ROUTES } from "@/lib/seoRoutes";
 import { ProfileGate } from "./ProfileGate";
 import { AgreementGate } from "../AgreementGate";
@@ -188,6 +189,7 @@ export function WebShell({ children }: { children: ReactNode }) {
               <LanguageSwitcher />
               <VersionButton />
             </span>
+            {user && <ClientNotificationsBell />}
             {user ? (
               <div style={{ position: "relative" }}>
                 <button

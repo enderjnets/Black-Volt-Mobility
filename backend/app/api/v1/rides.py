@@ -25,6 +25,7 @@ from app.api.deps import current_payload, require_auth, require_staff, resolve_t
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import (
+    ClientNotificationKind,
     NotificationKind,
     PaymentMethod,
     Ride,
@@ -891,11 +892,22 @@ async def refund_decision(
     await db.refresh(ride)
     # Passenger push about the refund outcome. Best-effort, never raises.
     if ride.client_id:
+        full = body.fee_pct <= 0
         push.notify_client(
             ride.tenant_id,
             ride.client_id,
-            event="refund_full" if body.fee_pct <= 0 else "refund_partial",
+            event="refund_full" if full else "refund_partial",
             lang=ride.lang,
+        )
+        refund_kind = (
+            ClientNotificationKind.refund_full if full else ClientNotificationKind.refund_partial
+        )
+        await notifications.emit_client(
+            db,
+            client_id=ride.client_id,
+            tenant_id=ride.tenant_id,
+            kind=refund_kind,
+            data={"ride_id": ride.id},
         )
     out = _ride_out(ride)
     out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))

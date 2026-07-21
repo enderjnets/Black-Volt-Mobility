@@ -112,8 +112,10 @@ def notify_client(
     event: str,
     lang: str | None,
     place: str | None = None,
+    ride_id: int | None = None,
 ) -> None:
-    """Push a ride event to a passenger's devices. Never raises."""
+    """Push a ride event to a passenger's devices. Never raises. When ``ride_id``
+    is given the tap opens that ride's chat directly (``/trips?chat=<id>``)."""
     if not tenant_id or not client_id or not get_settings().push_enabled:
         return
     variants = _CLIENT_COPY.get(event)
@@ -121,11 +123,8 @@ def notify_client(
         return
     title, body = variants[_lang(lang)]
     body = body.format(place=_place(place, lang))
-    _spawn(
-        deliver_to_client(
-            client_id, _payload(title, body, _CLIENT_TRIPS_URL, tag=f"client:{event}")
-        )
-    )
+    url = f"{_CLIENT_TRIPS_URL}?chat={ride_id}" if ride_id else _CLIENT_TRIPS_URL
+    _spawn(deliver_to_client(client_id, _payload(title, body, url, tag=f"client:{event}")))
 
 
 def _payload(title: str, body: str, url: str, *, tag: str) -> dict:

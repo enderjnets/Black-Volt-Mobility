@@ -1,55 +1,44 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+/* Passenger notifications bell (the client side of the per-ride messaging).
+   Mirrors the driver dashboard bell but is keyed to the signed-in passenger and
+   routes to their trips: a `ride_message` opens that ride's chat directly
+   (`/trips?chat=<id>`), refunds land on `/trips`. Mounted in the web header only
+   when a passenger is authenticated. Polls every minute while visible. */
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Icon } from "../Icon";
-import { PushOptIn } from "../PushOptIn";
 import { useI18n } from "@/lib/i18n";
 import {
-  listNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
-  type NotificationItem,
-  type NotificationKind,
-} from "@/lib/notifications";
+  listClientNotifications,
+  markAllClientNotificationsRead,
+  markClientNotificationRead,
+  type ClientNotificationItem,
+  type ClientNotificationKind,
+} from "@/lib/clientNotifications";
+import { Icon } from "../Icon";
+import { PushOptIn } from "../PushOptIn";
 
-const KIND_ICON: Record<NotificationKind, string> = {
-  ride_new: "navigation",
-  ride_cancelled: "alert-circle",
-  chat_escalated: "alert-circle",
-  chat_message: "message-circle",
+const KIND_ICON: Record<ClientNotificationKind, string> = {
   ride_message: "message-circle",
-  review_new: "star",
-  discount_redeemed: "tag",
-  subscription_payment_failed: "credit-card",
-};
-
-const KIND_HREF: Record<NotificationKind, string> = {
-  ride_new: "/dashboard/rides",
-  ride_cancelled: "/dashboard/rides",
-  chat_escalated: "/dashboard/inbox",
-  chat_message: "/dashboard/inbox",
-  ride_message: "/dashboard/rides",
-  review_new: "/dashboard/reviews",
-  discount_redeemed: "/dashboard/discounts",
-  subscription_payment_failed: "/dashboard/settings",
+  refund_full: "credit-card",
+  refund_partial: "credit-card",
 };
 
 const POLL_MS = 60_000;
 
-export function NotificationsBell() {
+export function ClientNotificationsBell() {
   const { t, locale } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);
-  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [items, setItems] = useState<ClientNotificationItem[]>([]);
   const [unread, setUnread] = useState(0);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const res = await listNotifications();
+      const res = await listClientNotifications();
       setItems(res.items);
       setUnread(res.unread);
     } catch {
@@ -57,8 +46,7 @@ export function NotificationsBell() {
     }
   }, []);
 
-  // Poll on mount + every minute while the tab is visible, and immediately when
-  // the tab becomes visible again (so the badge isn't up to a minute stale).
+  // Poll on mount + every minute while visible, and immediately on re-focus.
   useEffect(() => {
     refresh();
     const id = setInterval(() => {
@@ -75,7 +63,7 @@ export function NotificationsBell() {
     };
   }, [refresh]);
 
-  // Track viewport so the panel is a dropdown on desktop, a bottom sheet on mobile.
+  // Dropdown on desktop, bottom sheet on mobile.
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
     const on = () => setMobile(mq.matches);
@@ -102,29 +90,16 @@ export function NotificationsBell() {
   }, [open]);
 
   const describe = useCallback(
-    (n: NotificationItem): string => {
-      const d = n.data || {};
-      const s = (k: string) => (d[k] == null ? "" : String(d[k]));
-      const name = s("client_name") || t("dash.notif.someone");
+    (n: ClientNotificationItem): string => {
       switch (n.kind) {
-        case "ride_new":
-          return t("dash.notif.k.ride_new", { pickup: s("pickup") || "—", dropoff: s("dropoff") || "—" });
-        case "ride_cancelled":
-          return t("dash.notif.k.ride_cancelled", { pickup: s("pickup") || "—", dropoff: s("dropoff") || "—" });
-        case "chat_escalated":
-          return t("dash.notif.k.chat_escalated", { name });
-        case "chat_message":
-          return t("dash.notif.k.chat_message", { name });
         case "ride_message":
-          return t("dash.notif.k.ride_message", { name });
-        case "review_new":
-          return t("dash.notif.k.review_new", { rating: s("rating") || "5" });
-        case "discount_redeemed":
-          return t("dash.notif.k.discount_redeemed");
-        case "subscription_payment_failed":
-          return t("dash.notif.k.subscription_payment_failed");
+          return t("client.notif.k.ride_message");
+        case "refund_full":
+          return t("client.notif.k.refund_full");
+        case "refund_partial":
+          return t("client.notif.k.refund_partial");
         default:
-          return t("dash.notif.title");
+          return t("client.notif.title");
       }
     },
     [t],
@@ -134,7 +109,7 @@ export function NotificationsBell() {
     (iso: string): string => {
       const then = new Date(iso).getTime();
       if (Number.isNaN(then)) return "";
-      const diff = Math.round((then - Date.now()) / 1000); // negative = in the past
+      const diff = Math.round((then - Date.now()) / 1000); // negative = past
       const abs = Math.abs(diff);
       const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
       if (abs < 60) return rtf.format(Math.round(diff), "second");
@@ -151,22 +126,21 @@ export function NotificationsBell() {
     if (next) refresh();
   };
 
-  const onItem = (n: NotificationItem) => {
+  const onItem = (n: ClientNotificationItem) => {
     setOpen(false);
     if (!n.read) {
       setItems((xs) => xs.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
       setUnread((u) => Math.max(0, u - 1));
-      markNotificationRead(n.id).catch(() => {});
+      markClientNotificationRead(n.id).catch(() => {});
     }
-    const base = KIND_HREF[n.kind] ?? "/dashboard";
     const rideId = (n.data as { ride_id?: number } | undefined)?.ride_id;
-    router.push(n.kind === "ride_message" && rideId ? `${base}?open=${rideId}` : base);
+    router.push(n.kind === "ride_message" && rideId ? `/trips?chat=${rideId}` : "/trips");
   };
 
   const onMarkAll = () => {
     setItems((xs) => xs.map((x) => ({ ...x, read: true })));
     setUnread(0);
-    markAllNotificationsRead().catch(() => {});
+    markAllClientNotificationsRead().catch(() => {});
   };
 
   const badge = unread > 9 ? "9+" : String(unread);
@@ -182,31 +156,47 @@ export function NotificationsBell() {
           borderBottom: "1px solid var(--line)",
         }}
       >
-        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--arctic)", fontFamily: "var(--font-sans)" }}>
-          {t("dash.notif.title")}
+        <span
+          style={{
+            fontFamily: "var(--font-display)",
+            fontWeight: 700,
+            fontSize: 14,
+            color: "var(--arctic)",
+          }}
+        >
+          {t("client.notif.title")}
         </span>
-        {items.some((n) => !n.read) && (
+        {items.length > 0 && (
           <button
             onClick={onMarkAll}
             style={{
-              background: "none",
+              background: "transparent",
               border: "none",
-              cursor: "pointer",
+              color: "var(--volt)",
               fontSize: 12,
               fontWeight: 600,
-              color: "var(--volt)",
+              cursor: "pointer",
               fontFamily: "var(--font-sans)",
-              padding: 2,
             }}
           >
-            {t("dash.notif.markAll")}
+            {t("client.notif.markAll")}
           </button>
         )}
       </div>
-      <div style={{ overflowY: "auto", minHeight: mobile ? 220 : 140, maxHeight: mobile ? "60vh" : 320 }}>
+      {/* A definite min/max height so the list never collapses to 0 inside the
+          content-sized mobile sheet (a flex:1 scroll child would). */}
+      <div
+        style={{
+          overflowY: "auto",
+          minHeight: mobile ? 220 : 140,
+          maxHeight: mobile ? "60vh" : 320,
+        }}
+      >
         {items.length === 0 ? (
-          <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--fg3)", fontSize: 13 }}>
-            {t("dash.notif.empty")}
+          <div
+            style={{ padding: "28px 16px", textAlign: "center", color: "var(--fg3)", fontSize: 13 }}
+          >
+            {t("client.notif.empty")}
           </div>
         ) : (
           items.map((n) => (
@@ -214,35 +204,30 @@ export function NotificationsBell() {
               key={n.id}
               onClick={() => onItem(n)}
               style={{
+                width: "100%",
                 display: "flex",
                 alignItems: "flex-start",
-                gap: 11,
-                width: "100%",
-                textAlign: "left",
-                padding: "12px 16px",
+                gap: 10,
+                padding: "11px 16px",
+                background: n.read ? "transparent" : "var(--volt-bg)",
                 border: "none",
                 borderBottom: "1px solid var(--line)",
+                textAlign: "left",
                 cursor: "pointer",
-                background: n.read ? "transparent" : "var(--volt-bg)",
-                fontFamily: "var(--font-sans)",
               }}
             >
-              <span style={{ flexShrink: 0, marginTop: 1 }}>
-                <Icon name={KIND_ICON[n.kind] ?? "bell"} size={17} color="var(--volt)" />
+              <span style={{ flexShrink: 0, marginTop: 2 }}>
+                <Icon name={KIND_ICON[n.kind] ?? "bell"} size={16} color="var(--volt)" />
               </span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span
-                  style={{
-                    display: "block",
-                    fontSize: 13,
-                    fontWeight: n.read ? 500 : 600,
-                    color: "var(--arctic)",
-                    lineHeight: 1.4,
-                  }}
+                  style={{ display: "block", fontSize: 13, color: "var(--arctic)", lineHeight: 1.4 }}
                 >
                   {describe(n)}
                 </span>
-                <span style={{ display: "block", fontSize: 11, color: "var(--fg3)", marginTop: 2 }}>
+                <span
+                  style={{ display: "block", fontSize: 11, color: "var(--fg3)", marginTop: 2 }}
+                >
                   {rel(n.created_at)}
                 </span>
               </span>
@@ -267,19 +252,20 @@ export function NotificationsBell() {
   );
 
   return (
-    <div ref={wrapRef} style={{ position: "relative", display: "flex" }}>
+    <div ref={wrapRef} style={{ position: "relative" }}>
       <button
         onClick={toggle}
-        aria-label={t("dash.notif.title")}
-        aria-expanded={open}
+        aria-label={t("client.notif.title")}
         style={{
           position: "relative",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: 2,
+          width: 38,
+          height: 38,
           display: "flex",
           alignItems: "center",
+          justifyContent: "center",
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
         }}
       >
         <Icon name="bell" size={19} color={open ? "var(--arctic)" : "var(--silver)"} />
@@ -292,14 +278,14 @@ export function NotificationsBell() {
               minWidth: 16,
               height: 16,
               padding: "0 4px",
-              borderRadius: 8,
+              borderRadius: 99,
               background: "var(--volt)",
               color: "var(--void)",
               fontSize: 10,
               fontWeight: 700,
-              lineHeight: "16px",
-              textAlign: "center",
-              boxShadow: "var(--shadow-volt-sm)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               fontFamily: "var(--font-sans)",
             }}
           >
@@ -327,7 +313,7 @@ export function NotificationsBell() {
               style={{
                 width: "100%",
                 background: "var(--obsidian)",
-                borderTop: "1px solid var(--volt-border)",
+                borderTop: "1px solid var(--line-strong)",
                 borderTopLeftRadius: 18,
                 borderTopRightRadius: 18,
                 paddingBottom: "env(safe-area-inset-bottom)",
@@ -335,7 +321,15 @@ export function NotificationsBell() {
                 overflow: "hidden",
               }}
             >
-              <div style={{ width: 38, height: 4, borderRadius: 99, background: "var(--line-strong)", margin: "10px auto 2px" }} />
+              <div
+                style={{
+                  width: 38,
+                  height: 4,
+                  borderRadius: 99,
+                  background: "var(--line-strong)",
+                  margin: "10px auto 2px",
+                }}
+              />
               {panel}
             </div>
           </div>

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.85.0 — 2026-07-21 — Passenger notification bell + clearer ride messaging + driver bell fix
+
+Closes the messaging gaps in the per-ride chat (v0.82.0): the passenger had no in-app
+surface for a driver's message, both sides' "send message" entry was buried, and the
+driver dashboard bell showed nothing but the push prompt on a phone.
+
+- **Passenger notification bell** — a bell now sits in the web header for signed-in
+  passengers, polling `/v1/client/notifications`. A driver's ride message records an
+  in-app notification (not only a push), so the passenger sees an unread badge with or
+  without push enabled. Tapping a message opens that ride's chat directly
+  (`/trips?chat=<id>`); cancellation refunds also appear.
+- **Backend** — new `client_notifications` table (migration `0048`) + `ClientNotification`
+  model, `notifications.emit_client()` (best-effort, per-client prune, no double-push),
+  and `client/notifications` GET/read/read-all endpoints scoped to the session's client.
+  The driver→passenger message and refund fan-outs now also emit the in-app row.
+- **Push deep-link** — the passenger ride-message push now opens the exact ride chat.
+- **Driver ride list** — each ride row shows an unread-message count so a waiting
+  passenger message never slips by.
+- **Fix: driver dashboard bell** — the notifications list collapsed to 0 height inside
+  the mobile bottom sheet (a `flex:1` scroll child in a content-sized flex column), so
+  only the "turn on notifications" prompt showed. The list now has a definite height and
+  always renders.
+
 ## 0.84.0 — 2026-07-20 — Official Black Volt logo across icons + splash
 
 Adopt the official brand logo (electric-blue bolt / dark wordmark). Master files live
