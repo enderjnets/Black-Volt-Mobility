@@ -25,6 +25,16 @@ export const metadata: Metadata = {
       "Silent Power. Premium Arrival. Luxury electric chauffeur, airport & mountain transfers in Denver.",
     type: "website",
     siteName: "Black Volt Mobility",
+    images: [
+      { url: "/brand/og-image.png", width: 1200, height: 630, alt: "Black Volt Mobility" },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Black Volt Mobility — Premium Electric Rides",
+    description:
+      "Silent Power. Premium Arrival. Luxury electric chauffeur, airport & mountain transfers in Denver.",
+    images: ["/brand/og-image.png"],
   },
 };
 
