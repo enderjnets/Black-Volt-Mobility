@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.84.0 — 2026-07-20 — Official Black Volt logo across icons + splash
+
+Adopt the official brand logo (electric-blue bolt / dark wordmark). Master files live
+in `brand/`; web-servable copies in `frontend/public/brand/`.
+
+- **App icon (Android)** — regenerated all launcher densities + adaptive icon
+  (bolt on void `#0A0A0F`) via `@capacitor/assets` from `mobile/assets/`.
+- **Launch screen** — the dark wordmark ("BLACK VOLT / MOBILITY") centered on void,
+  all densities/orientations, light + dark.
+- **Web** — favicon/PWA icons (`icon-192`, `icon-512`, `maskable-512`,
+  `apple-touch-icon`) regenerated from the bolt; official wordmark + 1200×630
+  `og-image.png` served from `/brand/` for social previews.
+
 ## 0.83.0 — 2026-07-20 — Android app: native Google sign-in + FCM push
 
 Fase C for Android. Wires the native capabilities the backend was already armed for.

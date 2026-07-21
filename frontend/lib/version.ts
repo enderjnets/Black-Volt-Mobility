@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.83.0";
+export const CURRENT_VERSION = "0.84.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.84.0",
+    date: "2026-07-20",
+    title: "New official Black Volt logo",
+    changes: [
+      "Rolled out the official Black Volt Mobility logo — the electric-blue bolt — across the app icon, browser tab, install-to-home-screen icon, and the app's launch screen.",
+      "Same premium look everywhere: the dark wordmark for the splash and social previews, the bolt mark for icons.",
+    ],
+  },
   {
     version: "0.83.0",
     date: "2026-07-20",
