@@ -882,6 +882,7 @@ async def assign_ride(
         data={"ride_id": ride.id},
     )
     push.notify_staff(ride.assigned_tenant_id, kind="ride_assigned")
+    await db.refresh(ride)  # server-side onupdate columns (updated_at)
     return _ride_out(ride)
 
 
@@ -898,6 +899,7 @@ async def unassign_ride(
     except assignment.AssignError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.code) from e
     await db.commit()
+    await db.refresh(ride)  # server-side onupdate columns (updated_at)
     return _ride_out(ride)
 
 
@@ -922,6 +924,7 @@ async def patch_ride_payout(
     except assignment.AssignError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.code) from e
     await db.commit()
+    await db.refresh(ride)  # server-side onupdate columns (updated_at)
     return _ride_out(ride)
 
 

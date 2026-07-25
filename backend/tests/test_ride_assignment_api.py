@@ -386,3 +386,20 @@ def test_masking_also_applies_in_the_list_for_the_driver():
         if r["id"] == ride_id
     )
     assert not own_row.get("pii_masked")
+
+def test_payout_and_unassign_work_on_a_completed_ride():
+    """Regression: after the trip is finished, committing then serializing the ride has
+    to refresh the server-side updated_at — reading it lazily blows up under async, and
+    the chat window only looks at it once the ride is COMPLETED (found in prod)."""
+    owner_t, driver_t, email, ride_id, _ = _pair()
+    own = _staff_client(owner_t)
+    own.post(f"/api/v1/rides/{ride_id}/assign", json={"driver_email": email})
+    _set_status(ride_id, RideStatus.COMPLETED)
+
+    r = own.patch(f"/api/v1/rides/{ride_id}/payout", json={"paid": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["driver_payout_status"] == "paid"
+
+    r = own.delete(f"/api/v1/rides/{ride_id}/assign")
+    assert r.status_code == 200, r.text
+    assert r.json()["assigned"] is False
