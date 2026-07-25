@@ -24,6 +24,7 @@ Owner-approval workflow:
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 
 from fastapi import (
@@ -145,6 +146,31 @@ async def upload_reference_image(
         )
     rel_path, _ctype = saved
     return {"path": rel_path, "public_url": social._public_media_url(rel_path)}
+
+
+class RotateIn(BaseModel):
+    path: str = Field(min_length=1, max_length=400)
+    degrees: int = 90
+
+
+@router.post("/social/uploads/rotate")
+async def rotate_upload(
+    body: RotateIn,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_admin),
+):
+    """Rotate an uploaded reference image in place. Manual escape hatch for photos that
+    arrive visually sideways without an EXIF orientation flag (nothing can auto-detect
+    those). Tenant-scoped inside the service."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    rel = social.rotate_reference_image(tenant_id, body.path, degrees=body.degrees)
+    if rel is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="rotate_failed"
+        )
+    url = social._public_media_url(rel)
+    # Same path, new bytes — bust any cached <img> so the driver sees the rotation.
+    return {"path": rel, "public_url": f"{url}?v={int(time.time())}" if url else None}
 
 
 @router.post("/social/posts/generate-from-image", status_code=status.HTTP_201_CREATED)

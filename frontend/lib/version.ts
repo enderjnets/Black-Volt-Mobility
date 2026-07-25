@@ -5,9 +5,23 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.86.0";
+export const CURRENT_VERSION = "0.87.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.87.0",
+    date: "2026-07-25",
+    title: "Hand a ride to another driver — with a private chat and an agreed split",
+    changes: [
+      "Assign any ride to another driver on your team: it shows up in their dashboard while the customer, the payment and control stay yours.",
+      "Private chat with that driver on the ride, with one-tap updates (on my way, picked up, drop-off done…). Your passenger never sees it.",
+      "Agree what the driver keeps — 100% / 80% / 70% / 50% or any number — and see the breakdown after Square's fee and your tax reserve before you confirm.",
+      "Mark a driver as paid so you always know what you still owe.",
+      "Your customer's phone and address stop being visible to the assigned driver once the trip is over.",
+      "Rotate an uploaded photo in Social if it comes in sideways.",
+      "Screenshot scanning no longer fills in a flight without a flight number.",
+    ],
+  },
   {
     version: "0.86.0",
     date: "2026-07-24",

@@ -59,8 +59,10 @@ EXTRACT_PROMPT = (
     '- "name": the customer name (often the chat/contact title at the top).\n'
     '- "lang": EXACTLY "EN" or "ES" (the two-letter code only), guessed from the '
     "language the customer wrote in.\n"
-    '- "flight": the flight CODE only — airline IATA + number, e.g. "UA 2766" — '
-    "NOT the airline's full name.\n"
+    '- "flight": the flight CODE only — airline IATA letters + FLIGHT NUMBER, e.g. '
+    '"UA 2766". If the text names an airline but NO flight number ("United", "flying '
+    'United", "on Southwest"), "flight" is null and the airline goes in "notes" — '
+    "NEVER return an airline code or name without its number.\n"
     '- "date"/"time": keep them short and human (e.g. "Jun 14", "06:30"). 24h time.\n'
     '- "fare": numeric dollars only if explicitly stated, else null.\n'
     '- Denver International should be normalized to "Denver Intl (DEN)".'
@@ -181,7 +183,10 @@ def _coerce(obj: dict) -> dict:
         out["lang"] = ("ES" if s.startswith(("es", "sp")) else "EN") if s else None
     flight = out.get("flight")
     if flight is not None:
-        out["flight"] = str(flight).strip()[:40] or None
+        s = str(flight).strip()[:40]
+        # An airline with no number ("United", "UA") is not a flight — the form field
+        # expects a code the driver can track. Belt-and-braces for the prompt rule.
+        out["flight"] = s if any(ch.isdigit() for ch in s) else None
     return out
 
 

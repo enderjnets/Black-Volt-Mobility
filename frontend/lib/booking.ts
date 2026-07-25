@@ -221,6 +221,10 @@ export interface RideRow {
   unread_messages?: number;
   chat_open?: boolean;
   assigned_driver?: AssignedDriver;
+  // Hand-off: this ride was given to another driver on the team (it stays mine).
+  assigned?: boolean;
+  internal_unread?: number;
+  pii_masked?: boolean;
 }
 
 export type PaymentMethod = "cash" | "square" | "venmo" | "zelle" | "other";
@@ -229,6 +233,8 @@ export async function listRides(status?: string): Promise<RideRow[]> {
   const r = await jget<{ rides: RideRow[] }>(`/v1/rides${status ? `?status=${status}` : ""}`);
   return r.rides;
 }
+
+import type { EarningsSplit } from "./assignment";
 
 export interface RideDetail extends RideRow {
   stops: { text: string }[] | null;
@@ -261,6 +267,18 @@ export interface RideDetail extends RideRow {
     currency: string;
     simulated: boolean;
   } | null;
+  // Hand-off to another driver on the team. The ride still belongs to whoever booked it.
+  assigned?: boolean;
+  assigned_at?: string | null;
+  assign_note?: string | null;
+  driver_share_pct?: number | null;
+  driver_payout_status?: "unpaid" | "paid" | null;
+  driver_paid_at?: string | null;
+  internal_unread?: number;
+  earnings?: EarningsSplit | null;
+  // True when the customer's contact details were blanked: set for the assigned driver
+  // once the trip is over (the customer belongs to the ride's owner).
+  pii_masked?: boolean;
 }
 
 export async function getRideDetail(id: number): Promise<RideDetail> {

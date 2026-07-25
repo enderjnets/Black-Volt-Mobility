@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../Icon";
 import { RideChatThread } from "../RideChat";
+import { RideAssignment } from "./RideAssignment";
 import { Button } from "../ui";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -596,6 +597,19 @@ export function RideDetail({
           <RideChatThread rideId={ride.id} viewer="driver" height={260} onActivity={onChanged} />
         </div>
       )}
+
+      {/* Hand-off: who is driving it, what they keep, and the internal thread. */}
+      <RideAssignment
+        rideId={ride.id}
+        fare={ride.fare_total}
+        assigned={!!ride.assigned}
+        assignedDriverName={ride.assigned_driver?.name}
+        driverSharePct={ride.driver_share_pct}
+        payoutStatus={ride.driver_payout_status}
+        earnings={ride.earnings}
+        isOwner={!ride.pii_masked}
+        onChanged={onChanged}
+      />
 
       {/* Fare + payment */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: "var(--radius-md)", background: "var(--obsidian-3)", border: "1px solid var(--line-strong)", marginBottom: 16 }}>

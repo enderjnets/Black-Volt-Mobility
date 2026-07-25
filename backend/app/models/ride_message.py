@@ -23,6 +23,15 @@ class RideMessageSender(str, enum.Enum):
     driver = "driver"
 
 
+class RideMessageChannel(str, enum.Enum):
+    """Which conversation a message belongs to. ``client`` is the passenger thread
+    (the original one). ``internal`` is staff-only: the ride owner and the driver the
+    ride was assigned to — the passenger must NEVER see it."""
+
+    client = "client"
+    internal = "internal"
+
+
 class RideMessage(Base):
     __tablename__ = "ride_messages"
 
@@ -36,6 +45,13 @@ class RideMessage(Base):
     sender: Mapped[RideMessageSender] = mapped_column(
         pg_enum(RideMessageSender, name="ride_message_sender"), nullable=False
     )
+    # Default `client` keeps every existing row (and the passenger endpoints) intact.
+    channel: Mapped[RideMessageChannel] = mapped_column(
+        pg_enum(RideMessageChannel, name="ride_message_channel"),
+        nullable=False,
+        default=RideMessageChannel.client,
+        server_default=RideMessageChannel.client.value,
+    )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     # Stamped when the opposite party opens the thread; NULL = still unread by them.
     read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -43,4 +59,7 @@ class RideMessage(Base):
         DateTime(timezone=True), server_default=func.now(), index=True, nullable=False
     )
 
-    __table_args__ = (Index("ix_ride_messages_ride_id_id", "ride_id", "id"),)
+    __table_args__ = (
+        Index("ix_ride_messages_ride_id_id", "ride_id", "id"),
+        Index("ix_ride_messages_ride_channel_id", "ride_id", "channel", "id"),
+    )

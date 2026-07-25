@@ -21,7 +21,12 @@ from fastapi import (
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import current_payload, require_auth, require_staff, resolve_tenant_id
+from app.api.deps import (
+    current_payload,
+    require_auth,
+    require_staff,
+    resolve_tenant_id,
+)
 from app.config import get_settings
 from app.db.base import get_db
 from app.models import (
@@ -33,9 +38,11 @@ from app.models import (
     RideStatus,
 )
 from app.services import (
+    assignment,
     auth,
     booking,
     dashboard,
+    earnings,
     email,
     event_pricing,
     maps,
@@ -217,8 +224,69 @@ def _cancellation_fee_eligible(r: Ride) -> bool:
     return (r.scheduled_at - r.cancelled_at) < _CANCELLATION_FEE_WINDOW
 
 
-def _ride_out(r: Ride, *, unread_messages: int = 0) -> dict:
-    return {
+def _mask_tail(value: str | None, keep: int = 0) -> str | None:
+    """Hide a contact detail, leaving nothing useful. `keep` shows the last N chars so
+    the driver can still recognise a row (e.g. a phone's last 2 digits)."""
+    if not value:
+        return value
+    tail = value[-keep:] if keep and len(value) > keep else ""
+    return ("••• " + tail).strip() if tail else "•••"
+
+
+def _mask_address(value: str | None) -> str | None:
+    """Drop the street line, keep the city/state tail so history stays meaningful."""
+    if not value:
+        return value
+    parts = [p.strip() for p in value.split(",")]
+    return ", ".join(parts[1:]) if len(parts) > 2 else "•••"
+
+
+# A ride handed to another driver still belongs to whoever booked it: the customer is
+# the OWNER's. The assigned driver needs the contact details to run the trip — not to
+# keep them once it is over, so they are masked as soon as the ride is finished.
+_PII_OPEN_STATUSES = (
+    RideStatus.REQUESTED,
+    RideStatus.QUOTED,
+    RideStatus.CONFIRMED,
+    RideStatus.ASSIGNED,
+    RideStatus.EN_ROUTE,
+)
+
+
+def _should_mask_pii(r: Ride, tenant_id: int) -> bool:
+    if r.tenant_id == tenant_id:  # the owner always sees everything
+        return False
+    if r.assigned_tenant_id != tenant_id:
+        return False
+    return r.status not in _PII_OPEN_STATUSES
+
+
+def _mask_pii_fields(d: dict) -> dict:
+    """Blank the customer's contact details in an already-serialized ride."""
+    d["passenger_phone"] = _mask_tail(d.get("passenger_phone"), keep=2)
+    d["client_phone"] = _mask_tail(d.get("client_phone"), keep=2)
+    d["pickup"] = _mask_address(d.get("pickup"))
+    d["dropoff"] = _mask_address(d.get("dropoff"))
+    d["notes"] = None
+    d["stops"] = []
+    # The ride DETAIL also carries the client record (dashboard.ride_detail_extra):
+    # name stays so the driver can recognise their own history, contact details do not.
+    client = d.get("client")
+    if isinstance(client, dict):
+        d["client"] = {
+            **client,
+            "phone": _mask_tail(client.get("phone"), keep=2),
+            "email": None,
+            "preferences": None,
+        }
+    d["pii_masked"] = True
+    return d
+
+
+def _ride_out(
+    r: Ride, *, unread_messages: int = 0, internal_unread: int = 0, mask_pii: bool = False
+) -> dict:
+    out = {
         "id": r.id,
         "status": r.status.value if isinstance(r.status, RideStatus) else r.status,
         "client_id": r.client_id,
@@ -261,7 +329,19 @@ def _ride_out(r: Ride, *, unread_messages: int = 0) -> dict:
         "chat_open": booking.chat_window_open(r),
         "unread_messages": unread_messages,
         "created_at": r.created_at.isoformat() if r.created_at else None,
+        # Hand-off state. `assigned_tenant_id` is intentionally NOT exposed (internal
+        # id); the dashboard identifies the driver by the email that took it.
+        "assigned": r.assigned_tenant_id is not None,
+        "assigned_at": r.assigned_at.isoformat() if r.assigned_at else None,
+        "assign_note": r.assign_note,
+        "driver_share_pct": r.driver_share_pct,
+        "driver_payout_status": r.driver_payout_status,
+        "driver_paid_at": r.driver_paid_at.isoformat() if r.driver_paid_at else None,
+        "internal_unread": internal_unread,
     }
+    if mask_pii:
+        _mask_pii_fields(out)
+    return out
 
 
 def _rate_out(rc) -> dict:
@@ -522,9 +602,20 @@ async def list_rides(
     unread = await ride_messages_svc.unread_counts(
         db, ride_ids=[r.id for r in rides], reader_side=reader_side
     )
+    internal_unread = (
+        {}
+        if is_passenger
+        else await ride_messages_svc.internal_unread_counts(
+            db, ride_ids=[r.id for r in rides], reader_tenant_id=tenant_id
+        )
+    )
     out = []
     for r in rides:
-        d = _ride_out(r, unread_messages=unread.get(r.id, 0))
+        d = _ride_out(
+            r,
+            unread_messages=unread.get(r.id, 0),
+            internal_unread=internal_unread.get(r.id, 0),
+        )
         nm, ph = names.get(r.client_id, (None, None)) if r.client_id else (None, None)
         d["client_name"] = nm or r.passenger_name
         d["client_phone"] = ph or r.passenger_phone
@@ -536,8 +627,20 @@ async def list_rides(
         did = r.assigned_tenant_id or r.tenant_id
         if did and drivers.get(did) and drivers[did].get("phone"):
             d["assigned_driver"] = drivers[did]
+        if not is_passenger and _should_mask_pii(r, tenant_id):
+            _mask_pii_fields(d)
         out.append(d)
     return {"rides": out}
+
+
+@router.get("/rides/assignable-drivers")
+async def get_assignable_drivers(
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Team drivers a ride can be handed to (own workspace provisioned, not me)."""
+    rows = await assignment.assignable_drivers(db, tenant_id=await resolve_tenant_id(db, payload))
+    return [{"email": u.email, "name": u.name or u.email.split("@")[0]} for u in rows]
 
 
 @router.get("/rides/{ride_id}")
@@ -565,13 +668,36 @@ async def get_ride(
     unread = await ride_messages_svc.unread_counts(
         db, ride_ids=[ride.id], reader_side=reader_side
     )
-    out = _ride_out(ride, unread_messages=unread.get(ride.id, 0))
+    is_staff = payload.get("role") != auth.ROLE_PASSENGER
+    internal_unread = 0
+    if is_staff:
+        internal_unread = (
+            await ride_messages_svc.internal_unread_counts(
+                db, ride_ids=[ride.id], reader_tenant_id=tenant_id
+            )
+        ).get(ride.id, 0)
+    out = _ride_out(
+        ride, unread_messages=unread.get(ride.id, 0), internal_unread=internal_unread
+    )
     out.update(await dashboard.ride_detail_extra(db, tenant_id=tenant_id, ride=ride))
     did = ride.assigned_tenant_id or ride.tenant_id
     if did:
         drivers = await dashboard.assigned_drivers(db, ids=[did])
         if drivers.get(did) and drivers[did].get("phone"):
             out["assigned_driver"] = drivers[did]
+    # The owner sees everything; a driver the ride was handed to loses the customer's
+    # contact details once the trip is over.
+    if is_staff and _should_mask_pii(ride, tenant_id):
+        _mask_pii_fields(out)
+    if is_staff and ride.assigned_tenant_id is not None:
+        out["earnings"] = await assignment.split_for(db, ride)
+        # Only the owner decides/settles the split; the driver just sees their cut.
+        if not assignment.is_owner(ride, tenant_id) and out["earnings"]:
+            out["earnings"] = {
+                k: v
+                for k, v in out["earnings"].items()
+                if k in ("driver_amount", "driver_share_pct", "payout_status", "paid_at")
+            }
     return out
 
 
@@ -700,6 +826,123 @@ async def delete_ride(
         )
     await booking.delete_ride(db, ride=ride)
     return None
+
+
+class AssignIn(BaseModel):
+    driver_email: str = Field(min_length=3, max_length=254)
+    driver_share_pct: int | None = Field(default=None, ge=0, le=100)
+    note: str | None = Field(default=None, max_length=400)
+
+
+class PayoutIn(BaseModel):
+    driver_share_pct: int | None = Field(default=None, ge=0, le=100)
+    paid: bool | None = None
+
+
+async def _owned_ride(db: AsyncSession, payload: dict, ride_id: int):
+    """Fetch a ride the caller OWNS (assignment/payout are owner-only powers)."""
+    tenant_id = await resolve_tenant_id(db, payload)
+    ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
+    if ride is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+    if not assignment.can_manage(ride, tenant_id):
+        # Visible because it was assigned to me, but not mine to re-assign or re-price.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not_ride_owner")
+    return tenant_id, ride
+
+
+@router.post("/rides/{ride_id}/assign")
+async def assign_ride(
+    ride_id: int,
+    body: AssignIn,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Hand the ride to another driver on the team. The ride stays MINE (customer,
+    money, history); the driver gets it in their dashboard plus the internal thread."""
+    tenant_id, ride = await _owned_ride(db, payload, ride_id)
+    try:
+        await assignment.assign(
+            db,
+            ride,
+            owner_tenant_id=tenant_id,
+            driver_email=body.driver_email,
+            driver_share_pct=body.driver_share_pct,
+            note=body.note,
+            by_email=payload.get("sub"),
+        )
+    except assignment.AssignError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.code) from e
+    await ride_messages_svc.post_assignment_note(db, ride=ride, note=body.note)
+    await db.commit()
+    await notifications.emit(
+        db,
+        tenant_id=ride.assigned_tenant_id,
+        kind=NotificationKind.ride_assigned,
+        data={"ride_id": ride.id},
+    )
+    push.notify_staff(ride.assigned_tenant_id, kind="ride_assigned")
+    return _ride_out(ride)
+
+
+@router.delete("/rides/{ride_id}/assign")
+async def unassign_ride(
+    ride_id: int,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Take the ride back. The internal thread is kept as a record."""
+    tenant_id, ride = await _owned_ride(db, payload, ride_id)
+    try:
+        await assignment.unassign(db, ride, owner_tenant_id=tenant_id)
+    except assignment.AssignError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.code) from e
+    await db.commit()
+    return _ride_out(ride)
+
+
+@router.patch("/rides/{ride_id}/payout")
+async def patch_ride_payout(
+    ride_id: int,
+    body: PayoutIn,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """Adjust the driver's share, or mark what I already handed over. Bookkeeping
+    only — this app never moves money."""
+    tenant_id, ride = await _owned_ride(db, payload, ride_id)
+    try:
+        await assignment.set_payout(
+            db,
+            ride,
+            owner_tenant_id=tenant_id,
+            driver_share_pct=body.driver_share_pct,
+            paid=body.paid,
+        )
+    except assignment.AssignError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.code) from e
+    await db.commit()
+    return _ride_out(ride)
+
+
+@router.get("/rides/{ride_id}/earnings-preview")
+async def earnings_preview(
+    ride_id: int,
+    driver_share_pct: int = Query(ge=0, le=100),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    """What the split WOULD be at this share — powers the live preview in the assign
+    dialog before anything is saved. Uses my current fee/tax config."""
+    tenant_id, ride = await _owned_ride(db, payload, ride_id)
+    fee_pct, fee_fixed, tax_pct, _ = await assignment._defaults(db, tenant_id=tenant_id)
+    return earnings.compute(
+        ride.fare_total,
+        fee_pct=fee_pct,
+        fee_fixed_cents=fee_fixed,
+        tax_pct=tax_pct,
+        driver_pct=driver_share_pct,
+    ).as_dict()
 
 
 @router.post("/rides/{ride_id}/preview-update")

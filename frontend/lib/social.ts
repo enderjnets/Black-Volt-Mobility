@@ -133,6 +133,15 @@ export async function uploadReferenceImage(file: File): Promise<UploadedRef> {
   return r.json();
 }
 
+// Rotate an already-uploaded reference image 90° clockwise (server-side, in place).
+// Manual fix for photos that arrive visually sideways with no EXIF flag to detect.
+export async function rotateReferenceImage(
+  path: string,
+  degrees = 90,
+): Promise<UploadedRef> {
+  return jsend<UploadedRef>("/v1/social/uploads/rotate", "POST", { path, degrees });
+}
+
 // Generate a whole post FROM a single image: the AI "sees" it, writes the post
 // around it, and the image is attached so the render is built around it.
 export async function generateFromImage(

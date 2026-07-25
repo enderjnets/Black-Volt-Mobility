@@ -76,6 +76,18 @@ class RateConfig(Base):
     # global (defined in code); only the prices are editable per driver.
     zone_prices: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Defaults for the ride hand-off split (snapshot onto the ride when assigning).
+    # Square's published US card rate; editable because the owner's real rate varies.
+    square_fee_pct: Mapped[float] = mapped_column(Float, default=2.9, server_default="2.9")
+    square_fee_fixed_cents: Mapped[int] = mapped_column(
+        Integer, default=30, server_default="30"
+    )
+    # Slice kept back for taxes, stays in the Black Volt account. 0 = don't reserve.
+    tax_reserve_pct: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    default_driver_share_pct: Mapped[int] = mapped_column(
+        Integer, default=80, server_default="80"
+    )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

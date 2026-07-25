@@ -26,6 +26,7 @@ class NotificationKind(str, enum.Enum):
     chat_escalated = "chat_escalated"
     chat_message = "chat_message"
     ride_message = "ride_message"
+    ride_assigned = "ride_assigned"
     review_new = "review_new"
     discount_redeemed = "discount_redeemed"
     subscription_payment_failed = "subscription_payment_failed"

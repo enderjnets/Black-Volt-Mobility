@@ -243,6 +243,70 @@ def _tiktok_safe_media(media_path: str | None) -> str | None:
         return media_path
 
 
+def _log_incoming(raw: bytes, ext: str) -> None:
+    """Record what the ORIGINAL upload looked like (dimensions + EXIF orientation).
+    Owner-reported rotations that are NOT an EXIF flag can only be diagnosed from the
+    incoming file, which we otherwise never keep. Best effort, never raises."""
+    if Image is None:
+        return
+    try:
+        with Image.open(io.BytesIO(raw)) as im:
+            w, h = im.size
+            logger.info(
+                "social upload in: %dx%d %s exif_orientation=%s mode=%s bytes=%d ext=%s",
+                w, h, "portrait" if h > w else "landscape",
+                _exif_orientation(im), im.mode, len(raw), ext,
+            )
+    except Exception:
+        pass
+
+
+# Rotating is a manual escape hatch: a photo can arrive visually sideways with NO EXIF
+# flag (already-rotated pixels from some other tool), which nothing can auto-detect.
+_ROTATE_DEGREES = (90, 180, 270)
+
+
+def rotate_reference_image(tenant_id: int, rel_path: str, *, degrees: int) -> str | None:
+    """Rotate an already-saved reference image in place by 90/180/270 degrees
+    (clockwise as the user sees it). Returns the rel path, or None if the path isn't a
+    valid image under THIS tenant's refs dir (tenant scoping + no path traversal) or
+    the rotation failed. Also drops the cached -tt916 variant so it regenerates."""
+    if Image is None or degrees not in _ROTATE_DEGREES:
+        return None
+    settings = get_settings()
+    rel_dir = _refs_rel_dir(tenant_id)
+    # Resolve both sides: a crafted rel_path must not escape the tenant's own dir.
+    abs_dir = os.path.realpath(os.path.join(settings.MEDIA_DIR, rel_dir))
+    abs_path = os.path.realpath(os.path.join(settings.MEDIA_DIR, rel_path))
+    if os.path.dirname(abs_path) != abs_dir or not os.path.isfile(abs_path):
+        return None
+    if os.path.splitext(abs_path)[1].lower().lstrip(".") not in _IMAGE_EXTS:
+        return None
+    try:
+        with Image.open(abs_path) as im:
+            im.load()
+            # PIL rotates counter-clockwise; negate so `degrees` reads as clockwise.
+            out = im.rotate(-degrees, expand=True)
+            if out.mode not in ("RGB", "L"):
+                out = out.convert("RGB")
+            tmp = abs_path + ".part"
+            if os.path.splitext(abs_path)[1].lower() == ".png":
+                out.save(tmp, format="PNG", optimize=True)
+            else:
+                out.save(tmp, format="JPEG", quality=88, optimize=True)
+        os.replace(tmp, abs_path)
+    except Exception as e:
+        logger.warning("rotate failed for %s: %s", rel_path, e)
+        with contextlib.suppress(Exception):
+            os.remove(abs_path + ".part")
+        return None
+    # The 9:16 variant was built from the old orientation — let it rebuild.
+    variant = os.path.join(settings.MEDIA_DIR, f"{os.path.splitext(rel_path)[0]}-tt916.jpg")
+    with contextlib.suppress(Exception):
+        os.remove(variant)
+    return rel_path
+
+
 def save_reference_image(tenant_id: int, *, raw: bytes) -> tuple[str, str] | None:
     """Validate + persist an uploaded reference image under the tenant's social/refs
     dir. Returns (rel_path, content_type) or None if the bytes aren't a supported
@@ -251,6 +315,7 @@ def save_reference_image(tenant_id: int, *, raw: bytes) -> tuple[str, str] | Non
     if sniffed is None:
         return None
     ext, ctype = sniffed
+    _log_incoming(raw, ext)
     resized = _downscale_for_social(raw, ext)
     if resized is not None:
         raw, ext, ctype = resized

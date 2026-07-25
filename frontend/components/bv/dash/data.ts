@@ -14,6 +14,8 @@ export interface Ride {
   overdue?: boolean; // pickup time passed, still active — needs confirmation
   flight: string | null;
   unreadMessages?: number; // unread passenger→driver chat messages on this ride
+  assigned?: boolean; // handed to another driver on the team (still my ride)
+  internalUnread?: number; // unread owner↔assigned-driver messages on this ride
 }
 
 export const BV_RIDES: Ride[] = [

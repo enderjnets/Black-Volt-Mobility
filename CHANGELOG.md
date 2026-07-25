@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.87.0 — 2026-07-25 — Ride hand-off: assign to another driver, private chat, agreed split
+
+The owner works rides they book, but sometimes another driver on the team should take
+one. The ride never changes owner: the customer, the money and control stay with whoever
+booked it — the assigned driver gets the work, a private thread, and their cut.
+
+- **Assignment reuses `Ride.assigned_tenant_id`** (already existed for discount hand-offs),
+  so cross-tenant visibility needed no query changes — `services/booking.py` already lists
+  on `or_(tenant_id, assigned_tenant_id)`. New `services/assignment.py` owns the rules:
+  only the ride's owner can assign, re-price or settle (`can_manage`); the assigned driver
+  can work the ride and use the internal thread (`can_view`). Endpoints:
+  `POST/DELETE /v1/rides/{id}/assign`, `PATCH /v1/rides/{id}/payout`,
+  `GET /v1/rides/{id}/earnings-preview`, `GET /v1/rides/assignable-drivers`.
+- **Money split in `services/earnings.py`** — gross − Square fee − optional tax reserve =
+  net, split by an agreed percentage (presets 100/80/70/50 plus any value). All integer
+  CENTS with the rounding residue to the owner, so `driver + owner == net` exactly and no
+  fraction of a cent leaks into a hand-settled payout. The fee is the tenant's configured
+  estimate (`RateConfig.square_fee_pct`/`square_fee_fixed_cents`) because Square's real fee
+  only exists once a payment settles; the tax reserve defaults to 0 so no existing number
+  changes silently. Percentages and fees are SNAPSHOT onto the ride at assign time, so a
+  later config change never rewrites a past ride's payout. The app computes and records —
+  it moves no money (`driver_payout_status` is bookkeeping).
+- **Internal channel** — `ride_messages.channel` (`client` | `internal`, default `client`
+  so every existing row and the passenger endpoints are untouched). `internal` is
+  owner↔assigned-driver only; the passenger endpoints are hard-coded to `client` and a
+  passenger hitting the internal route gets 403. Both sides are staff, so "mine" and unread
+  are resolved by TENANT, not by sender. Quick replies (EN+ES) for the things that always
+  need saying: on my way / at the pickup / picked up / en route / drop-off done / running
+  late / passenger not here / all good.
+- **Customer PII window** — the customer belongs to the ride's OWNER. The assigned driver
+  sees the phone, address and notes while the trip is live and loses them once it is
+  finished (`_should_mask_pii`); the owner always sees everything. Auditing this found a
+  leak the tests now cover: the ride DETAIL embeds the client record, which is masked too.
+- **Photo rotation escape hatch** (`POST /v1/social/uploads/rotate` + a ⟳ button on each
+  thumbnail). Verified in prod that the owner's photos arrive already landscape with NO
+  EXIF flag, so v0.86.0's EXIF fix — correct in itself — cannot help them; nothing can
+  auto-detect already-rotated pixels. The ingest now also logs the original's dimensions
+  and orientation so the real cause is diagnosable from the next upload.
+- **`flight` needs a number** — "United" or a bare "UA" is not a trackable flight, so it is
+  null now (prompt rule + a digit check in `_coerce` that does not depend on the model).
+- Tests: 810 backend (29 new — the money split incl. the owner's $95/80% example and
+  cent-exactness, assignment authority, the passenger-can-never-see-internal leak test,
+  the PII window, and route ordering). Migration 0049.
+
 ## 0.86.0 — 2026-07-24 — Whole-conversation screenshot extraction + EXIF-correct photo uploads
 
 Two accuracy bugs the owner hit in the dashboard: Smart reservation put a contact

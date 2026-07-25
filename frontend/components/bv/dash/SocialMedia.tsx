@@ -25,6 +25,7 @@ import {
   publishPost,
   rejectPost,
   renderPost,
+  rotateReferenceImage,
   sendReply,
   syncBufferChannels,
   updatePost,
@@ -121,6 +122,78 @@ function mediaUrl(path: string | null): string | null {
   // Real assets are stored as a rel path under the public /media mount.
   if (!path || path.startsWith("simulated://")) return null;
   return path.startsWith("/") ? path : `/media/${path}`;
+}
+
+// One uploaded-image thumbnail with its remove + rotate controls. A photo can arrive
+// visually sideways with no EXIF flag to detect, so rotating has to be manual.
+function RefThumb({
+  src: base,
+  alt,
+  bust,
+  busy,
+  onRotate,
+  onRemove,
+}: {
+  src: string;
+  alt: string;
+  bust?: number;
+  busy: boolean;
+  onRotate: () => void;
+  onRemove: () => void;
+}) {
+  const { t } = useI18n();
+  const src = bust ? `${base}${base.includes("?") ? "&" : "?"}v=${bust}` : base;
+  const btn: CSSProperties = {
+    position: "absolute",
+    width: 24,
+    height: 24,
+    display: "grid",
+    placeItems: "center",
+    borderRadius: 999,
+    border: "1px solid var(--line-strong)",
+    background: "rgba(10,10,15,0.85)",
+    color: "var(--fg3)",
+    cursor: busy ? "wait" : "pointer",
+    lineHeight: 0,
+  };
+  return (
+    <div style={{ position: "relative", width: 72, height: 72, flexShrink: 0 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        style={{
+          width: 72,
+          height: 72,
+          objectFit: "cover",
+          borderRadius: "var(--radius-md)",
+          border: "1px solid var(--line)",
+          background: "var(--void)",
+          display: "block",
+        }}
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={busy}
+        title={t("dash.social.refs.remove")}
+        aria-label={t("dash.social.refs.remove")}
+        style={{ ...btn, top: -6, right: -6 }}
+      >
+        <Icon name="x" size={13} />
+      </button>
+      <button
+        type="button"
+        onClick={onRotate}
+        disabled={busy}
+        title={t("dash.social.refs.rotate")}
+        aria-label={t("dash.social.refs.rotate")}
+        style={{ ...btn, bottom: -6, right: -6 }}
+      >
+        <Icon name="rotate-cw" size={13} />
+      </button>
+    </div>
+  );
 }
 
 function MediaPreview({ post }: { post: SocialPost }) {
@@ -291,6 +364,22 @@ export function SocialMedia() {
       return n;
     });
   const isBusy = (k: string) => busy.has(k);
+  // path → timestamp: the file is rewritten in place, so the <img> needs a cache-buster.
+  const [bust, setBust] = useState<Record<string, number>>({});
+
+  async function rotateRef(path: string) {
+    const k = `rot:${path}`;
+    if (isBusy(k)) return;
+    setBusyKey(k, true);
+    try {
+      await rotateReferenceImage(path, 90);
+      setBust((s) => ({ ...s, [path]: Date.now() }));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyKey(k, false);
+    }
+  }
 
   async function refresh() {
     try {
@@ -648,46 +737,15 @@ export function SocialMedia() {
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {refs.map((r, i) => (
-                  <div
+                  <RefThumb
                     key={r.path}
-                    style={{
-                      position: "relative",
-                      width: 64,
-                      height: 64,
-                      borderRadius: "var(--radius-md)",
-                      overflow: "hidden",
-                      border: "1px solid var(--line)",
-                      background: "var(--void)",
-                    }}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={r.public_url ?? `/media/${r.path}`}
-                      alt={`reference ${i + 1}`}
-                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    />
-                    <button
-                      onClick={() => setRefs((s) => s.filter((_, j) => j !== i))}
-                      title={t("dash.social.refs.remove")}
-                      style={{
-                        position: "absolute",
-                        top: 3,
-                        right: 3,
-                        width: 20,
-                        height: 20,
-                        borderRadius: "50%",
-                        border: "none",
-                        cursor: "pointer",
-                        background: "rgba(10,10,15,0.8)",
-                        color: "var(--arctic)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Icon name="x" size={12} color="currentColor" />
-                    </button>
-                  </div>
+                    src={r.public_url ?? `/media/${r.path}`}
+                    alt={`reference ${i + 1}`}
+                    bust={bust[r.path]}
+                    busy={isBusy(`rot:${r.path}`)}
+                    onRotate={() => rotateRef(r.path)}
+                    onRemove={() => setRefs((s) => s.filter((_, j) => j !== i))}
+                  />
                 ))}
                 {refs.length < MAX_REFS && (
                   <button
@@ -950,6 +1008,19 @@ function PostCard({
   const [imgList, setImgList] = useState<string[]>(post.reference_image_paths);
   const [imgBusy, setImgBusy] = useState(false);
   const imgInput = useRef<HTMLInputElement>(null);
+  // Rewritten in place server-side, so the <img> needs a per-path cache-buster.
+  const [imgBust, setImgBust] = useState<Record<string, number>>({});
+
+  async function rotateImg(p: string) {
+    if (imgBusy) return;
+    setImgBusy(true);
+    try {
+      await rotateReferenceImage(p, 90);
+      setImgBust((s) => ({ ...s, [p]: Date.now() }));
+    } finally {
+      setImgBusy(false);
+    }
+  }
   const anyBusy = ["render", "approve", "reject", "publish", "delete", "refs"].some((a) => isBusy(`${a}-${post.id}`));
   const rejectBusy = isBusy(`reject-${post.id}`);
   const refsBusy = isBusy(`refs-${post.id}`);
@@ -1092,47 +1163,15 @@ function PostCard({
               <span style={{ fontSize: 12, color: "var(--fg3)" }}>{t("dash.social.images.none")}</span>
             )}
             {imgList.map((p, i) => (
-              <div
+              <RefThumb
                 key={p}
-                style={{
-                  position: "relative",
-                  width: 64,
-                  height: 64,
-                  borderRadius: "var(--radius-md)",
-                  overflow: "hidden",
-                  border: "1px solid var(--line)",
-                  background: "var(--void)",
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={mediaUrl(p) ?? `/media/${p}`}
-                  alt={`image ${i + 1}`}
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                />
-                <button
-                  onClick={() => setImgList((s2) => s2.filter((_, j) => j !== i))}
-                  title={t("dash.social.refs.remove")}
-                  disabled={refsBusy}
-                  style={{
-                    position: "absolute",
-                    top: 3,
-                    right: 3,
-                    width: 20,
-                    height: 20,
-                    borderRadius: "50%",
-                    border: "none",
-                    cursor: refsBusy ? "default" : "pointer",
-                    background: "rgba(10,10,15,0.8)",
-                    color: "var(--arctic)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Icon name="x" size={12} color="currentColor" />
-                </button>
-              </div>
+                src={mediaUrl(p) ?? `/media/${p}`}
+                alt={`image ${i + 1}`}
+                bust={imgBust[p]}
+                busy={imgBusy}
+                onRotate={() => rotateImg(p)}
+                onRemove={() => setImgList((s2) => s2.filter((_, j) => j !== i))}
+              />
             ))}
             {imgList.length < MAX_REFS && (
               <button

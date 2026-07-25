@@ -150,6 +150,22 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
                 {r.unreadMessages}
               </span>
             )}
+            {r.assigned && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--silver)",
+                }}
+                title={t("dash.ride.assigned")}
+              >
+                <Icon name="users" size={12} color="var(--silver)" />
+                {(r.internalUnread ?? 0) > 0 ? r.internalUnread : ""}
+              </span>
+            )}
             {r.flight && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--silver)" }}>
                 <Icon name="plane" size={11} color="var(--volt)" />
@@ -249,6 +265,22 @@ export function RideRow({ r, onOpen }: { r: Ride; onOpen?: (rid: number) => void
             {r.unreadMessages}
           </span>
         )}
+            {r.assigned && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--silver)",
+                }}
+                title={t("dash.ride.assigned")}
+              >
+                <Icon name="users" size={12} color="var(--silver)" />
+                {(r.internalUnread ?? 0) > 0 ? r.internalUnread : ""}
+              </span>
+            )}
       </span>
       <div style={{ display: "flex", justifyContent: "center" }}>
         {canNavigate && (

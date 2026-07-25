@@ -89,6 +89,15 @@ def test_parse_json_raises_without_object():
         smart._parse_json("I cannot read this image, sorry.")
 
 
+def test_coerce_flight_needs_a_number():
+    """An airline without a flight number is not trackable — the field must be null
+    instead of showing "UA" / "United" as if it were a flight."""
+    assert smart._coerce({"flight": "United"})["flight"] is None
+    assert smart._coerce({"flight": "UA"})["flight"] is None
+    assert smart._coerce({"flight": "UA 2766"})["flight"] == "UA 2766"
+    assert smart._coerce({"flight": "  DL1234 "})["flight"] == "DL1234"
+
+
 def test_coerce_empty_is_all_null():
     out = smart._coerce({})
     assert set(out.keys()) == set(smart.RESERVATION_KEYS)

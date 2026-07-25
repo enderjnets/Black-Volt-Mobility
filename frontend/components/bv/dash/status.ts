@@ -49,6 +49,8 @@ export function apiToUiRide(r: RideRow): Ride {
     overdue: r.overdue,
     flight: r.flight_number || null,
     unreadMessages: r.unread_messages || 0,
+    assigned: !!r.assigned,
+    internalUnread: r.internal_unread || 0,
   };
 }
 

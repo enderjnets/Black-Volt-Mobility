@@ -124,6 +124,22 @@ class Ride(Base):
     assigned_tenant_id: Mapped[int | None] = mapped_column(
         ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Manual hand-off (owner assigns the ride to another driver on the team). The
+    # money split is SNAPSHOT here at assign time so later config changes never
+    # rewrite what a past ride owed. NULL share = never assigned manually.
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    assigned_by_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    assign_note: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    driver_share_pct: Mapped[int | None] = mapped_column(nullable=True)
+    square_fee_pct: Mapped[float | None] = mapped_column(nullable=True)
+    square_fee_fixed_cents: Mapped[int | None] = mapped_column(nullable=True)
+    tax_reserve_pct: Mapped[float | None] = mapped_column(nullable=True)
+    driver_payout_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="unpaid", server_default="unpaid"
+    )
+    driver_paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Square payment reference (Phase 3).
     payment_id: Mapped[str | None] = mapped_column(String(120), nullable=True)

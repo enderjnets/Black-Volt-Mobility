@@ -24,9 +24,10 @@ from app.models import (
     NotificationKind,
     Ride,
     RideMessage,
+    RideMessageChannel,
     RideMessageSender,
 )
-from app.services import auth, booking, notifications, push, ratelimit
+from app.services import assignment, auth, booking, notifications, push, ratelimit
 from app.services import ride_messages as ride_messages_svc
 
 router = APIRouter(tags=["ride-messages"])
@@ -156,3 +157,108 @@ async def post_ride_message(
         )
 
     return _out(msg)
+
+
+# ── internal channel: ride owner <-> assigned driver ──────────────────────────
+class InternalMessageOut(BaseModel):
+    id: int
+    body: str
+    mine: bool  # written by MY tenant (both sides are staff, so sender can't tell)
+    created_at: dt.datetime
+    read_at: dt.datetime | None = None
+
+
+class InternalThreadOut(BaseModel):
+    messages: list[InternalMessageOut]
+    unread: int = 0
+    can_write: bool = False
+
+
+async def _ride_for_internal(db: AsyncSession, payload: dict, ride_id: int) -> tuple[Ride, int]:
+    """Load a ride whose internal thread the caller may use: STAFF only, and only the
+    ride's owner or the driver it was assigned to. A passenger is never allowed here —
+    this thread is where the owner and driver talk about their trip."""
+    if payload.get("role") == auth.ROLE_PASSENGER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    tenant_id = await resolve_tenant_id(db, payload)
+    ride = await booking.get_ride(db, tenant_id=tenant_id, ride_id=ride_id)
+    if ride is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ride_not_found")
+    if not assignment.can_view(ride, tenant_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    return ride, tenant_id
+
+
+@router.get("/rides/{ride_id}/internal-messages", response_model=InternalThreadOut)
+async def list_internal_messages(
+    ride_id: int,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_auth),
+    after_id: int | None = Query(default=None, ge=0),
+) -> InternalThreadOut:
+    ride, tenant_id = await _ride_for_internal(db, payload, ride_id)
+    msgs = await ride_messages_svc.list_messages(
+        db,
+        ride_id=ride.id,
+        after_id=after_id,
+        channel=RideMessageChannel.internal,
+    )
+    await ride_messages_svc.mark_internal_read(db, ride_id=ride.id, reader_tenant_id=tenant_id)
+    return InternalThreadOut(
+        messages=[
+            InternalMessageOut(
+                id=m.id,
+                body=m.body,
+                mine=m.tenant_id == tenant_id,
+                created_at=m.created_at,
+                read_at=m.read_at,
+            )
+            for m in msgs
+        ],
+        unread=0,
+        # Once the ride is handed back there is nobody on the other end.
+        can_write=ride.assigned_tenant_id is not None,
+    )
+
+
+@router.post(
+    "/rides/{ride_id}/internal-messages",
+    response_model=InternalMessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_internal_message(
+    ride_id: int,
+    body: RideMessageIn,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_auth),
+) -> InternalMessageOut:
+    """Owner<->assigned-driver message about this ride. Same rate limits as the
+    passenger thread so a stuck client can't hammer it."""
+    ride, tenant_id = await _ride_for_internal(db, payload, ride_id)
+    if ride.assigned_tenant_id is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ride_not_assigned")
+    text = (body.body or "").strip()
+    if not text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty_message")
+    key = f"ridemsg:internal:{ride.id}:{tenant_id}"
+    if not ratelimit.allow(key + ":m", limit=10, window_seconds=60) or not ratelimit.allow(
+        key + ":h", limit=60, window_seconds=3600
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="chat_rate_limited"
+        )
+    msg = await ride_messages_svc.add_internal(
+        db, ride_id=ride.id, writer_tenant_id=tenant_id, body=text
+    )
+    # Ping the OTHER staff side: owner -> assigned driver, or driver -> owner.
+    other = ride.assigned_tenant_id if tenant_id == ride.tenant_id else ride.tenant_id
+    await notifications.emit(
+        db,
+        tenant_id=other,
+        kind=NotificationKind.ride_message,
+        data={"ride_id": ride.id, "internal": True, "snippet": text[:80]},
+    )
+    push.notify_staff(other, kind="ride_message")
+    return InternalMessageOut(
+        id=msg.id, body=msg.body, mine=True, created_at=msg.created_at, read_at=msg.read_at
+    )
