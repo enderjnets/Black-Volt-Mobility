@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextlib
 import hashlib
 import hmac
 import io
@@ -29,10 +30,11 @@ import time
 from datetime import UTC, datetime
 
 try:  # Pillow: normalize uploads so TikTok photo posts don't reject them.
-    from PIL import Image, ImageFilter
+    from PIL import Image, ImageFilter, ImageOps
 except ImportError:  # pragma: no cover - Pillow ships in requirements
     Image = None
     ImageFilter = None
+    ImageOps = None
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,10 +140,20 @@ _SOCIAL_MAX_LONG = 1920
 _SOCIAL_MAX_SHORT = 1080
 
 
+def _exif_orientation(im) -> int:
+    """EXIF orientation tag (0x0112), 1 when absent/unreadable. 1 means upright."""
+    try:
+        return int(im.getexif().get(0x0112, 1) or 1)
+    except Exception:
+        return 1
+
+
 def _downscale_for_social(raw: bytes, ext: str) -> tuple[bytes, str, str] | None:
-    """Downscale an oversized image to fit TikTok's 1920x1080 photo limit. Returns
-    (bytes, ext, content_type), or None to keep the original (already within limits,
-    animated gif, or Pillow unavailable / decode failure — best effort, never raises)."""
+    """Normalize an upload for social: apply the EXIF orientation (phone photos are
+    stored sideways with a rotate flag re-encoding would drop) and downscale to fit
+    TikTok's 1920x1080 photo limit. Returns (bytes, ext, content_type), or None to
+    keep the original (upright AND within limits, animated gif, or Pillow
+    unavailable / decode failure — best effort, never raises)."""
     if Image is None or ext == "gif":
         return None
     try:
@@ -149,12 +161,22 @@ def _downscale_for_social(raw: bytes, ext: str) -> tuple[bytes, str, str] | None
         im.load()
     except Exception:
         return None
+    rotated = _exif_orientation(im) != 1
+    if rotated and ImageOps is not None:
+        try:
+            im = ImageOps.exif_transpose(im)
+        except Exception:
+            rotated = False
     w, h = im.size
     long_edge, short_edge = max(w, h), min(w, h)
-    if long_edge <= _SOCIAL_MAX_LONG and short_edge <= _SOCIAL_MAX_SHORT:
+    oversized = long_edge > _SOCIAL_MAX_LONG or short_edge > _SOCIAL_MAX_SHORT
+    if not oversized and not rotated:
         return None
-    scale = min(_SOCIAL_MAX_LONG / long_edge, _SOCIAL_MAX_SHORT / short_edge)
-    im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+    # A rotated-but-small photo still gets re-encoded: the pixels are now upright, so
+    # the dropped orientation tag is the correct outcome, not a regression.
+    scale = min(_SOCIAL_MAX_LONG / long_edge, _SOCIAL_MAX_SHORT / short_edge, 1.0)
+    if scale < 1.0:
+        im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
     buf = io.BytesIO()
     if ext == "png" and im.mode in ("RGBA", "LA", "P"):
         im.save(buf, format="PNG", optimize=True)
@@ -192,6 +214,10 @@ def _tiktok_safe_media(media_path: str | None) -> str | None:
     try:
         im = Image.open(abs_src)
         im.load()
+        # Orient first: the aspect test below is meaningless on a sideways photo.
+        if _exif_orientation(im) != 1 and ImageOps is not None:
+            with contextlib.suppress(Exception):
+                im = ImageOps.exif_transpose(im)
         w, h = im.size
         if abs((w / h) - _TIKTOK_AR) <= _TIKTOK_AR_TOL:
             return media_path  # already ~9:16

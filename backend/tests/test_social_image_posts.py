@@ -198,8 +198,61 @@ def test_downscale_keeps_small_image_untouched():
 
     buf = io.BytesIO()
     _Img.new("RGB", (768, 1344), (0, 0, 0)).save(buf, format="PNG")
-    # Within limits → None means "use the original bytes unchanged".
+    # Within limits AND upright → None means "use the original bytes unchanged".
     assert S._downscale_for_social(buf.getvalue(), "png") is None
+
+
+def _exif_jpeg(w: int, h: int, orientation: int = 6) -> bytes:
+    """A JPEG carrying an EXIF orientation tag, like every phone camera produces.
+    orientation=6 means "rotate 90° CW to display" — the stored pixels are sideways."""
+    from PIL import Image as _Img
+
+    im = _Img.new("RGB", (w, h), (90, 120, 150))
+    exif = im.getexif()
+    exif[0x0112] = orientation
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", exif=exif)
+    return buf.getvalue()
+
+
+def _orientation_of(data: bytes) -> int:
+    from PIL import Image as _Img
+
+    return int(_Img.open(io.BytesIO(data)).getexif().get(0x0112, 1) or 1)
+
+
+def test_downscale_applies_exif_orientation_on_oversized():
+    """Phone photos are stored sideways with a rotate flag. Re-encoding dropped that
+    flag without rotating the pixels, so the uploaded photo published rotated."""
+    from PIL import Image as _Img
+
+    out = S._downscale_for_social(_exif_jpeg(3000, 2000), "jpg")
+    assert out is not None
+    data, ext, _ = out
+    assert ext == "jpg"
+    w, h = _Img.open(io.BytesIO(data)).size
+    assert h > w, "orientation=6 must land as portrait pixels, not landscape"
+    assert max(w, h) <= 1920 and min(w, h) <= 1080
+    assert _orientation_of(data) in (0, 1), "no stale rotate flag may survive"
+
+
+def test_downscale_reencodes_small_rotated_image():
+    """A rotated photo small enough to skip downscaling must STILL be re-encoded —
+    otherwise the sideways pixels + rotate flag travel on to TikTok/Instagram."""
+    from PIL import Image as _Img
+
+    out = S._downscale_for_social(_exif_jpeg(800, 600), "jpg")
+    assert out is not None, "rotated images must not pass through untouched"
+    data, _, _ = out
+    w, h = _Img.open(io.BytesIO(data)).size
+    assert (w, h) == (600, 800)
+    assert _orientation_of(data) in (0, 1)
+
+
+def test_downscale_keeps_upright_exif_image_untouched():
+    """orientation=1 (upright) within limits → still a pass-through: no needless
+    re-encode, no quality loss."""
+    assert S._downscale_for_social(_exif_jpeg(800, 600, orientation=1), "jpg") is None
 
 
 def _write_media(rel: str, size: tuple[int, int]) -> None:
@@ -228,6 +281,36 @@ def test_tiktok_safe_media_pads_non_9x16():
 def test_tiktok_safe_media_passes_9x16_through():
     rel = f"tenants/1/social/refs/tt-{uuid.uuid4().hex[:8]}.jpg"
     _write_media(rel, (1080, 1920))  # already 9:16
+    assert S._tiktok_safe_media(rel) == rel
+
+
+def test_save_reference_image_stores_upright_photo():
+    """End-to-end at the ingest chokepoint both upload endpoints share: what lands on
+    disk must be upright, so the preview and the published post look right."""
+    from PIL import Image as _Img
+
+    from app.config import get_settings
+
+    saved = S.save_reference_image(1, raw=_exif_jpeg(3000, 2000))
+    assert saved is not None
+    rel_path, ctype = saved
+    assert ctype == "image/jpeg"
+    with _Img.open(os.path.join(get_settings().MEDIA_DIR, rel_path)) as im:
+        w, h = im.size
+        assert h > w, "stored photo must be upright, not sideways"
+        assert int(im.getexif().get(0x0112, 1) or 1) in (0, 1)
+
+
+def test_tiktok_safe_media_orients_before_aspect_test():
+    """A sideways-stored 9:16 photo must be recognized as 9:16 (aspect measured after
+    applying the EXIF rotate flag), not padded as if it were landscape."""
+    from app.config import get_settings
+
+    rel = f"tenants/1/social/refs/tt-{uuid.uuid4().hex[:8]}.jpg"
+    abs_p = os.path.join(get_settings().MEDIA_DIR, rel)
+    os.makedirs(os.path.dirname(abs_p), exist_ok=True)
+    with open(abs_p, "wb") as fh:
+        fh.write(_exif_jpeg(1920, 1080))  # rotate-90 flag → displays as 1080x1920
     assert S._tiktok_safe_media(rel) == rel
 
 

@@ -1,4 +1,5 @@
 """Smart reservation extraction tests (SIMULATED — no vision/network calls)."""
+import json
 import os
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
@@ -17,6 +18,7 @@ get_settings.cache_clear()
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
+from app.services import llm as llm_mod  # noqa: E402
 from app.services import smart  # noqa: E402
 
 # 1×1 transparent PNG.
@@ -34,19 +36,35 @@ def _owner() -> TestClient:
     return c
 
 
-def _live(monkeypatch, mapping: dict[bytes, dict | None]):
-    """Switch the service to the live coding-VLM path with a per-image canned
-    result keyed by the raw image bytes (so tests drive grouping deterministically
-    without any network)."""
+def _live(monkeypatch, mapping: dict[bytes, str | None], step2: str | Exception = ""):
+    """Switch the service to the live two-step coding-VLM path without any network:
+    `mapping` gives each image's step-1 transcript keyed by its raw bytes (None =
+    that image failed), and `step2` is what the step-2 text call returns (or raises).
+    Returns the list of prompts step 2 was called with, so tests can assert every
+    transcript reached it."""
     s = get_settings()
     monkeypatch.setattr(s, "SMART_SIMULATED", False)
     monkeypatch.setattr(s, "SMART_VISION_API_KEY", "k")
     monkeypatch.setattr(s, "SMART_VISION_PROVIDER", "minimax_coding_vlm")
 
-    async def fake_one(media_type, raw, attempts=2):
+    async def fake_transcribe(media_type, raw, attempts=2):
         return mapping.get(raw)
 
-    monkeypatch.setattr(smart, "_vlm_one", fake_one)
+    monkeypatch.setattr(smart, "_vlm_transcribe_one", fake_transcribe)
+
+    seen: list[str] = []
+
+    async def fake_text(**kw):
+        seen.append(kw["prompt"])
+        if isinstance(step2, Exception):
+            raise step2
+        return step2
+
+    monkeypatch.setattr(llm_mod, "text_complete", fake_text)
+    monkeypatch.setattr(
+        llm_mod, "providers", lambda: [("m", "https://example.invalid", "k")]
+    )
+    return seen
 
 
 @pytest.mark.asyncio
@@ -98,92 +116,127 @@ async def test_extract_survives_vlm_exception(monkeypatch):
     assert out == []
 
 
-# ─── Grouping (live path, mocked per-image VLM) ────────────────────────────────
+# ─── Two-step pipeline (transcribe per image → extract with full context) ──────
+def _res(**kw) -> str:
+    """Step-2 style answer with one reservation object."""
+    return json.dumps({"reservations": [kw]})
+
+
 @pytest.mark.asyncio
-async def test_group_two_clients_split(monkeypatch):
+async def test_step2_sees_every_transcript(monkeypatch):
+    """The whole point of the two-step pipeline: ONE call carrying ALL transcripts,
+    so the model can tell which end of the trip a lone address belongs to."""
+    seen = _live(
+        monkeypatch,
+        {b"chat": "KIND: chat\nTEXT:\nTHEM: pick me up at DIA Friday 12:30",
+         b"card": "KIND: contact-card\nTEXT:\nAna Ruiz\n7373 Old Mill Trail, 80301"},
+        _res(name="Ana Ruiz", pickup="Denver Intl (DEN)", dropoff="7373 Old Mill Trail"),
+    )
+    out = await smart.extract_reservation([("image/png", b"chat"), ("image/png", b"card")])
+    assert len(seen) == 1, "step 2 must be a single call, not one per image"
+    assert "pick me up at DIA" in seen[0] and "7373 Old Mill Trail" in seen[0]
+    assert "Image 1 transcript" in seen[0] and "Image 2 transcript" in seen[0]
+    assert out[0]["pickup"] == "Denver Intl (DEN)"
+    assert out[0]["dropoff"] == "7373 Old Mill Trail"
+
+
+@pytest.mark.asyncio
+async def test_model_grouping_two_clients(monkeypatch):
+    """Grouping is the model's job now: two reservations come back as two."""
     _live(
         monkeypatch,
-        {
-            b"a": smart._coerce({"name": "Ana", "pickup": "Hotel A", "date": "Jun 14"}),
-            b"b": smart._coerce({"name": "Bob", "pickup": "Hotel B", "date": "Jun 15"}),
-        },
+        {b"a": "KIND: chat\nTITLE: Ana\nTEXT:\nhotel A Jun 14",
+         b"b": "KIND: chat\nTITLE: Bob\nTEXT:\nhotel B Jun 15"},
+        json.dumps({"reservations": [
+            {"name": "Ana", "pickup": "Hotel A", "date": "Jun 14"},
+            {"name": "Bob", "pickup": "Hotel B", "date": "Jun 15"},
+        ]}),
     )
     out = await smart.extract_reservation([("image/png", b"a"), ("image/png", b"b")])
-    assert len(out) == 2
     assert {r["name"] for r in out} == {"Ana", "Bob"}
 
 
 @pytest.mark.asyncio
-async def test_group_same_name_merges(monkeypatch):
-    _live(
+async def test_merge_flag_asks_for_one_and_collapses_extras(monkeypatch):
+    """merge=True must yield exactly one reservation even if step 2 returns two."""
+    seen = _live(
         monkeypatch,
-        {
-            b"1": smart._coerce({"name": "Ana", "pickup": "Hotel A"}),
-            b"2": smart._coerce({"name": "Ana", "date": "Jun 14", "time": "06:30"}),
-        },
-    )
-    out = await smart.extract_reservation([("image/png", b"1"), ("image/png", b"2")])
-    assert len(out) == 1
-    assert out[0]["name"] == "Ana"
-    assert out[0]["pickup"] == "Hotel A"
-    assert out[0]["time"] == "06:30"
-
-
-@pytest.mark.asyncio
-async def test_group_keyless_continuation_merges(monkeypatch):
-    """A follow-up bubble with no name/phone continues the most recent reservation."""
-    _live(
-        monkeypatch,
-        {
-            b"1": smart._coerce({"name": "Ana", "pickup": "Hotel A"}),
-            b"2": smart._coerce({"time": "07:15", "passengers": 3}),
-        },
-    )
-    out = await smart.extract_reservation([("image/png", b"1"), ("image/png", b"2")])
-    assert len(out) == 1
-    assert out[0]["name"] == "Ana"
-    assert out[0]["time"] == "07:15"
-    assert out[0]["passengers"] == 3
-
-
-@pytest.mark.asyncio
-async def test_group_same_phone_merges_despite_name_variation(monkeypatch):
-    _live(
-        monkeypatch,
-        {
-            b"1": smart._coerce({"name": "Ana", "phone": "+1 303 555 0100", "pickup": "Hotel A"}),
-            b"2": smart._coerce({"name": "Ana G.", "phone": "(303) 555-0100", "time": "06:30"}),
-        },
-    )
-    out = await smart.extract_reservation([("image/png", b"1"), ("image/png", b"2")])
-    assert len(out) == 1
-    assert out[0]["pickup"] == "Hotel A"
-    assert out[0]["time"] == "06:30"
-
-
-@pytest.mark.asyncio
-async def test_merge_flag_forces_single_reservation(monkeypatch):
-    _live(
-        monkeypatch,
-        {
-            b"a": smart._coerce({"name": "Ana", "pickup": "Hotel A"}),
-            b"b": smart._coerce({"name": "Bob", "dropoff": "Denver Intl (DEN)"}),
-        },
+        {b"a": "t1", b"b": "t2"},
+        json.dumps({"reservations": [
+            {"name": "Ana", "pickup": "Hotel A"},
+            {"name": "Ana R.", "dropoff": "Denver Intl (DEN)"},
+        ]}),
     )
     out = await smart.extract_reservation(
         [("image/png", b"a"), ("image/png", b"b")], merge=True
     )
+    assert "ONE single reservation" in seen[0]
     assert len(out) == 1
-    assert out[0]["name"] == "Bob"  # later overrides earlier
     assert out[0]["pickup"] == "Hotel A"
     assert out[0]["dropoff"] == "Denver Intl (DEN)"
+    assert out[0]["name"] == "Ana R."  # later overrides earlier
+
+
+@pytest.mark.asyncio
+async def test_failed_image_is_skipped_not_fatal(monkeypatch):
+    """One unreadable screenshot must not sink the batch — the rest still extract."""
+    seen = _live(
+        monkeypatch,
+        {b"ok": "KIND: chat\nTEXT:\nAna, DIA at 06:30", b"bad": None},
+        _res(name="Ana", time="06:30"),
+    )
+    out = await smart.extract_reservation([("image/png", b"bad"), ("image/png", b"ok")])
+    assert "Image 1 transcript" in seen[0]
+    assert "Image 2 transcript" not in seen[0]  # only the readable one made it
+    assert out[0]["name"] == "Ana"
 
 
 @pytest.mark.asyncio
 async def test_all_images_failed_returns_empty(monkeypatch):
-    _live(monkeypatch, {})  # every image → None
+    _live(monkeypatch, {}, _res(name="never"))  # every image → None
     out = await smart.extract_reservation([("image/png", b"x"), ("image/png", b"y")])
     assert out == []
+
+
+@pytest.mark.asyncio
+async def test_step2_failure_returns_empty(monkeypatch):
+    """Step 2 dying (network/provider) degrades to [] so the UI asks for manual entry."""
+    _live(monkeypatch, {b"x": "t"}, RuntimeError("provider down"))
+    out = await smart.extract_reservation([("image/png", b"x")])
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_step2_unparsable_returns_empty(monkeypatch):
+    _live(monkeypatch, {b"x": "t"}, "I could not read the screenshots, sorry.")
+    out = await smart.extract_reservation([("image/png", b"x")])
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_step2_tolerates_prose_and_bare_object(monkeypatch):
+    """Small models wrap JSON in prose and sometimes drop the "reservations" key."""
+    _live(
+        monkeypatch,
+        {b"x": "t"},
+        'Sure! Here you go:\n```json\n{"name": "Ana", "lang": "spanish"}\n```',
+    )
+    out = await smart.extract_reservation([("image/png", b"x")])
+    assert len(out) == 1
+    assert out[0]["name"] == "Ana"
+    assert out[0]["lang"] == "ES"  # _coerce still normalizes each reservation
+
+
+def test_parse_reservations_drops_empty_objects():
+    out = smart._parse_reservations(
+        json.dumps({"reservations": [{"name": "Ana"}, {"name": None}, {}]})
+    )
+    assert len(out) == 1 and out[0]["name"] == "Ana"
+
+
+def test_parse_reservations_rejects_non_list():
+    with pytest.raises(ValueError):
+        smart._parse_reservations(json.dumps({"reservations": "Ana"}))
 
 
 # ─── Endpoint ──────────────────────────────────────────────────────────────────

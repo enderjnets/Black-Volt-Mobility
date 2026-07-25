@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.85.0";
+export const CURRENT_VERSION = "0.86.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.86.0",
+    date: "2026-07-24",
+    title: "Sharper screenshot scanning + photos post the right way up",
+    changes: [
+      "Smart reservation now reads all your screenshots together instead of one at a time, so it knows which address is the pickup and which is the drop-off.",
+      "A contact card's street address no longer flips the trip around or goes missing.",
+      "Photos you upload for a social post are no longer rotated sideways.",
+    ],
+  },
   {
     version: "0.85.0",
     date: "2026-07-21",

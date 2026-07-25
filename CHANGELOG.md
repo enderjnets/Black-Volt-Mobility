@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.86.0 — 2026-07-24 — Whole-conversation screenshot extraction + EXIF-correct photo uploads
+
+Two accuracy bugs the owner hit in the dashboard: Smart reservation put a contact
+card's address on the wrong end of the trip (or dropped it), and a photo uploaded for
+a social post published rotated.
+
+- **Smart reservation reads the whole conversation** (`services/smart.py`) — the
+  coding-plan VLM takes only ONE image per call, so extracting per image left the model
+  blind to the rest of the thread: a lone contact card can't say whether its address is
+  the pickup or the drop-off. Verified in prod logs — the same two screenshots yielded
+  the address as pickup (trip inverted), as dropoff, and as null across three runs.
+  Now each image is TRANSCRIBED (concurrent, one call each — a deterministic task the
+  VLM is reliable at) and a single text call (Kimi primary, MiniMax fallback) extracts
+  reservations from all transcripts TOGETHER, grouping by client itself. Explicit rules
+  cover which end of the trip a lone address belongs to and preferring a real street
+  address over a vague reference ("her house"). A failed image is still skipped, not
+  fatal; step 2 failing still degrades to `[]` for manual entry. The `minimax_anthropic`
+  path (already whole-context) is untouched; dead per-image grouping helpers removed.
+- **Photo uploads are stored upright** (`services/social.py`) — `_downscale_for_social`
+  re-encoded without applying the EXIF orientation tag, so every phone photo over
+  1920x1080 lost its rotate flag and published sideways. Now the orientation is applied
+  via `ImageOps.exif_transpose`, and a rotated-but-small photo is re-encoded too instead
+  of passing its stale flag downstream. `_tiktok_safe_media` orients before measuring
+  aspect, so a sideways 9:16 photo is no longer padded as if it were landscape. Fixed at
+  `save_reference_image`, the ingest chokepoint both upload endpoints share.
+- Tests: 781 backend (10 new — EXIF orientation on oversized/small/upright, the ingest
+  chokepoint, aspect-after-orient, and the two-step pipeline: single step-2 call with
+  every transcript, model grouping, merge collapse, skipped image, step-2
+  failure/unparsable/prose-wrapped). No migration.
+
 ## 0.85.0 — 2026-07-21 — Passenger notification bell + clearer ride messaging + driver bell fix
 
 Closes the messaging gaps in the per-ride chat (v0.82.0): the passenger had no in-app
