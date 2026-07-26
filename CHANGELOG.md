@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.88.0 — 2026-07-26 — Service day in the driver's timezone + tips to the driver + fee on what actually cleared
+
+Two owner reports: the assigned driver's payout base ignored his adjustments, and the
+dashboard KPIs did not match reality. Both investigated against the real production rows
+(read-only) before touching anything.
+
+- **Service day is local, not UTC** (`services/dashboard.py`) — `stats`, `week_earnings`
+  and `weeks_summary` bucketed on `func.date(scheduled_at)` with the DB session in UTC.
+  Denver is UTC-6, so a 19:45 pickup is 01:45 UTC the next day and landed on tomorrow's
+  numbers. Verified on prod: "RIDES TODAY 1 / REVENUE TODAY $155" was ride 70, driven
+  **Jul 25 19:45 Denver** — the previous evening; today had zero. The weekly bars were
+  shifted too (a Thursday 21:20 ride drawn on Friday). Now one shared `service_day()` /
+  `today_local()` (via `CALENDAR_TIMEZONE`) backs the KPIs, the week chart, the week
+  navigator and the My Stats funnel, so they cannot disagree with each other again.
+  NOTE: tips were ALREADY counted in "This week" — the $605 included $50 of tips. That
+  part of the report did not hold up and no change was made for it.
+- **Tips go 100% to the driver** (`services/earnings.py`) — the gratuity was recorded on
+  the ride and counted in the owner's revenue but never reached the assigned driver's
+  payout. It is now added to the driver whole, on top of their share: never split, never
+  charged a processor fee, never taxed. The identity becomes `driver + owner == net + tip`,
+  still exact to the cent.
+- **The Square fee is charged only on what cleared Square** (`services/earnings.py`,
+  `assignment.card_amount_for`) — a cash/Venmo/Zelle ride was being docked a card fee it
+  never paid, and an event ride was charged a fee on the full price when only the deposit
+  runs through Square. The fee now follows the money.
+- **A discount survives an edit** (`services/booking.py::apply_ride_update`) — re-quoting
+  called `build_quote()` without the ride's discount context, so any route/time edit put
+  the fare back to LIST price: overcharging the customer and inflating the driver's base.
+  The code and the loyalty flag (recovered from the stored breakdown) are carried forward
+  and `discount_amount` is kept in step. Latent until now — prod has no discounted ride yet.
+- Tests: 838 backend (27 new). Each fix has a regression test verified to FAIL without it.
+  No migration.
+
 ## 0.87.0 — 2026-07-25 — Ride hand-off: assign to another driver, private chat, agreed split
 
 The owner works rides they book, but sometimes another driver on the team should take

@@ -333,12 +333,17 @@ export function RideAssignment({
               {isOwner && (
                 <>
                   <Row k={t("ride.assign.gross")} v={money(shown.gross)} />
-                  <Row k={t("ride.assign.squareFee")} v={`− ${money(shown.square_fee)}`} />
+                  {!!shown.square_fee && (
+                    <Row k={t("ride.assign.squareFee")} v={`− ${money(shown.square_fee)}`} />
+                  )}
                   {!!shown.tax_reserve && (
                     <Row k={t("ride.assign.taxReserve")} v={`− ${money(shown.tax_reserve)}`} />
                   )}
                   <Row k={t("ride.assign.net")} v={money(shown.net)} strong />
                 </>
+              )}
+              {!!shown.tip && (
+                <Row k={t("ride.assign.tip")} v={`+ ${money(shown.tip)}`} />
               )}
               <Row
                 k={`${t("ride.assign.driverGets")} (${shown.driver_share_pct}%)`}
@@ -424,11 +429,16 @@ export function RideAssignment({
               {preview && (
                 <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
                   <Row k={t("ride.assign.gross")} v={money(preview.gross)} />
-                  <Row k={t("ride.assign.squareFee")} v={`− ${money(preview.square_fee)}`} />
+                  {!!preview.square_fee && (
+                    <Row k={t("ride.assign.squareFee")} v={`− ${money(preview.square_fee)}`} />
+                  )}
                   {!!preview.tax_reserve && (
                     <Row k={t("ride.assign.taxReserve")} v={`− ${money(preview.tax_reserve)}`} />
                   )}
                   <Row k={t("ride.assign.net")} v={money(preview.net)} strong />
+                  {!!preview.tip && (
+                    <Row k={t("ride.assign.tip")} v={`+ ${money(preview.tip)}`} />
+                  )}
                   <Row
                     k={`${t("ride.assign.driverGets")} (${pct}%)`}
                     v={money(preview.driver_amount)}

@@ -11,7 +11,7 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import Client, RateConfig, Ride, RideStatus
+from app.models import Client, DiscountCode, RateConfig, Ride, RideStatus
 from app.models.rate_config import DEFAULT_RATES
 from app.services import discounts, maps, pricing, zones
 from app.services import profile as profile_svc
@@ -789,6 +789,30 @@ async def find_conflicts(
     ]
 
 
+def _discount_of(breakdown: dict) -> float:
+    """Absolute value of the discount line in a breakdown (0.0 when there is none)."""
+    for line in (breakdown or {}).get("lines", []):
+        if line.get("label") in ("discount_code", "loyalty_discount"):
+            return abs(line.get("amount") or 0.0)
+    return 0.0
+
+
+def _was_loyalty(ride: Ride) -> bool:
+    """Loyalty is not a column — the applied discount lives in the stored breakdown."""
+    lines = (ride.price_breakdown or {}).get("lines") or []
+    return any(line.get("label") == "loyalty_discount" for line in lines)
+
+
+async def _discount_code_of(db: AsyncSession, ride: Ride) -> str | None:
+    """The code this ride was booked with, so a re-quote can re-apply the same deal."""
+    if not ride.discount_code_id:
+        return None
+    row = (
+        await db.execute(select(DiscountCode).where(DiscountCode.id == ride.discount_code_id))
+    ).scalar_one_or_none()
+    return row.code if row is not None else None
+
+
 async def apply_ride_update(
     db: AsyncSession, *, ride: Ride, changes: dict, persist: bool = True
 ) -> Ride:
@@ -828,6 +852,11 @@ async def apply_ride_update(
 
     if any(f in clean for f in _ROUTE_FIELDS):
         stops = [s["text"] for s in ride.stops] if ride.stops else None
+        # Re-quoting must carry the ride's own price context forward. Without the
+        # discount the fare silently jumps back to list price on any route/time edit —
+        # overcharging the customer and inflating the driver's payout base.
+        code = await _discount_code_of(db, ride)
+        loyalty = _was_loyalty(ride)  # read BEFORE price_breakdown is overwritten
         breakdown = await build_quote(
             db,
             tenant_id=ride.tenant_id,
@@ -836,11 +865,15 @@ async def apply_ride_update(
             stops=stops,
             pax=ride.pax,
             scheduled_at=ride.scheduled_at,
+            discount_code=code,
+            is_loyalty=loyalty,
         )
         ride.distance_miles = breakdown["distance_miles"]
         ride.duration_minutes = breakdown["duration_minutes"]
         ride.currency = breakdown["currency"]
         ride.price_breakdown = breakdown
+        # Keep discount_amount in step with the new breakdown, or it goes stale.
+        ride.discount_amount = _discount_of(breakdown)
         if fare_override is None:
             ride.fare_total = breakdown["total"]
     if fare_override is not None:

@@ -40,12 +40,41 @@ def monday_of(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
+def service_tz() -> str:
+    """IANA zone the driver actually works in. Every KPI buckets by this, never UTC:
+    Denver is UTC-6/-7, so a 19:45 pickup is 01:45 UTC the NEXT day and would land on
+    tomorrow's numbers."""
+    return get_settings().CALENDAR_TIMEZONE or "UTC"
+
+
+def service_day():
+    """SQL expression for the day a ride belongs to, in the driver's local time.
+
+    `timezone(tz, <timestamptz>)` converts to local wall-clock, then `date()` cuts the
+    day there. Falls back to created_at for ad-hoc rides with no schedule. This is THE
+    definition of a service day — stats, the week chart and the week history all use it
+    so they can never disagree with each other again.
+    """
+    local = func.timezone(service_tz(), func.coalesce(Ride.scheduled_at, Ride.created_at))
+    return func.date(local)
+
+
+def today_local() -> date:
+    """Today on the driver's clock (not the server's UTC clock)."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        return datetime.now(ZoneInfo(service_tz())).date()
+    except Exception:  # bad tz name → never break the dashboard
+        return datetime.now(UTC).date()
+
+
 async def week_earnings(db: AsyncSession, *, tenant_id: int, monday: date) -> dict:
     """Daily earned revenue Mon→Sun for the week starting at `monday`
     (zero-filled), plus the week total and ISO date range. Tenant-scoped; uses
     the same earned/service-day definition as the dashboard KPIs so a navigable
     past week matches the "This week" card exactly."""
-    ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
+    ride_day = service_day()
     start = monday
     end = start + timedelta(days=6)
     rows = (
@@ -81,10 +110,10 @@ async def weeks_summary(db: AsyncSession, *, tenant_id: int, count: int = 12) ->
     shown in the dashboard week-picker dropdown. Same earned/service-day definition
     as `week_earnings`, so each total matches that week's chart."""
     count = max(1, min(int(count), 52))
-    today = datetime.now(UTC).date()
+    today = today_local()
     cur_monday = monday_of(today)
     oldest_monday = cur_monday - timedelta(weeks=count - 1)
-    ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
+    ride_day = service_day()
     rows = (
         await db.execute(
             select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
@@ -118,13 +147,14 @@ async def weeks_summary(db: AsyncSession, *, tenant_id: int, count: int = 12) ->
 
 async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
     now = datetime.now(UTC)
-    today = now.date()
+    today = today_local()
     t = Ride.tenant_id == tenant_id
 
     # Attribute a ride to its service day (scheduled_at, falling back to when it
-    # was created) — so "today" and the weekly chart line up with when rides
-    # actually happen, not when they were marked paid.
-    ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
+    # was created) IN THE DRIVER'S TIMEZONE — so "today" and the weekly chart line up
+    # with when rides actually happen, not when they were marked paid, and an evening
+    # pickup doesn't jump to tomorrow because UTC already rolled over.
+    ride_day = service_day()
 
     # A ride "counts" as revenue once it actually happened and earned money:
     # completed OR settled, never cancelled/no-show (shared definition so the

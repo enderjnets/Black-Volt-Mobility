@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Client, DriverFunnelLog, DriverGoal, Ride
+from app.services import dashboard as dashboard_svc
 from app.services import funnel_math as fm
 from app.services.booking import earned_ride_filter
 
@@ -126,7 +127,9 @@ async def set_goal(
 async def _earned_revenue_between(
     db: AsyncSession, *, tenant_id: int, start: date, end: date
 ) -> float:
-    ride_day = func.date(func.coalesce(Ride.scheduled_at, Ride.created_at))
+    # Same local service-day definition as the dashboard, so My Stats and the KPIs
+    # can never report a different day for the same ride.
+    ride_day = dashboard_svc.service_day()
     return float(
         (
             await db.execute(
@@ -246,7 +249,7 @@ async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
     rev_rows = (
         await db.execute(
             select(
-                func.date(func.coalesce(Ride.scheduled_at, Ride.created_at)).label("d"),
+                dashboard_svc.service_day().label("d"),
                 func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0),
             )
             .where(

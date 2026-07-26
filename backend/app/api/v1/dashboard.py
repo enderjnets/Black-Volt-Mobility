@@ -1,7 +1,7 @@
 """Driver dashboard API: KPI stats + client CRM. Staff-only."""
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
@@ -56,7 +56,8 @@ async def dashboard_week(
     week navigator. `offset` 0 = current week, negative = past weeks; future weeks
     are not allowed (`le=0`). Bounded to ~5 years back (`ge=-260`)."""
     tenant_id = await resolve_tenant_id(db, payload)
-    monday = dashboard.monday_of(datetime.now(UTC).date()) + timedelta(weeks=offset)
+    # Local service day, not UTC — otherwise late-evening rides shift a week boundary.
+    monday = dashboard.monday_of(dashboard.today_local()) + timedelta(weeks=offset)
     week = await dashboard.week_earnings(db, tenant_id=tenant_id, monday=monday)
     week["offset"] = offset
     return week

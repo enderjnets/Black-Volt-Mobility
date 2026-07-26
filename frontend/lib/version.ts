@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.87.0";
+export const CURRENT_VERSION = "0.88.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.88.0",
+    date: "2026-07-26",
+    title: "Your day ends at midnight in Denver, not in London",
+    changes: [
+      "Rides today, Revenue today and the weekly chart now count a ride on the day you actually drove it — an evening pickup was landing on the next day because the server counts in UTC.",
+      "Tips go 100% to the driver who drove: they are added on top of their share and never charged a card fee.",
+      "The Square fee is only deducted when the money actually went through Square — a cash or Zelle ride is no longer docked a card fee, and an event ride is charged only on its deposit.",
+      "A discount now survives editing the ride: changing the pickup or the time no longer puts the price back to full.",
+    ],
+  },
   {
     version: "0.87.0",
     date: "2026-07-25",

@@ -945,6 +945,8 @@ async def earnings_preview(
         fee_fixed_cents=fee_fixed,
         tax_pct=tax_pct,
         driver_pct=driver_share_pct,
+        tip=ride.tip,
+        card_amount=assignment.card_amount_for(ride),
     ).as_dict()
 
 

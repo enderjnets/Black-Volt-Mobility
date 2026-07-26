@@ -15,6 +15,8 @@ export interface EarningsSplit {
   square_fee?: number;
   tax_reserve?: number;
   net?: number;
+  // Gratuity: goes to the driver whole, on top of their share. Never split, no fee.
+  tip?: number;
   driver_amount: number;
   owner_amount?: number;
   driver_share_pct: number;

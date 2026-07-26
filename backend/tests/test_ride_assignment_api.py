@@ -183,8 +183,24 @@ def test_assignable_drivers_excludes_me():
 
 
 # ─── Money split ──────────────────────────────────────────────────────────────
+def _set_payment(ride_id: int, method: str) -> None:
+    async def go():
+        eng, Sf = _session_factory()
+        try:
+            async with Sf() as db:
+                ride = await db.get(Ride, ride_id)
+                ride.payment_method = method
+                await db.commit()
+        finally:
+            await eng.dispose()
+
+    asyncio.run(go())
+
+
 def test_earnings_snapshot_and_owner_view():
+    """The owner's own example: a $95 ride charged through Square, 80% to the driver."""
     owner_t, _dt, email, ride_id, _ = _pair()
+    _set_payment(ride_id, "square")
     own = _staff_client(owner_t)
     own.post(
         f"/api/v1/rides/{ride_id}/assign",
@@ -196,9 +212,46 @@ def test_earnings_snapshot_and_owner_view():
     assert e["driver_amount"] == 73.55
     assert e["owner_amount"] == 18.39
     assert round(e["square_fee"] + e["tax_reserve"] + e["net"], 2) == e["gross"]
-    assert round(e["driver_amount"] + e["owner_amount"], 2) == e["net"]
-    assert e["driver_share_pct"] == 80
-    assert e["payout_status"] == "unpaid"
+
+
+def test_cash_ride_is_not_charged_a_square_fee():
+    """Money that never touched a card must not be docked a card fee."""
+    owner_t, _dt, email, ride_id, _ = _pair()
+    _set_payment(ride_id, "cash")
+    own = _staff_client(owner_t)
+    own.post(
+        f"/api/v1/rides/{ride_id}/assign",
+        json={"driver_email": email, "driver_share_pct": 80},
+    )
+    e = own.get(f"/api/v1/rides/{ride_id}").json()["earnings"]
+    assert e["square_fee"] == 0.0
+    assert e["net"] == 95.0
+    assert e["driver_amount"] == 76.0
+
+
+def test_tip_is_added_whole_to_the_driver():
+    """A gratuity belongs to whoever drove: it is not split and pays no fee."""
+    owner_t, _dt, email, ride_id, _ = _pair()
+    _set_payment(ride_id, "square")
+    own = _staff_client(owner_t)
+    own.post(
+        f"/api/v1/rides/{ride_id}/assign",
+        json={"driver_email": email, "driver_share_pct": 80},
+    )
+    before = own.get(f"/api/v1/rides/{ride_id}").json()["earnings"]
+    own.patch(f"/api/v1/rides/{ride_id}", json={"tip": 20, "tip_method": "cash"})
+    after = own.get(f"/api/v1/rides/{ride_id}").json()["earnings"]
+
+    assert after["tip"] == 20.0
+    assert after["driver_amount"] == round(before["driver_amount"] + 20, 2)
+    assert after["owner_amount"] == before["owner_amount"], "the tip is not the owner's"
+    assert after["square_fee"] == before["square_fee"], "no card fee on a gratuity"
+    # With a tip the identity becomes driver + owner == net + tip.
+    assert round(after["driver_amount"] + after["owner_amount"], 2) == round(
+        after["net"] + after["tip"], 2
+    )
+    assert after["driver_share_pct"] == 80
+    assert after["payout_status"] == "unpaid"
 
 
 def test_assigned_driver_sees_only_their_cut():

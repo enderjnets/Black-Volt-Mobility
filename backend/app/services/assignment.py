@@ -166,9 +166,30 @@ async def set_payout(
     return ride
 
 
+def card_amount_for(ride: Ride) -> float | None:
+    """How much of this fare actually ran through Square, so the processor fee is
+    charged on that and not on money that never touched a card.
+
+    - Event ride with a deposit: only the deposit was charged; the balance is collected
+      in person.
+    - Paid by cash/Venmo/Zelle: nothing went through Square, so there is no fee.
+    - Otherwise: the whole fare (None lets earnings.compute use the gross).
+    """
+    if ride.deposit_cents:
+        return ride.deposit_cents / 100
+    method = getattr(ride.payment_method, "value", ride.payment_method)
+    if method in ("cash", "venmo", "zelle"):
+        return 0.0
+    return None
+
+
 async def split_for(db: AsyncSession, ride: Ride) -> dict | None:
     """The money breakdown for an assigned ride, using the snapshot taken at assign
-    time (never today's config). None when the ride was never handed off."""
+    time (never today's config). None when the ride was never handed off.
+
+    The fare and the tip are read LIVE, so correcting a price or entering a gratuity
+    after the fact immediately shows the right number to both sides.
+    """
     if ride.assigned_tenant_id is None or ride.driver_share_pct is None:
         return None
     fee_pct = ride.square_fee_pct
@@ -182,6 +203,8 @@ async def split_for(db: AsyncSession, ride: Ride) -> dict | None:
         fee_fixed_cents=fee_fixed,
         tax_pct=tax_pct,
         driver_pct=ride.driver_share_pct,
+        tip=ride.tip,
+        card_amount=card_amount_for(ride),
     ).as_dict()
     out["payout_status"] = ride.driver_payout_status
     out["paid_at"] = ride.driver_paid_at.isoformat() if ride.driver_paid_at else None

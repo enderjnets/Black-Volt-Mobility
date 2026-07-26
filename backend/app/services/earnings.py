@@ -21,12 +21,17 @@ from dataclasses import asdict, dataclass
 @dataclass(frozen=True)
 class Split:
     """Every number in dollars, rounded to cents, and internally consistent:
-    `square_fee + tax_reserve + net == gross` and `driver + owner == net`."""
+    `square_fee + tax_reserve + net == gross` and `driver + owner == net + tip`.
+
+    The tip is deliberately OUTSIDE that split: a gratuity belongs to whoever drove,
+    so it is added to the driver whole — never shared, never charged a processor fee.
+    """
 
     gross: float
     square_fee: float
     tax_reserve: float
     net: float
+    tip: float
     driver_amount: float
     owner_amount: float
     driver_share_pct: int
@@ -47,17 +52,34 @@ def compute(
     fee_fixed_cents: int = 30,
     tax_pct: float = 0.0,
     driver_pct: int = 80,
+    tip: float | None = None,
+    card_amount: float | None = None,
 ) -> Split:
     """Split a ride's fare. A missing/zero fare yields an all-zero split (an
     unpriced ride owes nobody anything) — never an error, this feeds a read endpoint.
     `driver_pct` is clamped to 0..100; the fee is never allowed to exceed the gross,
-    so a tiny fare can't produce a negative net."""
+    so a tiny fare can't produce a negative net.
+
+    `card_amount` is how much of the fare actually ran through Square (an event ride
+    only charges the deposit; a cash ride charges nothing). The processor fee is
+    charged on THAT, not on money that never touched Square. Defaults to the whole fare.
+
+    `tip` is added to the driver whole, after the split: a gratuity is not the
+    business's to share and never pays a card fee here.
+    """
     gross_c = max(0, _cents(fare or 0))
     pct = max(0, min(100, int(driver_pct)))
+    tip_c = max(0, _cents(tip or 0))
     if gross_c == 0:
-        return Split(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, pct)
+        return Split(0.0, 0.0, 0.0, 0.0, tip_c / 100, tip_c / 100, 0.0, pct)
 
-    fee_c = min(gross_c, _cents(gross_c * max(0.0, fee_pct) / 100 / 100) + max(0, fee_fixed_cents))
+    # Only the card-settled part pays a processor fee.
+    card_c = gross_c if card_amount is None else max(0, min(gross_c, _cents(card_amount)))
+    fee_c = 0
+    if card_c > 0:
+        fee_c = min(
+            card_c, _cents(card_c * max(0.0, fee_pct) / 100 / 100) + max(0, fee_fixed_cents)
+        )
     after_fee_c = gross_c - fee_c
     tax_c = min(after_fee_c, _cents(after_fee_c * max(0.0, tax_pct) / 100 / 100))
     net_c = after_fee_c - tax_c
@@ -71,7 +93,8 @@ def compute(
         square_fee=fee_c / 100,
         tax_reserve=tax_c / 100,
         net=net_c / 100,
-        driver_amount=driver_c / 100,
+        tip=tip_c / 100,
+        driver_amount=(driver_c + tip_c) / 100,  # the gratuity is the driver's, whole
         owner_amount=owner_c / 100,
         driver_share_pct=pct,
     )
