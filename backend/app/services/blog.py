@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BlogConfig, BlogKeyword, BlogPost
 from app.models.blog import BLOG_KEYWORD_STATUSES, BLOG_POST_STATUSES
+from app.services import blog_facts
 from app.services import events as events_service
 from app.services.tenancy import media_url
 
@@ -306,10 +307,22 @@ async def set_keyword_status(
 # ─── Internal-link validation (never emit a 404) ─────────────────────────────────
 
 
+async def next_planned_keyword(db: AsyncSession, *, tenant_id: int) -> BlogKeyword | None:
+    """The keyword the writer would pick next: best-scoring one still waiting to be written."""
+    return (
+        await db.execute(
+            select(BlogKeyword)
+            .where(BlogKeyword.tenant_id == tenant_id, BlogKeyword.status == "planned")
+            .order_by(BlogKeyword.score.desc().nullslast(), BlogKeyword.id.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 async def allowed_link_paths(db: AsyncSession, *, tenant_id: int) -> set[str]:
     """The set of real internal paths the writer is allowed to link to. Anything the
     model invents outside this set is stripped, so an article never links to a 404."""
-    paths = set(_STATIC_LINK_PATHS)
+    paths = set(_STATIC_LINK_PATHS) | blog_facts.route_paths()
     # Published events (their public landing pages).
     try:
         for ev in await events_service.list_public_events(db):
@@ -439,6 +452,8 @@ def _admin_post_dict(post: BlogPost) -> dict:
         "keyword": meta.get("keyword"),
         "internal_links": meta.get("internal_links") or [],
         "faq": meta.get("faq") or [],
+        # Why a draft was held back, per language. Empty on a clean article.
+        "quality_issues": meta.get("quality_issues") or {},
         "created_at": post.created_at,
     }
 

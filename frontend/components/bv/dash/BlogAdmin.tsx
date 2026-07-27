@@ -8,7 +8,7 @@ import {
   addBlogKeyword,
   autofillBlogConfig,
   discoverBlogKeywords,
-  generateBlogPost,
+  generateBlogPostAndWait,
   getBlogAnalytics,
   getBlogConfig,
   gscAuthorizeUrl,
@@ -64,7 +64,7 @@ function countdown(iso: string | null): string {
 function statusTone(s: string): "volt" | "success" | "warning" | "muted" {
   if (s === "published") return "success";
   if (s === "scheduled") return "volt";
-  if (s === "failed" || s === "vetoed" || s === "archived") return "warning";
+  if (s === "failed" || s === "vetoed" || s === "archived" || s === "draft") return "warning";
   return "muted";
 }
 
@@ -113,6 +113,18 @@ export function BlogAdmin() {
     setMsg(m);
     setTimeout(() => setMsg(null), 3000);
   };
+  /** Writing takes a couple of minutes, so the message has to keep talking or it reads as
+   *  a hang. The status pill on the finished card says whether it passed. */
+  const write = async (opts: { keyword_id?: number; keyword?: string }) => {
+    setMsg(t("blog.msg.writing"));
+    const fresh = await generateBlogPostAndWait(opts, (secs) =>
+      setMsg(t("blog.msg.writingSecs", { secs })),
+    );
+    setPosts(fresh);
+    flash(
+      fresh[0]?.status === "draft" ? t("blog.msg.drafted") : t("blog.msg.generated"),
+    );
+  };
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -124,7 +136,11 @@ export function BlogAdmin() {
     }
   };
 
-  const scheduled = posts.filter((p) => p.status === "scheduled" || p.status === "generating");
+  // Drafts belong here too: they are the ones asking for a decision, so burying them in
+  // another tab would defeat the point of holding them back.
+  const scheduled = posts.filter(
+    (p) => p.status === "scheduled" || p.status === "generating" || p.status === "draft",
+  );
   const published = posts.filter((p) => p.status === "published");
 
   return (
@@ -173,7 +189,7 @@ export function BlogAdmin() {
           scheduled={scheduled}
           lang={lang}
           busy={busy}
-          onGenerate={() => run(async () => { await generateBlogPost({}); await reloadPosts(); flash(t("blog.msg.generated")); })}
+          onGenerate={() => run(async () => { await write({}); })}
           onPublish={(id) => run(async () => { await publishBlogPost(id); await reloadPosts(); flash(t("blog.msg.published")); })}
           onVeto={(id) => run(async () => { await setBlogPostStatus(id, "archived"); await reloadPosts(); })}
           onSave={(id, patch) => run(async () => { await patchBlogPost(id, patch); await reloadPosts(); flash(t("blog.msg.saved")); })}
@@ -195,7 +211,7 @@ export function BlogAdmin() {
           onDiscover={() => run(async () => { const r = await discoverBlogKeywords(); await reloadKeywords(); flash(r.skipped ? r.skipped : t("blog.msg.discovered", { found: r.found ?? 0, promoted: r.promoted ?? 0 })); })}
           onAdd={(kw, lg) => run(async () => { await addBlogKeyword(kw, lg); await reloadKeywords(); })}
           onStatus={(id, s) => run(async () => { await setBlogKeywordStatus(id, s); await reloadKeywords(); })}
-          onWrite={(id) => run(async () => { await generateBlogPost({ keyword_id: id }); await reloadKeywords(); await reloadPosts(); flash(t("blog.msg.generated")); })}
+          onWrite={(id) => run(async () => { await write({ keyword_id: id }); await reloadKeywords(); })}
         />
       )}
 
@@ -245,11 +261,14 @@ function CalendarTab({ scheduled, lang, busy, onGenerate, onPublish, onVeto, onS
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color: "var(--arctic)", fontSize: 15 }}>{p.title_en}</div>
                 <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 3 }}>
-                  {t("blog.field.publishes")}: {fmtWhen(p.publish_at, lang)} · {countdown(p.publish_at)}
+                  {p.status === "draft"
+                    ? t("blog.field.heldBack")
+                    : `${t("blog.field.publishes")}: ${fmtWhen(p.publish_at, lang)} · ${countdown(p.publish_at)}`}
                 </div>
               </div>
               <Pill tone={statusTone(p.status)}>{p.status}</Pill>
             </div>
+            {p.status === "draft" && <QualityIssues post={p} t={t} />}
             <EditRow post={p} onSave={onSave} t={t} />
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <Button onClick={() => onPublish(p.id)} disabled={busy}>{t("blog.action.publishNow")}</Button>
@@ -258,6 +277,36 @@ function CalendarTab({ scheduled, lang, busy, onGenerate, onPublish, onVeto, onS
           </Card>
         ))
       )}
+    </div>
+  );
+}
+
+function QualityIssues({ post, t }: {
+  post: BlogPostT;
+  t: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  const langs = Object.keys(post.quality_issues || {});
+  if (langs.length === 0) return null;
+  return (
+    <div style={{
+      marginTop: 8, padding: "8px 10px", borderRadius: 8,
+      background: "var(--obsidian-3,#15151c)", border: "1px solid var(--line,#23232b)",
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--danger,#ff5c5c)" }}>
+        {t("blog.quality.title")}
+      </div>
+      {langs.map((lg) => (
+        <div key={lg} style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 11, color: "var(--fg3)", textTransform: "uppercase" }}>{lg}</div>
+          <ul style={{ margin: "2px 0 0", paddingLeft: 16 }}>
+            {(post.quality_issues[lg] || []).map((issue, i) => (
+              <li key={i} style={{ fontSize: 12, color: "var(--silver,#c9c9d1)", lineHeight: 1.45 }}>
+                {issue}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }

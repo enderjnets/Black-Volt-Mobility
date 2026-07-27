@@ -19,7 +19,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import BlogKeyword
+from app.models import BlogKeyword, SeoSnapshot
 from app.services import blog as blog_service
 from app.services import llm
 from app.services.social import _brand_ctx
@@ -32,6 +32,16 @@ _HIGH_INTENT = (
     "from den", "red rocks", "reservar", "precio", "aeropuerto", "cuánto",
 )
 _AUTOCOMPLETE_URL = "https://suggestqueries.google.com/complete/search"
+# Search Console reports the trailing 3 days, so impressions are scaled to a rough monthly
+# figure before they meet volumes from other sources. Crude, but it is measured, not guessed.
+_GSC_WINDOW_DAYS = 3
+_GSC_TO_MONTHLY = 30 / _GSC_WINDOW_DAYS
+# Enough to tell "transporte al aeropuerto" from "airport transportation" — Search Console
+# does not label the language of a query.
+_SPANISH_MARKERS = (
+    "transporte", "aeropuerto", "servicio", "chofer", "conductor", "precio", "cuánto",
+    "cuanto", "reservar", "traslado", "desde", "hasta", "para", "viaje", "ó", "ñ", "í", "é",
+)
 
 
 def _now() -> dt.datetime:
@@ -50,6 +60,46 @@ def _score(keyword: str, source: str, volume: int | None, difficulty: float | No
     vol = float(volume or 40)
     diff = float(difficulty or 40) or 40.0
     return round(intent * src_w * (vol / diff), 4)
+
+
+def _lang_of(text: str) -> str:
+    low = (text or "").lower()
+    return "es" if any(m in low for m in _SPANISH_MARKERS) else "en"
+
+
+async def _gsc_keywords(db: AsyncSession, *, tenant_id: int) -> list[dict]:
+    """Queries people really typed to reach this site — the only source that is not a guess.
+
+    Reads the snapshot the GSC job already persists every day rather than calling Google a
+    second time, so this costs nothing and works even when the API is rate-limited.
+    """
+    row = (
+        await db.execute(
+            select(SeoSnapshot)
+            .where(SeoSnapshot.tenant_id == tenant_id, SeoSnapshot.kind == "gsc_day")
+            .order_by(SeoSnapshot.date.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return []
+    out: list[dict] = []
+    for q in (row.payload or {}).get("top_queries", []):
+        text = str(q.get("query") or "").strip()
+        impressions = int(q.get("impressions") or 0)
+        if not text or impressions <= 0:
+            continue
+        out.append(
+            {
+                "keyword": text,
+                "lang": _lang_of(text),
+                "volume": max(1, round(impressions * _GSC_TO_MONTHLY)),
+                # Average position doubles as difficulty: a query you already surface for at
+                # position 11 is one article away from the first page. Position 80 is not.
+                "difficulty": min(100.0, max(5.0, float(q.get("position") or 50))),
+            }
+        )
+    return out
 
 
 async def _autocomplete(seed: str, lang: str) -> list[str]:
@@ -80,8 +130,8 @@ async def _llm_keywords(brand: dict, cfg, lang: str) -> list[dict]:
         f"airport {brand['airport']}, {brand['mountain']}. Vehicle: {brand['vehicle']}.</brand>\n"
         f"Themes: {themes}\n\n"
         f"List 15 {lang_name} SEO keywords (2-6 words) with buyer/planning intent for this "
-        "business. For each estimate monthly search volume (integer) and difficulty (0-100).\n"
-        'Return ONLY JSON: {"keywords": [{"keyword": str, "volume": int, "difficulty": int}]}'
+        "business. For each estimate how competitive it is: difficulty 0-100.\n"
+        'Return ONLY JSON: {"keywords": [{"keyword": str, "difficulty": int}]}'
     )
     for model, base_url, api_key in llm.providers():
         try:
@@ -107,7 +157,12 @@ async def _llm_keywords(brand: dict, cfg, lang: str) -> list[dict]:
                 out.append(
                     {
                         "keyword": kw,
-                        "volume": int(k.get("volume") or 0) or None,
+                        # Deliberately no volume. Asked for one, the model confidently
+                        # returned "390/month" for phrases nobody types, and those invented
+                        # numbers ended up ranking the whole content plan. Relative
+                        # competitiveness is a fair thing to ask a model; absolute demand is
+                        # not, so an LLM keyword competes on intent alone.
+                        "volume": None,
                         "difficulty": float(k.get("difficulty") or 0) or None,
                     }
                 )
@@ -158,6 +213,17 @@ async def run_daily(db: AsyncSession, *, tenant_id: int, promote: int = 3) -> di
     langs = [x for x in (cfg.languages or ["en", "es"]) if x in ("en", "es")] or ["en"]
 
     found = 0
+    # (1) Real Search Console queries. Language comes from the query itself, so this runs
+    # once rather than per configured language.
+    for k in await _gsc_keywords(db, tenant_id=tenant_id):
+        if k["lang"] not in langs:
+            continue
+        if await _upsert(
+            db, tenant_id=tenant_id, keyword=k["keyword"], lang=k["lang"], source="gsc",
+            volume=k["volume"], difficulty=k["difficulty"],
+        ):
+            found += 1
+
     for lang in langs:
         # (2) Autocomplete around brand seeds.
         seeds = [

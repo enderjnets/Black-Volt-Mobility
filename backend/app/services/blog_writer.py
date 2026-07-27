@@ -3,8 +3,13 @@
 Turns a planned keyword into a bilingual (EN + ES) SEO article, grounded on the tenant's
 Brand DNA and real business facts, with validated internal links (never a 404). Uses the
 shared Kimi→MiniMax chain (llm.providers) with a deterministic template fallback so a post
-is always produced even if every LLM is down. The article is created `scheduled` with a
-24h edit window (hybrid autopilot); blog_publish releases it.
+is always produced even if every LLM is down.
+
+Every article is graded by blog_quality before it is stored. A clean one is `scheduled`
+with a 24h edit window (hybrid autopilot) and blog_publish releases it; one that still has
+problems after a single corrective retry is parked as a `draft` with no publish date and
+the reasons attached, so the autopilot can never publish something the owner would be
+embarrassed by.
 
 Untrusted-ish inputs (the keyword, Brand DNA text) are wrapped in <keyword>/<brand> tags in
 the prompt — same prompt-injection-safe pattern as social._ai_brief.
@@ -21,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BlogKeyword, BlogPost
 from app.services import blog as blog_service
-from app.services import llm
+from app.services import blog_facts, blog_quality, llm
 from app.services.social import _brand_ctx
 
 logger = logging.getLogger("blackvolt.blog.writer")
@@ -61,19 +66,34 @@ def _parse_json(text: str) -> dict | None:
 
 
 def _facts_block(brand: dict, allowed_links: set[str]) -> str:
+    """Everything the article is allowed to assert, and the numbers that make it worth reading.
+
+    The route table is the point: handed only a tagline, the model wrote "we offer luxury
+    mountain transfers" and invented a fleet. Handed real fares and drive times, it has
+    something to say that no competitor's generic page can copy.
+    """
     links = "\n".join(f"- {p}" for p in sorted(allowed_links))
     return (
         f"Business: {_BRAND_NAME} — {brand['tagline']}.\n"
         f"Service: {brand['service_line']}.\n"
-        f"Vehicle: {brand['vehicle']} (all-electric, up to 6 passengers, quiet premium cabin).\n"
-        f"Area: {brand['service_area']}; airport = {brand['airport']}; {brand['mountain']}.\n"
-        f"Booking: riders book online at /book.\n"
+        f"Area: {brand['service_area']}; airport = {brand['airport']}; {brand['mountain']}.\n\n"
+        f"NON-NEGOTIABLE TRUTH (never contradict it, never embellish it):\n"
+        f"{blog_facts.truth_block()}\n\n"
+        f"PUBLISHED ROUTES — these fares, distances and times are real. Quote them exactly, "
+        f"and link the matching page when the route is relevant:\n"
+        f"{blog_facts.routes_block()}\n\n"
         f"You may ONLY link to these internal paths (use exact href):\n{links}"
     )
 
 
-async def _llm_article(brand: dict, keyword: str, facts: str, cfg, lang: str) -> dict | None:
-    """One LLM generation for a single language. Returns parsed dict or None on failure."""
+async def _llm_article(
+    brand: dict, keyword: str, facts: str, cfg, lang: str, fix_notes: list[str] | None = None
+) -> dict | None:
+    """One LLM generation for a single language. Returns parsed dict or None on failure.
+
+    `fix_notes` are the quality checker's own complaints about the previous attempt, handed
+    back verbatim — telling the model exactly what was wrong beats re-rolling the dice.
+    """
     voice = (cfg.voice or "").strip() or blog_service._DEFAULT_VOICE
     audience = (cfg.audience or "").strip() or blog_service._DEFAULT_AUDIENCE
     lang_name = "English" if lang == "en" else "Spanish (neutral Latin American)"
@@ -94,17 +114,32 @@ async def _llm_article(brand: dict, keyword: str, facts: str, cfg, lang: str) ->
         f"Audience: {audience}\n\n"
         f"FACTS (ground everything in these; do not contradict them):\n{facts}\n\n"
         "Requirements:\n"
+        f"- Title: at most {blog_quality.MAX_TITLE} characters, and it must LEAD with the "
+        "search phrase (place + service). Do not open with brand adjectives like "
+        '"Experience", "Discover" or "Unmatched" — that spends the characters Google shows.\n'
         "- 600-900 words, Markdown body with 3-5 ## H2 sections and short paragraphs.\n"
-        "- Naturally weave in the keyword and closely related terms; be locally specific.\n"
-        "- Include 2-4 internal links using ONLY the allowed paths above, as markdown links.\n"
+        "- Be concrete or say nothing: name real fares, drive times, distances, "
+        "neighbourhoods, highways and airport logistics from the FACTS. An article with no "
+        "numbers in it is worthless to the reader and will be rejected.\n"
+        "- Write like someone who drives these roads, not like a brochure. No stock phrases "
+        '("seamless experience", "world-class", "the future of transportation").\n'
+        "- Include at least 2 internal links inside the body as markdown links, using ONLY "
+        "the allowed paths above, and at least one of them must be a /rides/... route page "
+        "or /book.\n"
         "- End with a soft call to book (link /book).\n"
-        "- Also produce a 55-char-max SEO title, a 150-char meta excerpt, a 3-item FAQ, and "
-        "the list of internal links you used.\n\n"
+        "- FAQ: exactly 3 questions a rider would really type — at least one asking how much, "
+        "how long or how early. Answer each in 2-3 real sentences using the facts.\n"
+        "- Also produce a 150-char meta excerpt and the list of internal links you used.\n\n"
         "Return ONLY a JSON object with keys: "
         '{"title": str, "excerpt": str, "body_md": str, '
         '"faq": [{"q": str, "a": str}], '
         '"internal_links": [{"href": str, "text": str}]}'
     )
+    if fix_notes:
+        prompt += (
+            "\n\nYour previous attempt was REJECTED. Fix every one of these, and change "
+            "nothing else that already worked:\n" + "\n".join(f"- {n}" for n in fix_notes)
+        )
     # Two passes over the provider chain: when the only healthy provider is flaky
     # (e.g. MiniMax occasionally times out on a long article and the Kimi fallback key
     # is down), a second attempt salvages the language before we drop to the template.
@@ -163,6 +198,35 @@ def _template_article(brand: dict, keyword: str, lang: str) -> dict:
     }
 
 
+async def _write_checked(
+    brand: dict, keyword: str, facts: str, cfg, lang: str, allowed: set[str]
+) -> tuple[dict, list[str]]:
+    """Write one language, grade it, and give it exactly one chance to fix itself.
+
+    Returns the best attempt and whatever is still wrong with it. A non-empty list is what
+    keeps the article out of the publish queue — see `generate_article`.
+    """
+    data = await _llm_article(brand, keyword, facts, cfg, lang)
+    if data is None:
+        return _template_article(brand, keyword, lang), [
+            "Every model was unreachable, so this is the placeholder template."
+        ]
+    notes = blog_quality.issues(data, keyword=keyword, allowed=allowed)
+    if notes:
+        logger.info("blog quality reject lang=%s kw=%r: %s", lang, keyword, " | ".join(notes))
+        await asyncio.sleep(2)
+        retry = await _llm_article(brand, keyword, facts, cfg, lang, fix_notes=notes)
+        if retry is not None:
+            retry_notes = blog_quality.issues(retry, keyword=keyword, allowed=allowed)
+            # Keep whichever attempt is less broken; a retry that regresses is discarded.
+            if len(retry_notes) < len(notes):
+                data, notes = retry, retry_notes
+    data["internal_links"] = blog_service.filter_internal_links(
+        data.get("internal_links"), allowed
+    )
+    return data, notes
+
+
 async def generate_article(
     db: AsyncSession, *, tenant_id: int, keyword_id: int | None = None,
     keyword_text: str | None = None, languages: list[str] | None = None,
@@ -189,14 +253,7 @@ async def generate_article(
     keyword_text = (keyword_text or "").strip()
     # No explicit keyword → pull the top planned one (the "write next" button path).
     if not keyword_text and keyword_id is None:
-        kw_row = (
-            await db.execute(
-                select(BlogKeyword)
-                .where(BlogKeyword.tenant_id == tenant_id, BlogKeyword.status == "planned")
-                .order_by(BlogKeyword.score.desc().nullslast(), BlogKeyword.id.asc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
+        kw_row = await blog_service.next_planned_keyword(db, tenant_id=tenant_id)
         if kw_row is not None:
             keyword_text = kw_row.keyword
     if not keyword_text:
@@ -211,22 +268,23 @@ async def generate_article(
     langs = [code for code in order if code in langs]
 
     articles: dict[str, dict] = {}
+    problems: dict[str, list[str]] = {}
     for i, lang in enumerate(langs):
         # Space out the two heavy generations — a rapid second MiniMax call otherwise
         # tends to come back unparseable (rate/connection), dropping that language to
         # the template. A short pause markedly improves the second language's success.
         if i > 0:
             await asyncio.sleep(4)
-        data = await _llm_article(brand, keyword_text, facts, cfg, lang)
-        if data is None:
-            data = _template_article(brand, keyword_text, lang)
-        data["internal_links"] = blog_service.filter_internal_links(
-            data.get("internal_links"), allowed
-        )
+        data, notes = await _write_checked(brand, keyword_text, facts, cfg, lang, allowed)
         articles[lang] = data
+        if notes:
+            problems[lang] = notes
 
     primary = articles.get("en") or next(iter(articles.values()))
-    slug = await blog_service._unique_post_slug(db, primary["title"] or keyword_text)
+    # Slug from the keyword, not the title. The title is marketing copy that drifts
+    # ("experience-denver-airport-transfers-with-black-volt-mobility-s-kia-ev9"); the keyword
+    # is what people actually search for, and that is what belongs in the URL.
+    slug = await blog_service._unique_post_slug(db, keyword_text or primary["title"])
 
     post = BlogPost(
         tenant_id=tenant_id,
@@ -239,13 +297,16 @@ async def generate_article(
         body_md_en=(articles.get("en") or primary).get("body_md"),
         body_md_es=(articles["es"].get("body_md") if "es" in articles else None),
         hero_alt=f"{brand['vehicle']} — {keyword_text}"[:300],
-        status="scheduled",
-        publish_at=_now() + _PUBLISH_DELAY,
+        # An article that failed the gate is parked as a draft with no publish date, so the
+        # 24h autopilot can never pick it up. The owner sees why and decides.
+        status="draft" if problems else "scheduled",
+        publish_at=None if problems else _now() + _PUBLISH_DELAY,
         meta={
             "keyword": keyword_text,
             "faq": primary.get("faq") or [],
             "internal_links": primary.get("internal_links") or [],
             "faq_es": (articles["es"].get("faq") if "es" in articles else None),
+            "quality_issues": problems or None,
         },
     )
     db.add(post)
@@ -253,7 +314,10 @@ async def generate_article(
         kw_row.status = "written"
     await db.commit()
     await db.refresh(post)
-    logger.info("blog article generated tenant=%s slug=%s langs=%s", tenant_id, slug, langs)
+    logger.info(
+        "blog article generated tenant=%s slug=%s langs=%s status=%s issues=%s",
+        tenant_id, slug, langs, post.status, sum(len(v) for v in problems.values()),
+    )
     return blog_service._admin_post_dict(post)
 
 
@@ -275,17 +339,7 @@ async def run_daily(db: AsyncSession, *, tenant_id: int) -> dict:
     if len(recent) >= max(0, cfg.cadence_per_week):
         return {"skipped": "cadence_reached", "recent": len(recent)}
 
-    kw = (
-        await db.execute(
-            select(BlogKeyword)
-            .where(
-                BlogKeyword.tenant_id == tenant_id,
-                BlogKeyword.status == "planned",
-            )
-            .order_by(BlogKeyword.score.desc().nullslast(), BlogKeyword.id.asc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+    kw = await blog_service.next_planned_keyword(db, tenant_id=tenant_id)
     if kw is None:
         return {"skipped": "no_planned_keyword"}
 

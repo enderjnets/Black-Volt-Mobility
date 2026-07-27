@@ -5,9 +5,21 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.88.0";
+export const CURRENT_VERSION = "0.89.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.89.0",
+    date: "2026-07-27",
+    title: "The blog writes about your actual routes — and holds back the weak ones",
+    changes: [
+      "Articles now use your real fares, distances and drive times (Aurora to DEN from $105, Denver to Vail from $329) instead of generic praise, and they link to the route pages that take bookings.",
+      "The blog can no longer invent a \"fleet\" or staff you do not have — that claim is checked, not just discouraged.",
+      "Every article is graded before it can publish itself. One that is thin, off-topic or link-less gets one rewrite, and if it still falls short it waits as a draft with the reasons listed instead of going live.",
+      "\"Write now\" no longer shows an error while quietly succeeding: writing takes a couple of minutes, so the button now reports progress and tells you when the article has landed.",
+      "Keyword ideas now come from what people really searched for on Google to find you, not from a model's guess at how popular a phrase is.",
+    ],
+  },
   {
     version: "0.88.0",
     date: "2026-07-26",

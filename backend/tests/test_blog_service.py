@@ -143,25 +143,38 @@ async def test_allowed_link_paths_includes_published_posts(db):
 # ─── Article generation (template fallback, no LLM) ──────────────────────────────
 
 
-async def test_generate_article_template_bilingual_scheduled(db):
+async def test_generate_article_template_is_drafted_not_scheduled(db):
+    """With every LLM down the writer still produces a post — but the placeholder template
+    is not publishable, so it must land as a draft the owner has to look at."""
     tid = await _mk_tenant(db)
     post = await blog_writer.generate_article(
         db, tenant_id=tid, keyword_text="airport ride to den"
     )
     assert post is not None
-    assert post["status"] == "scheduled"
+    assert post["status"] == "draft"
     assert post["title_en"]
     assert post["title_es"]  # es is in default languages
     assert post["slug"]
-    # 24h edit window
     row = await blog_service.get_post(db, tenant_id=tid, post_id=post["id"])
-    assert row.publish_at > _now() + dt.timedelta(hours=23)
+    # No publish date at all: the 24h autopilot cannot pick this up by accident.
+    assert row.publish_at is None
     assert row.body_md_en
+    assert (row.meta or {}).get("quality_issues")
     # only allowed internal links survive
     for link in post["internal_links"]:
         assert link["href"] in {"/", "/book", "/rides", "/events", "/blog"} or link[
             "href"
         ].startswith(("/rides/", "/events/", "/blog/"))
+
+
+async def test_slug_comes_from_the_keyword_not_the_title(db):
+    """The URL is the one part of an article that must not read like ad copy."""
+    tid = await _mk_tenant(db)
+    post = await blog_writer.generate_article(
+        db, tenant_id=tid, keyword_text="Boulder to DEN airport"
+    )
+    # `-2` suffixes are fine (slugs de-duplicate globally); ad copy in the URL is not.
+    assert post["slug"].startswith("boulder-to-den-airport")
 
 
 async def test_generate_from_keyword_marks_written(db):

@@ -59,6 +59,16 @@ def service_day():
     return func.date(local)
 
 
+def revenue_sum():
+    """What a ride actually brought in: the fare plus the tip.
+
+    The two are stored in separate columns, and a rollup that quietly forgets the tip is
+    exactly what the owner suspected of the weekly chart. Naming it once means the next
+    query cannot get it wrong.
+    """
+    return func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0)
+
+
 def today_local() -> date:
     """Today on the driver's clock (not the server's UTC clock)."""
     from zoneinfo import ZoneInfo
@@ -79,7 +89,7 @@ async def week_earnings(db: AsyncSession, *, tenant_id: int, monday: date) -> di
     end = start + timedelta(days=6)
     rows = (
         await db.execute(
-            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
+            select(ride_day.label("d"), revenue_sum())
             .where(
                 Ride.tenant_id == tenant_id,
                 booking.earned_ride_filter(),
@@ -116,7 +126,7 @@ async def weeks_summary(db: AsyncSession, *, tenant_id: int, count: int = 12) ->
     ride_day = service_day()
     rows = (
         await db.execute(
-            select(ride_day.label("d"), func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
+            select(ride_day.label("d"), revenue_sum())
             .where(
                 Ride.tenant_id == tenant_id,
                 booking.earned_ride_filter(),
@@ -173,7 +183,7 @@ async def stats(db: AsyncSession, *, tenant_id: int) -> dict:
     # Revenue = earned rides (completed or paid) whose service day is today.
     revenue_today = (
         await db.execute(
-            select(func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0)).where(
+            select(revenue_sum()).where(
                 t, earned, ride_day == today
             )
         )
@@ -302,7 +312,7 @@ async def list_clients(db: AsyncSession, *, tenant_id: int) -> list[dict]:
     # Lifetime spend per client = paid rides (any method), in dollars.
     spend_rows = (
         await db.execute(
-            select(Ride.client_id, func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
+            select(Ride.client_id, revenue_sum())
             .where(
                 Ride.tenant_id == tenant_id,
                 Ride.client_id.isnot(None),
@@ -599,7 +609,7 @@ async def team_stats_by_tenant(db: AsyncSession) -> dict[int, dict]:
     ).all()
     rev_rows = (
         await db.execute(
-            select(Ride.tenant_id, func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0))
+            select(Ride.tenant_id, revenue_sum())
             .where(Ride.tenant_id.isnot(None), Ride.paid.is_(True))
             .group_by(Ride.tenant_id)
         )
@@ -726,7 +736,7 @@ async def team_member_detail(
 
     revenue_total = (
         await db.execute(
-            select(func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0)).where(t, Ride.paid.is_(True))
+            select(revenue_sum()).where(t, Ride.paid.is_(True))
         )
     ).scalar_one()
     out["revenue_total"] = round(float(revenue_total), 2)

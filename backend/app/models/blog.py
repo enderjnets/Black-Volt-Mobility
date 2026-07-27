@@ -36,7 +36,9 @@ from app.db.base import Base
 BLOG_KEYWORD_STATUSES = ("candidate", "planned", "written", "vetoed")
 # Article lifecycle. `scheduled` = written and waiting out its 24h edit window (hybrid autopilot);
 # `published` goes live and triggers auto-share; `failed` = generation error (retryable).
-BLOG_POST_STATUSES = ("generating", "scheduled", "published", "archived", "failed")
+# `draft` = written but it did not pass the quality gate, so it will never publish itself —
+# the owner reads `meta.quality_issues`, fixes it, and schedules it by hand (or bins it).
+BLOG_POST_STATUSES = ("generating", "draft", "scheduled", "published", "archived", "failed")
 # Snapshot kinds for the analytics tab.
 SEO_SNAPSHOT_KINDS = ("gsc_day", "psi")
 

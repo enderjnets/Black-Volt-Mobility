@@ -6,7 +6,9 @@ owner tenant): Brand DNA config, keywords, posts (generate/edit/publish), and SE
 """
 from __future__ import annotations
 
+import asyncio
 import base64
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
@@ -16,13 +18,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
 from app.config import get_settings
-from app.db.base import get_db
+from app.db.base import get_db, get_session_factory
 from app.models import BlogConfig
 from app.services import blog as blog_service
 from app.services import blog_keywords, blog_writer, gsc
 from app.services.tenancy import owner_tenant_id
 
 router = APIRouter(prefix="/blog", tags=["blog"])
+logger = logging.getLogger("blackvolt.blog.api")
+
+# Writing a bilingual article is two long model calls — comfortably past the 100s ceiling
+# every reverse proxy in front of this app enforces, so the request that starts it used to
+# come back as a 500 while the article was quietly written anyway. The owner saw a failure
+# every single time he pressed the button. Now the request only starts the job.
+_writing: set[int] = set()
+_write_tasks: set[asyncio.Task] = set()
+
+
+async def _generate_in_background(tenant_id: int, keyword_id: int | None, keyword: str | None):
+    Session = get_session_factory()
+    try:
+        async with Session() as db:
+            await blog_writer.generate_article(
+                db, tenant_id=tenant_id, keyword_id=keyword_id, keyword_text=keyword
+            )
+    except Exception:
+        logger.exception("blog background generation failed tenant=%s", tenant_id)
+    finally:
+        _writing.discard(tenant_id)
 
 
 # ─── Schemas ───────────────────────────────────────────────────────────────────
@@ -202,19 +225,26 @@ async def list_posts(
     return await blog_service.list_posts(db, tenant_id=await owner_tenant_id(db))
 
 
-@router.post("/admin/generate")
+@router.post("/admin/generate", status_code=status.HTTP_202_ACCEPTED)
 async def generate(
     body: GenerateIn,
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    out = await blog_writer.generate_article(
-        db, tenant_id=await owner_tenant_id(db),
-        keyword_id=body.keyword_id, keyword_text=body.keyword,
-    )
-    if out is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="need_keyword")
-    return out
+    """Start writing an article. Returns at once; the finished post appears in /admin/posts."""
+    tenant_id = await owner_tenant_id(db)
+    if body.keyword_id is None and not (body.keyword or "").strip():
+        # "Write the next one" with an empty queue: say so now rather than after two minutes.
+        if await blog_service.next_planned_keyword(db, tenant_id=tenant_id) is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="need_keyword")
+    if tenant_id in _writing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="already_writing")
+    _writing.add(tenant_id)
+    task = asyncio.create_task(_generate_in_background(tenant_id, body.keyword_id, body.keyword))
+    # Hold a reference: a bare create_task can be garbage-collected mid-flight.
+    _write_tasks.add(task)
+    task.add_done_callback(_write_tasks.discard)
+    return {"status": "generating"}
 
 
 @router.patch("/admin/posts/{post_id}")

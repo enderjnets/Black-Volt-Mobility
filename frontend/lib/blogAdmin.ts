@@ -59,6 +59,8 @@ export interface BlogPostT {
   keyword: string | null;
   internal_links: BlogInternalLinkT[];
   faq: BlogFaqT[];
+  /** Why a `draft` was held back, keyed by language. Empty when the article passed. */
+  quality_issues: Record<string, string[]>;
   created_at: string;
 }
 
@@ -102,7 +104,32 @@ export const discoverBlogKeywords = () =>
 
 export const listBlogPosts = () => jget<BlogPostT[]>("/v1/blog/admin/posts");
 export const generateBlogPost = (opts: { keyword_id?: number; keyword?: string }) =>
-  jsend<BlogPostT>("/v1/blog/admin/generate", "POST", opts);
+  jsend<{ status: string }>("/v1/blog/admin/generate", "POST", opts);
+
+/** Write an article and wait for it to land.
+ *
+ * A bilingual article is two long model calls, which outlasts the 100s ceiling every proxy
+ * in front of this app enforces — so the POST only starts the job and we watch the post
+ * list for the new row. `onWait` is called every few seconds so the UI can show progress
+ * instead of a frozen spinner.
+ */
+export async function generateBlogPostAndWait(
+  opts: { keyword_id?: number; keyword?: string },
+  onWait?: (elapsedSeconds: number) => void,
+): Promise<BlogPostT[]> {
+  const before = new Set((await listBlogPosts()).map((p) => p.id));
+  await generateBlogPost(opts);
+  const stepMs = 4000;
+  const steps = 75; // ~5 minutes, well past the slowest observed generation
+  for (let i = 1; i <= steps; i++) {
+    await new Promise((r) => setTimeout(r, stepMs));
+    onWait?.(Math.round((i * stepMs) / 1000));
+    const posts = await listBlogPosts();
+    if (posts.some((p) => !before.has(p.id))) return posts;
+  }
+  // The job may still finish; we simply stopped watching.
+  throw new Error("blog.err.slow");
+}
 export const patchBlogPost = (id: number, patch: Partial<BlogPostT>) =>
   jsend<BlogPostT>(`/v1/blog/admin/posts/${id}`, "PATCH", patch);
 export const publishBlogPost = (id: number) =>

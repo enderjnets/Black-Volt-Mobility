@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.89.0 — 2026-07-27 — The blog stops writing brochures: real fares, a quality gate, and a button that works
+
+Our own engine had published **zero** articles in the 13 days since it was paused, while Soro
+kept billing. Investigated against production before changing anything: generated a real
+article through the live admin API and read it end to end.
+
+The plumbing was fine (EN 584 + ES 743 words, FAQ, links). The content was not. It claimed
+*"our all-electric **fleet**"* and *"our chauffeurs are trained"* — there is one Kia EV9 — and
+it contained no fare, no drive time, and no airport logistics. Meanwhile
+`frontend/lib/seoRoutes.ts` already held eight hand-written landing pages with real fares,
+distances and durations from the live quote engine, and **none of it ever reached the writer**.
+
+- **The writer is grounded in real business facts** (`services/blog_facts.py`, new) — the
+  eight published routes with their fares (Aurora→DEN from $105, Denver→Vail from $329,
+  Denver→Aspen from $790), miles and minutes, plus the non-negotiable truth about the
+  business. `tests/test_blog_facts.py` parses the TypeScript source and fails if the two ever
+  drift, so a price change on the site can never leave a stale fare in an article.
+- **A quality gate decides whether an article may publish itself** (`services/blog_quality.py`,
+  new) — title length and on-topic-ness, word count, banned claims, stock-phrase density, at
+  least one real number, search-intent FAQ, and links that actually appear in the body and
+  point at a page that earns money. A failing article gets **one corrective retry with the
+  checker's own complaints fed back**; if it still fails it is parked as a **`draft` with no
+  publish date** and the reasons shown in the dashboard. The autopilot can no longer publish
+  something embarrassing.
+- **Articles link to the pages with prices on them** — `allowed_link_paths` now includes the
+  eight `/rides/...` routes. Before, the model linked `/`, `/blog` and the `/rides` index.
+- **"Write now" no longer returns an error while succeeding** — generation takes over 100s,
+  which is the hard ceiling of the proxy in front of the app, so the request 500'd every time
+  even though the article was written. `POST /blog/admin/generate` now returns **202** and
+  writes in the background; the dashboard shows live progress and refuses a double-click.
+- **Search Console is finally a keyword source** (`services/blog_keywords.py`) — the docstring
+  claimed it was source #1 and the code never queried it, so all 40 production keywords came
+  from the LLM with **invented** monthly volumes that then ranked the whole content plan. Real
+  impressions now feed in, and the LLM no longer supplies a demand figure at all.
+- **Slugs come from the keyword, not the headline** — no more
+  `experience-denver-airport-transfers-with-black-volt-mobility-s-kia-ev9`.
+- Chore: named the fare+tip rollup `dashboard.revenue_sum()` (it was copy-pasted in nine
+  places) and cleared the eight pre-existing `ruff` line-length errors.
+
+34 new tests (871 total). No migration.
+
 ## 0.88.0 — 2026-07-26 — Service day in the driver's timezone + tips to the driver + fee on what actually cleared
 
 Two owner reports: the assigned driver's payout base ignored his adjustments, and the

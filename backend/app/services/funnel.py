@@ -133,7 +133,7 @@ async def _earned_revenue_between(
     return float(
         (
             await db.execute(
-                select(func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0)).where(
+                select(dashboard_svc.revenue_sum()).where(
                     Ride.tenant_id == tenant_id,
                     earned_ride_filter(),
                     ride_day >= start,
@@ -166,7 +166,7 @@ async def _value_per_client(db: AsyncSession, *, tenant_id: int) -> tuple[float 
     total, n_clients = (
         await db.execute(
             select(
-                func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0),
+                dashboard_svc.revenue_sum(),
                 func.count(func.distinct(Ride.client_id)),
             ).where(
                 Ride.tenant_id == tenant_id,
@@ -250,7 +250,7 @@ async def summary(db: AsyncSession, *, tenant_id: int, days: int = 30) -> dict:
         await db.execute(
             select(
                 dashboard_svc.service_day().label("d"),
-                func.coalesce(func.sum(Ride.fare_total + func.coalesce(Ride.tip, 0.0)), 0.0),
+                dashboard_svc.revenue_sum(),
             )
             .where(
                 Ride.tenant_id == tenant_id,
