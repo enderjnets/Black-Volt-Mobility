@@ -17,6 +17,7 @@ export const CHANGELOG: VersionEntry[] = [
       "Tips go 100% to the driver who drove: they are added on top of their share and never charged a card fee.",
       "The Square fee is only deducted when the money actually went through Square — a cash or Zelle ride is no longer docked a card fee, and an event ride is charged only on its deposit.",
       "A discount now survives editing the ride: changing the pickup or the time no longer puts the price back to full.",
+      "Recording how a finished ride was paid now marks it paid — no more rides you already collected sitting there as \"Unpaid\".",
     ],
   },
   {

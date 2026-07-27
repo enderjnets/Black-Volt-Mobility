@@ -126,7 +126,7 @@ def test_week_offset_zero_matches_stats():
 
 
 def test_week_past_week_excludes_today():
-    from datetime import UTC, datetime
+    from app.services import dashboard as dash_svc
 
     c = _owner()
     rid = _make_ride(c, name="TodayRide")
@@ -135,7 +135,9 @@ def test_week_past_week_excludes_today():
     last_week = c.get("/api/v1/dashboard/week?offset=-1").json()
     # Last week ends strictly before this week starts; ranges don't overlap.
     assert last_week["end"] < this_week["start"]
-    today_iso = datetime.now(UTC).date().isoformat()
+    # "Today" is the DRIVER's day (America/Denver), not the server's UTC day — after
+    # ~18:00 local those are different dates and the week windows differ with them.
+    today_iso = dash_svc.today_local().isoformat()
     assert today_iso not in {d["date"] for d in last_week["days"]}
     assert today_iso in {d["date"] for d in this_week["days"]}
 

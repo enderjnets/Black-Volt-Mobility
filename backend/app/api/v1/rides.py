@@ -794,6 +794,19 @@ async def patch_ride(
             ride.tip_method = None
     if body.tip_method is not None and ride.tip:
         ride.tip_method = body.tip_method
+    # Recording HOW a FINISHED ride was paid means the money changed hands, so stop
+    # showing it as outstanding. Two rides were driven, collected by Venmo and left
+    # reading "Unpaid" because picking the method and flipping the flag were separate
+    # taps. On a ride that hasn't happened yet, picking a method is planning, not
+    # collecting — and an explicit `paid` in the same request always wins.
+    if (
+        body.payment_method is not None
+        and body.paid is None
+        and not ride.paid
+        and ride.status == RideStatus.COMPLETED
+    ):
+        ride.paid = True
+        ride.paid_at = datetime.now(UTC)
     # A paid ride whose pickup time has passed auto-closes as completed (an
     # explicit cancel/no-show still wins — those are never "overdue").
     booking.complete_if_overdue_paid(ride)

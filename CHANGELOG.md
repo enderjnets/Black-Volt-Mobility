@@ -30,7 +30,12 @@ dashboard KPIs did not match reality. Both investigated against the real product
   the fare back to LIST price: overcharging the customer and inflating the driver's base.
   The code and the loyalty flag (recovered from the stored breakdown) are carried forward
   and `discount_amount` is kept in step. Latent until now — prod has no discounted ride yet.
-- Tests: 838 backend (27 new). Each fix has a regression test verified to FAIL without it.
+- **Recording the method on a FINISHED ride marks it paid** (`api/v1/rides.py`) — two real
+  rides were driven, collected by Venmo, had their method AND tip method recorded, and
+  still read "Unpaid" because picking the method and flipping the flag were separate
+  taps. Choosing a method on a ride that hasn't happened yet is still just planning, and
+  an explicit `paid` in the same request always wins, so the flag stays a toggle.
+- Tests: 837 backend (34 new). Each fix has a regression test verified to FAIL without it.
   No migration.
 
 ## 0.87.0 — 2026-07-25 — Ride hand-off: assign to another driver, private chat, agreed split
