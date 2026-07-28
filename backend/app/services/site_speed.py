@@ -51,6 +51,7 @@ _HEAD_RE = re.compile(r"<head[^>]*>(.*?)</head>", re.I | re.S)
 _SCRIPT_RE = re.compile(r"<script\b([^>]*)>", re.I)
 _LINK_RE = re.compile(r"<link\b([^>]*)>", re.I)
 _IMG_SRC_RE = re.compile(r"<img\b[^>]*?\bsrc\s*=\s*[\"']([^\"']+)[\"']", re.I)
+_LOOKS_HTML = re.compile(r"<html|<head|<body", re.I)
 
 
 def _attr(attrs: str, name: str) -> str | None:
@@ -163,6 +164,14 @@ async def measure_page(http: httpx.AsyncClient, url: str) -> dict:
         # Decoded size: httpx un-gzips as it streams. `compressed` above is what says
         # whether it travelled compressed, so the two together tell the whole story.
         out["html_kb"] = round(len(body) / 1024)
+        if out.get("status") == 200 and not _LOOKS_HTML.search(html):
+            # Caught in production: forcing `Accept-Encoding: br` made Cloudflare answer in
+            # brotli, which httpx cannot decode without the optional package — so we parsed
+            # 8KB of binary and confidently reported "0 images, 0 render-blocking". Silent
+            # nonsense is worse than a visible failure, so an unreadable body is an error.
+            out["error"] = "unreadable body — wrong content-encoding?"
+            out["verdict"] = verdict(out)
+            return out
         blocking = count_blocking(html)
         out["blocking_scripts"] = blocking["scripts"]
         out["blocking_styles"] = blocking["styles"]
@@ -213,7 +222,9 @@ async def run_daily(db: AsyncSession, *, tenant_id: int) -> dict:
     if newest:
         paths.append(newest)
 
-    async with httpx.AsyncClient(headers={"Accept-Encoding": "gzip, br"}) as http:
+    # No Accept-Encoding override: httpx advertises exactly what it can decode. Asking for
+    # brotli it cannot unpack is how this shipped a page of binary as "0 images".
+    async with httpx.AsyncClient() as http:
         pages = [await measure_page(http, f"{site}{p}") for p in paths]
 
     warnings = sum(1 for p in pages for v in p.get("verdict", {}).values() if v == "warn")

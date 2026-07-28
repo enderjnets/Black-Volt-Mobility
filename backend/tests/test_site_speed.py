@@ -134,15 +134,31 @@ def _handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, content=_GZIPPED, headers={"content-encoding": "gzip"})
 
 
-@pytest.fixture
-def mocked_http(monkeypatch):
+def _binary_handler(request: httpx.Request) -> httpx.Response:
+    """A 200 whose body we cannot read — exactly what brotli-we-cannot-decode looked like."""
+    if request.method == "HEAD":
+        return httpx.Response(200, headers={"content-length": "51200"})
+    return httpx.Response(200, content=bytes(range(256)) * 32)
+
+
+def _patch_client(monkeypatch, handler):
     real = httpx.AsyncClient
 
     def make(**kwargs):
         kwargs.pop("transport", None)
-        return real(transport=httpx.MockTransport(_handler), **kwargs)
+        return real(transport=httpx.MockTransport(handler), **kwargs)
 
     monkeypatch.setattr(site_speed.httpx, "AsyncClient", make)
+
+
+@pytest.fixture
+def mocked_http(monkeypatch):
+    _patch_client(monkeypatch, _handler)
+
+
+@pytest.fixture
+def binary_http(monkeypatch):
+    _patch_client(monkeypatch, _binary_handler)
 
 
 @pytest_asyncio.fixture
@@ -220,6 +236,25 @@ async def test_the_newest_published_article_is_measured_too(db, mocked_http):
         )
     ).scalar_one()
     assert any(p["path"] == "/blog/denver-to-vail" for p in row.payload["pages"])
+
+
+async def test_an_unreadable_body_is_an_error_not_a_clean_bill_of_health(db, binary_http):
+    """Shipped once, caught in production: forcing `Accept-Encoding: br` made Cloudflare
+    answer in brotli, httpx could not decode it, and the audit reported a page of binary as
+    "0 images, 0 render-blocking" — confident, precise and wrong."""
+    tid = await _tenant(db)
+    await site_speed.run_daily(db, tenant_id=tid)
+    row = (
+        await db.execute(
+            select(SeoSnapshot).where(
+                SeoSnapshot.tenant_id == tid, SeoSnapshot.kind == "speed"
+            )
+        )
+    ).scalar_one()
+    home = next(p for p in row.payload["pages"] if p["path"] == "/")
+    assert "unreadable" in home["error"]
+    assert "blocking_scripts" not in home  # no fabricated zeros
+    assert row.payload["summary"]["warnings"] > 0
 
 
 async def test_running_twice_the_same_day_updates_one_row(db, mocked_http):
