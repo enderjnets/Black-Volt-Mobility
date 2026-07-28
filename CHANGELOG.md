@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.91.0 — 2026-07-28 — Getting Google to come and read the site
+
+The indexation check added in 0.90.0 came back with the same answer for **both** published
+articles:
+
+```
+"coverage": "URL is unknown to Google",  "last_crawl": null
+```
+
+Google has never seen a single page. That is the real reason fifteen straight days report zero
+impressions, and it means publishing more articles cannot help on its own. Verified the fault is
+not ours: `robots.txt` allows Googlebot, `sitemap.xml` serves 18 correct URLs including both
+articles, and every page answers 200 in 24–99 ms.
+
+- **The sitemap can now be submitted from the dashboard** (`services/gsc.py`) — `sitemaps.list`
+  for status (registered? last read when?) and `sitemaps.submit` to send it, both through the
+  existing `asyncio.to_thread` pattern. The Analytics tab shows the status and flags the telling
+  case: **registered but never downloaded**.
+- **The OAuth scope widened** from `webmasters.readonly` to `webmasters`, because read-only cannot
+  submit. A token minted before this returns 403, which is reported as **"reconnect once"** rather
+  than a generic error — a completely different instruction for the owner. Reconnecting needs one
+  click; the existing consent flow already asks for offline access.
+- **Publishing an article re-submits the sitemap** (`services/blog_publish.py`), best-effort and
+  wrapped so Google being down can never cost a publish. That module's docstring had claimed it
+  "pings the sitemap" since F1 with **no code behind it** — the third such claim found in this
+  engine. It is true now.
+- **The step Google forbids us to automate is named, not faked.** Its Indexing API only accepts
+  job postings and live broadcasts, so asking it to index an article is off the table. The tab
+  lists exactly which articles Google has never seen and deep-links each one to its Search Console
+  inspection page, saying plainly that this part is manual.
+
+12 new tests (928 total), Google's client mocked throughout. No migration.
+
 ## 0.90.0 — 2026-07-28 — The Analytics and Speed tabs report something real
 
 The owner reported both tabs looked dead. Investigated against production — logs, DB, and the

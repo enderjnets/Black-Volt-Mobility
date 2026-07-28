@@ -23,8 +23,11 @@ from app.services import blog as blog_service
 
 logger = logging.getLogger("blackvolt.blog.gsc")
 
+# Read-write, not readonly: submitting the sitemap needs it. Search Console reported
+# "URL is unknown to Google" for every published article — Google had never been told the
+# site exists — and telling it is the one part of that we can automate.
 SCOPES = [
-    "https://www.googleapis.com/auth/webmasters.readonly",
+    "https://www.googleapis.com/auth/webmasters",
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
@@ -155,6 +158,108 @@ def _query_gsc(refresh_token: str, site_url: str) -> dict:
 _MAX_INSPECTED = 10
 
 
+def _is_permission_error(exc: Exception) -> bool:
+    """A token minted before we asked for write access can read but not submit.
+
+    Google answers 403 insufficientPermissions. That is not a failure to report as an error
+    — it means "reconnect once", which is a completely different instruction for the owner.
+    """
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    return status in (401, 403) or "insufficientPermissions" in str(exc)
+
+
+def _sitemaps_list(refresh_token: str, site_url: str) -> list[dict]:
+    """Blocking Google API call — run via asyncio.to_thread, like _query_gsc."""
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+
+    creds = _credentials(refresh_token)
+    creds.refresh(Request())
+    svc = build("searchconsole", "v1", credentials=creds, cache_discovery=False)
+    resp = svc.sitemaps().list(siteUrl=site_url).execute() or {}
+    return resp.get("sitemap", []) or []
+
+
+def _sitemaps_submit(refresh_token: str, site_url: str, feedpath: str) -> None:
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+
+    creds = _credentials(refresh_token)
+    creds.refresh(Request())
+    svc = build("searchconsole", "v1", credentials=creds, cache_discovery=False)
+    svc.sitemaps().submit(siteUrl=site_url, feedpath=feedpath).execute()
+
+
+def default_feedpath() -> str:
+    return f"{get_settings().PUBLIC_SITE_URL.rstrip('/')}/sitemap.xml"
+
+
+async def _config(db: AsyncSession, tenant_id: int) -> BlogConfig | None:
+    cfg = (
+        await db.execute(select(BlogConfig).where(BlogConfig.tenant_id == tenant_id))
+    ).scalar_one_or_none()
+    if cfg is None or not cfg.gsc_refresh_token or not cfg.gsc_site_url:
+        return None
+    return cfg
+
+
+async def sitemap_status(db: AsyncSession, *, tenant_id: int) -> dict:
+    """What Google says about our sitemap: registered at all, and last read when.
+
+    `last_downloaded: null` on every entry is the smoking gun for "Google has never come
+    round", which is exactly the state the URL inspection reported.
+    """
+    import asyncio
+
+    cfg = await _config(db, tenant_id)
+    if cfg is None:
+        return {"skipped": "gsc_not_connected"}
+    try:
+        rows = await asyncio.to_thread(_sitemaps_list, cfg.gsc_refresh_token, cfg.gsc_site_url)
+    except Exception as e:
+        if _is_permission_error(e):
+            return {"skipped": "needs_reauth"}
+        logger.warning("sitemap list failed tenant=%s: %s", tenant_id, e)
+        return {"skipped": "list_failed"}
+    return {
+        "expected": default_feedpath(),
+        "sitemaps": [
+            {
+                "path": r.get("path"),
+                "last_submitted": r.get("lastSubmitted"),
+                "last_downloaded": r.get("lastDownloaded"),
+                "pending": bool(r.get("isPending")),
+                "warnings": int(r.get("warnings") or 0),
+                "errors": int(r.get("errors") or 0),
+            }
+            for r in rows
+        ],
+    }
+
+
+async def submit_sitemap(
+    db: AsyncSession, *, tenant_id: int, feedpath: str | None = None
+) -> dict:
+    """Tell Google the sitemap exists. The one part of getting crawled we can automate."""
+    import asyncio
+
+    cfg = await _config(db, tenant_id)
+    if cfg is None:
+        return {"skipped": "gsc_not_connected"}
+    path = feedpath or default_feedpath()
+    try:
+        await asyncio.to_thread(
+            _sitemaps_submit, cfg.gsc_refresh_token, cfg.gsc_site_url, path
+        )
+    except Exception as e:
+        if _is_permission_error(e):
+            return {"skipped": "needs_reauth"}
+        logger.warning("sitemap submit failed tenant=%s: %s", tenant_id, e)
+        return {"skipped": "submit_failed"}
+    logger.info("sitemap submitted tenant=%s path=%s", tenant_id, path)
+    return {"ok": True, "path": path}
+
+
 def _inspect_urls(refresh_token: str, site_url: str, urls: list[str]) -> dict:
     """Blocking Google API call — run via asyncio.to_thread, like _query_gsc."""
     from google.auth.transport.requests import Request
@@ -192,10 +297,8 @@ async def run_indexing(db: AsyncSession, *, tenant_id: int) -> dict:
 
     from app.models import BlogPost
 
-    cfg = (
-        await db.execute(select(BlogConfig).where(BlogConfig.tenant_id == tenant_id))
-    ).scalar_one_or_none()
-    if cfg is None or not cfg.gsc_refresh_token or not cfg.gsc_site_url:
+    cfg = await _config(db, tenant_id)
+    if cfg is None:
         return {"skipped": "gsc_not_connected"}
 
     site = get_settings().PUBLIC_SITE_URL.rstrip("/")

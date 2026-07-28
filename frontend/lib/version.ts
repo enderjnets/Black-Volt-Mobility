@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.90.0";
+export const CURRENT_VERSION = "0.91.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.91.0",
+    date: "2026-07-28",
+    title: "Get Google to actually come and read the site",
+    changes: [
+      "Search Console reported that Google had never seen a single one of your pages — which is why fifteen straight days show zero visits from search. Publishing more articles could not have fixed that on its own.",
+      "The dashboard now shows whether Google has your sitemap on file and when it last read it, with a button to send it. It is also re-sent automatically every time an article publishes.",
+      "Requesting indexing for a specific article is the one step Google does not allow us to do for you. The Analytics tab now lists exactly which articles need it and links straight to the right page in Search Console.",
+      "Connecting Google now asks for permission to submit the sitemap, so you will be asked to reconnect once.",
+    ],
+  },
   {
     version: "0.90.0",
     date: "2026-07-28",

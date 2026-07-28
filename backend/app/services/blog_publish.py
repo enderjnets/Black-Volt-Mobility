@@ -1,8 +1,11 @@
 """Volt Blog Autopilot — publisher.
 
 Releases `scheduled` articles once their 24h edit window elapses (hybrid autopilot),
-gated by the tenant's `autopublish` flag. On publish it (F4) fires an auto-share to
-social and pings the sitemap. Runs on a short interval from the scheduler.
+gated by the tenant's `autopublish` flag. On publish it fires an auto-share to social and
+re-submits the sitemap to Search Console. Runs on a short interval from the scheduler.
+
+(The sitemap line used to be in this docstring with no code behind it. Google had never
+crawled a single page — "URL is unknown to Google" — so it is real now.)
 """
 from __future__ import annotations
 
@@ -33,6 +36,17 @@ async def _auto_share(db: AsyncSession, *, tenant_id: int, post: BlogPost) -> No
         logger.info("blog auto-share skipped post=%s: %s", post.id, e)
 
 
+async def _ping_sitemap(db: AsyncSession, *, tenant_id: int) -> None:
+    """Nudge Google after a publish. Best-effort — publishing never waits on Google."""
+    try:
+        from app.services import gsc
+
+        out = await gsc.submit_sitemap(db, tenant_id=tenant_id)
+        logger.info("sitemap ping tenant=%s: %s", tenant_id, out)
+    except Exception as e:  # noqa: BLE001 — a sitemap nudge must never block publishing
+        logger.info("sitemap ping skipped tenant=%s: %s", tenant_id, e)
+
+
 async def publish_now(db: AsyncSession, *, tenant_id: int, post_id: int) -> dict | None:
     """Publish one article because the owner said so. Right now, not eventually.
 
@@ -55,6 +69,7 @@ async def publish_now(db: AsyncSession, *, tenant_id: int, post_id: int) -> dict
     await db.commit()
     await db.refresh(post)
     await _auto_share(db, tenant_id=tenant_id, post=post)
+    await _ping_sitemap(db, tenant_id=tenant_id)
     logger.info("blog published by owner tenant=%s post=%s slug=%s", tenant_id, post.id, post.slug)
     return blog_service._admin_post_dict(post)
 
@@ -87,5 +102,6 @@ async def publish_due(db: AsyncSession, *, tenant_id: int) -> dict:
         for post in due:
             await db.refresh(post)
             await _auto_share(db, tenant_id=tenant_id, post=post)
+        await _ping_sitemap(db, tenant_id=tenant_id)
     logger.info("blog publish_due tenant=%s published=%s", tenant_id, published)
     return {"published": published}

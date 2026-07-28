@@ -334,6 +334,24 @@ async def gsc_callback(
     return RedirectResponse(url=f"{dest}?gsc=connected")
 
 
+@router.get("/admin/sitemap")
+async def sitemap_status(
+    payload: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """What Google knows about our sitemap — including whether it has ever read it."""
+    return await gsc.sitemap_status(db, tenant_id=await owner_tenant_id(db))
+
+
+@router.post("/admin/sitemap/submit")
+async def submit_sitemap(
+    payload: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Tell Google the sitemap exists (Analytics tab button)."""
+    return await gsc.submit_sitemap(db, tenant_id=await owner_tenant_id(db))
+
+
 @router.get("/admin/analytics")
 async def analytics(
     payload: dict = Depends(require_admin),

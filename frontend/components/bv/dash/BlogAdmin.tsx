@@ -11,6 +11,7 @@ import {
   generateBlogPostAndWait,
   getBlogAnalytics,
   getBlogConfig,
+  getBlogSitemap,
   gscAuthorizeUrl,
   listBlogKeywords,
   listBlogPosts,
@@ -20,10 +21,12 @@ import {
   runBlogSpeed,
   setBlogKeywordStatus,
   setBlogPostStatus,
+  submitBlogSitemap,
   type BlogAnalyticsT,
   type BlogConfigT,
   type BlogKeywordT,
   type BlogPostT,
+  type BlogSitemapT,
   type BlogSpeedPageT,
 } from "@/lib/blogAdmin";
 
@@ -76,6 +79,7 @@ export function BlogAdmin() {
   const [posts, setPosts] = useState<BlogPostT[]>([]);
   const [keywords, setKeywords] = useState<BlogKeywordT[]>([]);
   const [analytics, setAnalytics] = useState<BlogAnalyticsT | null>(null);
+  const [sitemap, setSitemap] = useState<BlogSitemapT | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -227,7 +231,16 @@ export function BlogAdmin() {
 
       {tab === "analytics" && (
         <AnalyticsTab analytics={analytics} config={config} busy={busy} t={t}
-          onLoad={() => run(async () => { setAnalytics(await getBlogAnalytics()); })}
+          sitemap={sitemap}
+          onSubmitSitemap={() => run(async () => {
+            const r = await submitBlogSitemap();
+            setSitemap(await getBlogSitemap().catch(() => null));
+            flash(r.skipped ? t(`blog.sitemap.${r.skipped}`) : t("blog.sitemap.sent"));
+          })}
+          onLoad={() => run(async () => {
+            setAnalytics(await getBlogAnalytics());
+            setSitemap(await getBlogSitemap().catch(() => null));
+          })}
           onConnect={(siteUrl) => run(async () => { const { url } = await gscAuthorizeUrl(siteUrl); window.location.href = url; })}
         />
       )}
@@ -587,10 +600,99 @@ function IndexingBlock({ indexing, t }: {
   );
 }
 
-function AnalyticsTab({ analytics, config, busy, t, onLoad, onConnect }: {
-  analytics: BlogAnalyticsT | null; config: BlogConfigT | null; busy: boolean;
+function SitemapBlock({ sitemap, busy, t, onSubmit, onReconnect }: {
+  sitemap: BlogSitemapT | null; busy: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
-  onLoad: () => void; onConnect: (siteUrl: string) => void;
+  onSubmit: () => void; onReconnect: () => void;
+}) {
+  const entries = sitemap?.sitemaps || [];
+  const needsReauth = sitemap?.skipped === "needs_reauth";
+  // Registered but never fetched is the whole diagnosis: Google has not come round.
+  const neverRead = entries.length > 0 && entries.every((e) => !e.last_downloaded);
+
+  return (
+    <Card>
+      <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.sitemap.title")}</div>
+      {needsReauth ? (
+        <>
+          <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
+            {t("blog.sitemap.needs_reauth")}
+          </div>
+          <Button disabled={busy} onClick={onReconnect}>🔗 {t("blog.gsc.connect")}</Button>
+        </>
+      ) : (
+        <>
+          {entries.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
+              {t("blog.sitemap.none")}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+              {entries.map((e) => (
+                <div key={e.path} style={{ fontSize: 13 }}>
+                  <div style={{ color: "var(--arctic)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {e.path.replace(/^https?:\/\/[^/]+/, "")}
+                  </div>
+                  <div style={{ color: e.last_downloaded ? "var(--fg3)" : "var(--danger,#ff5c5c)", fontSize: 12 }}>
+                    {e.last_downloaded
+                      ? t("blog.sitemap.lastRead", { when: new Date(e.last_downloaded).toLocaleDateString() })
+                      : t("blog.sitemap.neverRead")}
+                    {e.errors > 0 ? ` · ${e.errors} errors` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {neverRead && (
+            <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
+              {t("blog.sitemap.neverReadHelp")}
+            </div>
+          )}
+          <Button disabled={busy} onClick={onSubmit}>📤 {t("blog.sitemap.submit")}</Button>
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** The one step we cannot do for him: Google forbids using its Indexing API for articles. */
+function ManualIndexing({ indexing, siteUrl, t }: {
+  indexing: NonNullable<BlogAnalyticsT["indexing"]>;
+  siteUrl: string | null | undefined;
+  t: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  const unknown = indexing.urls.filter((u) => (u.coverage || "").toLowerCase().includes("unknown"));
+  if (unknown.length === 0) return null;
+  return (
+    <Card>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--danger,#ff5c5c)", marginBottom: 6 }}>
+        {t("blog.index.manualTitle", { n: unknown.length })}
+      </div>
+      <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
+        {t("blog.index.manualHelp")}
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {unknown.map((u) => (
+          <a
+            key={u.url}
+            href={`https://search.google.com/search-console/inspect?resource_id=${encodeURIComponent(siteUrl || "")}&id=${encodeURIComponent(u.url)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 13, color: "var(--volt)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {u.url.replace(/^https?:\/\/[^/]+/, "")} →
+          </a>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function AnalyticsTab({ analytics, config, busy, t, sitemap, onLoad, onConnect, onSubmitSitemap }: {
+  analytics: BlogAnalyticsT | null; config: BlogConfigT | null; busy: boolean;
+  sitemap: BlogSitemapT | null;
+  t: (k: string, v?: Record<string, string | number>) => string;
+  onLoad: () => void; onConnect: (siteUrl: string) => void; onSubmitSitemap: () => void;
 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { onLoad(); }, []);
@@ -651,7 +753,15 @@ function AnalyticsTab({ analytics, config, busy, t, onLoad, onConnect }: {
               )}
             </>
           )}
+          <SitemapBlock
+            sitemap={sitemap} busy={busy} t={t}
+            onSubmit={onSubmitSitemap}
+            onReconnect={() => onConnect(config?.gsc_site_url || siteUrl)}
+          />
           {analytics?.indexing && <IndexingBlock indexing={analytics.indexing} t={t} />}
+          {analytics?.indexing && (
+            <ManualIndexing indexing={analytics.indexing} siteUrl={config?.gsc_site_url} t={t} />
+          )}
         </>
       )}
     </div>
