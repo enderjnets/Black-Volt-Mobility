@@ -117,5 +117,8 @@ def truth_block() -> str:
         "\"from $X\". Never invent a price, a discount, or a fee.\n"
         "- Never invent phone numbers, email addresses, awards, ratings, years in business, "
         "or how many passengers have been driven.\n"
-        "- Riders book online at /book; the fare is shown before they confirm."
+        "- Riders book online at /book; the fare is shown before they confirm.\n"
+        "- These exact phrases are FORBIDDEN anywhere in the article: "
+        + ", ".join(f'"{p}"' for p in BANNED_PHRASES)
+        + "."
     )

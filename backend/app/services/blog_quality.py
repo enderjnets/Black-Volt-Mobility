@@ -58,7 +58,7 @@ def _places_in(text: str) -> set[str]:
     return {p for p in blog_facts.PLACES if p in low}
 
 
-def _on_topic(title: str, keyword: str) -> bool:
+def on_topic(title: str, keyword: str) -> bool:
     """Is the title actually about the thing we are targeting?
 
     Place names carry across languages, so the Spanish article is held to the same standard
@@ -86,7 +86,7 @@ def issues(article: dict, *, keyword: str, allowed: set[str]) -> list[str]:
             f"The title is {len(title)} characters; Google cuts it off at {MAX_TITLE}. "
             "Lead with the search phrase and drop the brand-flavoured opener."
         )
-    if title and not _on_topic(title, keyword):
+    if title and not on_topic(title, keyword):
         out.append(
             f'The title does not name what the reader searched for ("{keyword}"). '
             "Put the place and the service in the title."

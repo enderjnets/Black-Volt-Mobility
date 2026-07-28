@@ -20,6 +20,7 @@ import asyncio
 import datetime as dt
 import json
 import logging
+import re
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -198,6 +199,69 @@ def _template_article(brand: dict, keyword: str, lang: str) -> dict:
     }
 
 
+def _harvest_faq(body: str) -> list[dict]:
+    """Pull Q/A pairs out of the body when the model wrote the FAQ as headings.
+
+    Observed in production: the model writes three genuinely good questions as `## …?`
+    sections and then leaves the `faq` JSON field empty. The content is there; failing the
+    article over where it was typed would be pedantry.
+    """
+    out: list[dict] = []
+    blocks = re.split(r"^#{2,4}\s+", body or "", flags=re.M)[1:]
+    for block in blocks:
+        head, _, rest = block.partition("\n")
+        q = re.sub(r"^(?:Q[:.]\s*)", "", head).strip()
+        if not q.endswith("?"):
+            continue
+        answer = re.sub(r"^(?:A[:.]\s*)", "", rest.strip()).strip()
+        # Stop at a nested heading, and skip a question with no answer under it.
+        answer = answer.split("\n#")[0].strip()
+        if len(answer) >= 40:
+            out.append({"q": q[:300], "a": answer[:1200]})
+    return out[:3]
+
+
+def _links_in_body(body: str, allowed: set[str]) -> list[dict]:
+    """The links that actually render, which is the only list worth storing.
+
+    The model maintains a separate `internal_links` array that regularly disagrees with the
+    prose — sometimes empty while the body links correctly, sometimes listing pages it never
+    linked. Reading the body settles it.
+    """
+    seen: dict[str, str] = {}
+    for text, href in re.findall(r"\[([^\]]+)\]\(([^)]+)\)", body or ""):
+        href = href.strip()
+        if href in allowed and href not in seen:
+            seen[href] = text.strip()[:120]
+    return [{"href": h, "text": t} for h, t in seen.items()]
+
+
+def _shorten_title(title: str, keyword: str) -> str:
+    """Drop the subtitle when a good title runs past what Google shows.
+
+    "Luxury Airport Shuttle Denver: Premium Electric Chauffeur Service" is 65 characters of
+    which the first 29 are the whole point. Asking the model again wastes a call.
+    """
+    title = (title or "").strip()
+    if len(title) <= blog_quality.MAX_TITLE:
+        return title
+    for sep in (": ", " — ", " – ", " | ", " - "):
+        head = title.split(sep)[0].strip()
+        if 20 <= len(head) <= blog_quality.MAX_TITLE and blog_quality.on_topic(head, keyword):
+            return head
+    return title
+
+
+def _repair(data: dict, keyword: str, allowed: set[str]) -> dict:
+    """Fix what is mechanically fixable before grading, so the gate judges the writing."""
+    data["title"] = _shorten_title(data.get("title") or "", keyword)
+    body = data.get("body_md") or ""
+    if not [f for f in (data.get("faq") or []) if isinstance(f, dict) and f.get("q")]:
+        data["faq"] = _harvest_faq(body)
+    data["internal_links"] = _links_in_body(body, allowed)
+    return data
+
+
 async def _write_checked(
     brand: dict, keyword: str, facts: str, cfg, lang: str, allowed: set[str]
 ) -> tuple[dict, list[str]]:
@@ -211,19 +275,18 @@ async def _write_checked(
         return _template_article(brand, keyword, lang), [
             "Every model was unreachable, so this is the placeholder template."
         ]
+    data = _repair(data, keyword, allowed)
     notes = blog_quality.issues(data, keyword=keyword, allowed=allowed)
     if notes:
         logger.info("blog quality reject lang=%s kw=%r: %s", lang, keyword, " | ".join(notes))
         await asyncio.sleep(2)
         retry = await _llm_article(brand, keyword, facts, cfg, lang, fix_notes=notes)
         if retry is not None:
+            retry = _repair(retry, keyword, allowed)
             retry_notes = blog_quality.issues(retry, keyword=keyword, allowed=allowed)
             # Keep whichever attempt is less broken; a retry that regresses is discarded.
             if len(retry_notes) < len(notes):
                 data, notes = retry, retry_notes
-    data["internal_links"] = blog_service.filter_internal_links(
-        data.get("internal_links"), allowed
-    )
     return data, notes
 
 

@@ -36,10 +36,17 @@ distances and durations from the live quote engine, and **none of it ever reache
   impressions now feed in, and the LLM no longer supplies a demand figure at all.
 - **Slugs come from the keyword, not the headline** — no more
   `experience-denver-airport-transfers-with-black-volt-mobility-s-kia-ev9`.
+- **Formatting slips are repaired, not punished** — verified against the first real run on
+  the new engine. The model reliably writes three good FAQ questions as `##` headings and
+  then leaves the JSON field empty, leaves `internal_links` empty while the prose links
+  correctly, and overshoots the title by five characters with a droppable subtitle. All three
+  are now fixed before grading, so the gate judges the writing rather than the typing:
+  `Luxury Airport Shuttle Denver: Premium Electric Chauffeur Service` → `Luxury Airport
+  Shuttle Denver`. Internal links are read from the body, which is the only list that renders.
 - Chore: named the fare+tip rollup `dashboard.revenue_sum()` (it was copy-pasted in nine
   places) and cleared the eight pre-existing `ruff` line-length errors.
 
-34 new tests (871 total). No migration.
+47 new tests (884 total). No migration.
 
 ## 0.88.0 — 2026-07-26 — Service day in the driver's timezone + tips to the driver + fee on what actually cleared
 
