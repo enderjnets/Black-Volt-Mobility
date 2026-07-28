@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.90.0 — 2026-07-28 — The Analytics and Speed tabs report something real
+
+The owner reported both tabs looked dead. Investigated against production — logs, DB, and the
+live API — rather than guessed.
+
+### Speed was calling an API that always says no
+Production log: `runPagespeed?url=…blackvoltmobility.com/blog → 429`, and the endpoint
+answered the dashboard **200 OK** anyway. Verified by calling PSI directly:
+
+```json
+{"code":429,"message":"Quota exceeded ... consumer 'project_number:583797351490'"}
+```
+
+That project number is Google's **shared anonymous project**: without an API key every caller
+on earth lands in one bucket whose daily quota is permanently spent. The code assumed
+"keyless is allowed at low volume; a key just raises the quota" — it is not true, and the
+result was **zero `psi` rows ever written**.
+
+- **`services/site_speed.py` now measures the pages itself** — no key, no quota. Real TTFB
+  (streamed, so headers-received is timed separately from the full download), page weight,
+  whether it travelled compressed, HTTP version, render-blocking scripts and stylesheets in
+  `<head>` (JSON-LD excluded — penalising our own structured data would be backwards), and
+  image weight by `HEAD` so an audit costs the site almost nothing. Pages: `/`, `/blog`,
+  `/book` and the newest published article. The payload is stamped `method: "self"` so nobody
+  mistakes it for Lighthouse. A page that 500s or times out is **recorded**, not dropped.
+- Snapshot kind renamed `psi` → `speed` (string column, **no migration**; there was no `psi`
+  row to lose). `GOOGLE_PSI_API_KEY` deleted from config.
+
+### Analytics threw away 13 of the 14 days it downloaded
+`GET /blog/admin/analytics` returned each Search Console day **without its date**, so no trend
+could be drawn — and the tab then rendered exactly one of them as three bare zeros.
+
+- Every day now carries its date and comes back oldest-first, with 30-day totals.
+- **The engine's own numbers ship alongside**: published / scheduled / held-back articles,
+  keywords by status and source, and what it will write next. Those are true today, unlike
+  Search Console.
+- **Indexation**: `urlInspection.index.inspect` reports whether Google has actually indexed
+  each published article — cached as a daily snapshot, never on a dashboard load, and it
+  degrades silently if the API is unavailable.
+- When every number is genuinely zero the tab now **says why** (a new site that has not
+  started ranking) instead of looking broken.
+- The endpoint's logic moved into `blog_service.analytics()`; its docstring had claimed it
+  "returns empty scaffolding" since F1.
+
+23 new tests (915 total), including the parsing edge cases and an end-to-end speed run against
+`httpx.MockTransport` — never the network. No migration.
+
 ## 0.89.1 — 2026-07-28 — "Publish now" actually publishes
 
 The owner pressed Publish on a finished article, twice, and got 200 OK both times. The post

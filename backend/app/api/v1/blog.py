@@ -339,21 +339,8 @@ async def analytics(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """SEO analytics (GSC impact + PSI). Populated in F4; returns empty scaffolding now."""
-    from app.models import SeoSnapshot
-
-    tid = await owner_tenant_id(db)
-    rows = (
-        await db.execute(
-            select(SeoSnapshot)
-            .where(SeoSnapshot.tenant_id == tid)
-            .order_by(SeoSnapshot.date.desc())
-            .limit(60)
-        )
-    ).scalars().all()
-    gsc = [r.payload for r in rows if r.kind == "gsc_day"]
-    psi = next((r.payload for r in rows if r.kind == "psi"), None)
-    return {"gsc": gsc, "psi": psi}
+    """SEO analytics: Search Console history, the latest speed audit, and our own output."""
+    return await blog_service.analytics(db, tenant_id=await owner_tenant_id(db))
 
 
 @router.post("/admin/speed/run")
@@ -361,7 +348,7 @@ async def run_speed(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Run a PageSpeed Insights audit now and persist the snapshot (Speed tab button)."""
+    """Measure the public pages now and persist the snapshot (Speed tab button)."""
     from app.services import site_speed
 
     return await site_speed.run_daily(db, tenant_id=await owner_tenant_id(db))

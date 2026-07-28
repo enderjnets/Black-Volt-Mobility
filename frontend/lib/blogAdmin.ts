@@ -64,9 +64,58 @@ export interface BlogPostT {
   created_at: string;
 }
 
+export interface BlogGscDayT {
+  date: string;
+  clicks?: number;
+  impressions?: number;
+  ctr?: number;
+  top_queries?: Array<{
+    query: string; clicks: number; impressions: number; ctr: number; position: number;
+  }>;
+}
+
+/** One page of a self-measured speed audit. `verdict` marks each metric ok | warn. */
+export interface BlogSpeedPageT {
+  url: string;
+  path: string;
+  status: number | null;
+  ttfb_ms?: number;
+  total_ms?: number;
+  html_kb?: number;
+  compressed?: boolean;
+  http_version?: string;
+  blocking_scripts?: number;
+  blocking_styles?: number;
+  images_kb?: number;
+  images_found?: number;
+  images_counted?: number;
+  error?: string;
+  verdict: Record<string, "ok" | "warn">;
+}
+
 export interface BlogAnalyticsT {
-  gsc: Array<Record<string, unknown>>;
-  psi: Record<string, unknown> | null;
+  gsc: BlogGscDayT[];
+  gsc_totals: { days: number; clicks: number; impressions: number; ctr: number };
+  /** Our own measurement, not Lighthouse — `method` says so. Null until the first run. */
+  speed: {
+    method: string;
+    measured_at: string;
+    pages: BlogSpeedPageT[];
+    summary: { pages: number; warnings: number; slowest_ttfb_ms: number };
+  } | null;
+  indexing: {
+    checked: number;
+    indexed: number;
+    urls: Array<{ url: string; verdict?: string; coverage?: string; last_crawl?: string; error?: string }>;
+  } | null;
+  /** What the engine itself has produced — true today, unlike Search Console. */
+  engine: {
+    posts: Record<string, number>;
+    last_published: string | null;
+    keywords: Record<string, number>;
+    keyword_sources: Record<string, number>;
+    next_keyword: string | null;
+  };
 }
 
 async function jget<T>(path: string): Promise<T> {
@@ -141,6 +190,6 @@ export const getBlogAnalytics = () => jget<BlogAnalyticsT>("/v1/blog/admin/analy
 export const autofillBlogConfig = () =>
   jsend<BlogConfigT>("/v1/blog/admin/config/autofill", "POST");
 export const runBlogSpeed = () =>
-  jsend<{ ok?: boolean; performance?: number; skipped?: string }>("/v1/blog/admin/speed/run", "POST");
+  jsend<{ ok?: boolean; pages?: number; warnings?: number }>("/v1/blog/admin/speed/run", "POST");
 export const gscAuthorizeUrl = (siteUrl: string) =>
   jget<{ url: string }>(`/v1/blog/admin/gsc/authorize?site_url=${encodeURIComponent(siteUrl)}`);

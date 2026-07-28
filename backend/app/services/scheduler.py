@@ -132,7 +132,11 @@ async def _blog_publish_job() -> None:
 
 
 async def _blog_speed_job() -> None:
-    """Daily 03:00 Denver: PageSpeed Insights snapshot of the public blog (Speed tab)."""
+    """Daily 03:00 Denver: measure the public pages (Speed tab).
+
+    Deliberately not gated by the blog's `paused` flag: pausing stops producing content, it
+    does not stop the site from needing to be fast.
+    """
     try:
         from app.db.base import get_session_factory
         from app.services import site_speed
@@ -153,8 +157,9 @@ async def _blog_gsc_job() -> None:
         from app.services.tenancy import owner_tenant_id
 
         async with get_session_factory()() as db:
-            out = await gsc.run_daily(db, tenant_id=await owner_tenant_id(db))
-            logger.info("blog gsc: %s", out)
+            tid = await owner_tenant_id(db)
+            logger.info("blog gsc: %s", await gsc.run_daily(db, tenant_id=tid))
+            logger.info("blog indexing: %s", await gsc.run_indexing(db, tenant_id=tid))
     except Exception as e:  # never let a job crash the scheduler
         logger.warning("blog_gsc job failed: %s", e)
 

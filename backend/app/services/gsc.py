@@ -150,6 +150,102 @@ def _query_gsc(refresh_token: str, site_url: str) -> dict:
     return resp or {}
 
 
+# Google's URL Inspection quota is 2000/day; we only ever have a handful of articles, and
+# checking politely keeps plenty of headroom for the owner's own Search Console use.
+_MAX_INSPECTED = 10
+
+
+def _inspect_urls(refresh_token: str, site_url: str, urls: list[str]) -> dict:
+    """Blocking Google API call — run via asyncio.to_thread, like _query_gsc."""
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+
+    creds = _credentials(refresh_token)
+    creds.refresh(Request())
+    svc = build("searchconsole", "v1", credentials=creds, cache_discovery=False)
+    out: dict[str, dict] = {}
+    for url in urls[:_MAX_INSPECTED]:
+        try:
+            resp = svc.urlInspection().index().inspect(
+                body={"inspectionUrl": url, "siteUrl": site_url}
+            ).execute()
+        except Exception as e:  # one bad URL must not lose the rest
+            out[url] = {"error": str(e)[:200]}
+            continue
+        idx = (resp or {}).get("inspectionResult", {}).get("indexStatusResult", {}) or {}
+        out[url] = {
+            "verdict": idx.get("verdict"),
+            "coverage": idx.get("coverageState"),
+            "last_crawl": idx.get("lastCrawlTime"),
+            "robots": idx.get("robotsTxtState"),
+        }
+    return out
+
+
+async def run_indexing(db: AsyncSession, *, tenant_id: int) -> dict:
+    """Ask Google whether each published article is actually indexed.
+
+    "Is it live on our site" and "can anyone find it" are different questions, and only the
+    second one pays. Cached as a snapshot and refreshed daily — never on a dashboard load.
+    """
+    import asyncio
+
+    from app.models import BlogPost
+
+    cfg = (
+        await db.execute(select(BlogConfig).where(BlogConfig.tenant_id == tenant_id))
+    ).scalar_one_or_none()
+    if cfg is None or not cfg.gsc_refresh_token or not cfg.gsc_site_url:
+        return {"skipped": "gsc_not_connected"}
+
+    site = get_settings().PUBLIC_SITE_URL.rstrip("/")
+    slugs = (
+        await db.execute(
+            select(BlogPost.slug)
+            .where(BlogPost.tenant_id == tenant_id, BlogPost.status == "published")
+            .order_by(BlogPost.published_at.desc().nullslast())
+            .limit(_MAX_INSPECTED)
+        )
+    ).scalars().all()
+    if not slugs:
+        return {"skipped": "no_published_posts"}
+    urls = [f"{site}/blog/{s}" for s in slugs]
+
+    try:
+        results = await asyncio.to_thread(
+            _inspect_urls, cfg.gsc_refresh_token, cfg.gsc_site_url, urls
+        )
+    except Exception as e:
+        logger.warning("URL inspection failed tenant=%s: %s", tenant_id, e)
+        return {"skipped": "inspection_failed"}
+
+    payload = {
+        "checked": len(results),
+        "indexed": sum(1 for r in results.values() if r.get("verdict") == "PASS"),
+        "urls": [{"url": u, **r} for u, r in results.items()],
+    }
+    date = _denver_date(-1)
+    existing = (
+        await db.execute(
+            select(SeoSnapshot).where(
+                SeoSnapshot.tenant_id == tenant_id,
+                SeoSnapshot.kind == "indexing",
+                SeoSnapshot.date == date,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        existing.payload = payload
+    else:
+        db.add(SeoSnapshot(tenant_id=tenant_id, kind="indexing", date=date, payload=payload))
+    await db.commit()
+    logger.info(
+        "indexing snapshot tenant=%s checked=%s indexed=%s",
+        tenant_id, payload["checked"], payload["indexed"],
+    )
+    return {"ok": True, **{k: payload[k] for k in ("checked", "indexed")}}
+
+
 async def run_daily(db: AsyncSession, *, tenant_id: int) -> dict:
     import asyncio
 

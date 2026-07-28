@@ -24,6 +24,7 @@ import {
   type BlogConfigT,
   type BlogKeywordT,
   type BlogPostT,
+  type BlogSpeedPageT,
 } from "@/lib/blogAdmin";
 
 type Tab = "calendar" | "posts" | "keywords" | "brand" | "analytics" | "speed";
@@ -234,7 +235,7 @@ export function BlogAdmin() {
       {tab === "speed" && (
         <SpeedTab analytics={analytics} busy={busy} t={t}
           onLoad={() => run(async () => { setAnalytics(await getBlogAnalytics()); })}
-          onRun={() => run(async () => { const r = await runBlogSpeed(); if (r.skipped) flash(t("blog.speed.hintKey")); setAnalytics(await getBlogAnalytics()); })}
+          onRun={() => run(async () => { const r = await runBlogSpeed(); setAnalytics(await getBlogAnalytics()); flash(t("blog.speed.done", { pages: r.pages ?? 0, warnings: r.warnings ?? 0 })); })}
         />
       )}
     </div>
@@ -538,6 +539,54 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function EngineBlock({ engine, t }: {
+  engine: BlogAnalyticsT["engine"];
+  t: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  const sum = (r: Record<string, number>) => Object.values(r).reduce((a, b) => a + b, 0);
+  return (
+    <Card>
+      <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.engine.title")}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Stat label={t("blog.engine.published")} value={engine.posts.published ?? 0} />
+        <Stat label={t("blog.engine.scheduled")} value={engine.posts.scheduled ?? 0} />
+        <Stat label={t("blog.engine.drafts")} value={engine.posts.draft ?? 0} />
+        <Stat label={t("blog.engine.keywords")} value={sum(engine.keywords)} />
+      </div>
+      {engine.next_keyword && (
+        <div style={{ fontSize: 12, color: "var(--fg3)", marginTop: 10 }}>
+          {t("blog.engine.next")}: <span style={{ color: "var(--arctic)" }}>{engine.next_keyword}</span>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function IndexingBlock({ indexing, t }: {
+  indexing: NonNullable<BlogAnalyticsT["indexing"]>;
+  t: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  return (
+    <Card>
+      <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>
+        {t("blog.index.title", { indexed: indexing.indexed, checked: indexing.checked })}
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {indexing.urls.map((u) => (
+          <div key={u.url} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+            <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {u.url.replace(/^https?:\/\/[^/]+/, "")}
+            </span>
+            <span style={{ color: u.verdict === "PASS" ? "var(--success,#3ddc84)" : "var(--fg3)", flexShrink: 0 }}>
+              {u.error ? "?" : u.coverage || u.verdict || "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function AnalyticsTab({ analytics, config, busy, t, onLoad, onConnect }: {
   analytics: BlogAnalyticsT | null; config: BlogConfigT | null; busy: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
@@ -547,53 +596,123 @@ function AnalyticsTab({ analytics, config, busy, t, onLoad, onConnect }: {
   useEffect(() => { onLoad(); }, []);
   const [siteUrl, setSiteUrl] = useState("sc-domain:blackvoltmobility.com");
   const connected = config?.gsc_connected;
-  const latest = (analytics?.gsc || [])[0] as
-    | { clicks?: number; impressions?: number; ctr?: number; top_queries?: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }> }
-    | undefined;
+  const totals = analytics?.gsc_totals;
+  const days = analytics?.gsc || [];
+  // Every day reporting zero is the normal state of a site that has not started ranking.
+  // Saying so is the difference between "no data yet" and "this tab is broken".
+  const silent = !!totals && totals.days > 0 && totals.impressions === 0;
+  const latest = days.length ? days[days.length - 1] : undefined;
 
-  if (!connected) {
-    return (
-      <Card>
-        <div style={{ fontSize: 13, color: "var(--fg2)", marginBottom: 12, lineHeight: 1.5 }}>{t("blog.empty.analytics")}</div>
-        <Field label={t("blog.gsc.siteUrl")} value={siteUrl} onChange={setSiteUrl} />
-        <div style={{ marginTop: 12 }}>
-          <Button disabled={busy} onClick={() => onConnect(siteUrl)}>🔗 {t("blog.gsc.connect")}</Button>
-        </div>
-      </Card>
-    );
-  }
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ fontSize: 12, color: "var(--fg3)" }}>
-        {t("blog.field.gsc")}: {config?.gsc_connected_email || "connected"} · {config?.gsc_site_url}
-      </div>
-      {!latest ? (
-        <p style={{ color: "var(--fg3)", fontSize: 13 }}>{t("blog.empty.analytics")}</p>
+      {analytics?.engine && <EngineBlock engine={analytics.engine} t={t} />}
+
+      {!connected ? (
+        <Card>
+          <div style={{ fontSize: 13, color: "var(--fg2)", marginBottom: 12, lineHeight: 1.5 }}>{t("blog.empty.analytics")}</div>
+          <Field label={t("blog.gsc.siteUrl")} value={siteUrl} onChange={setSiteUrl} />
+          <div style={{ marginTop: 12 }}>
+            <Button disabled={busy} onClick={() => onConnect(siteUrl)}>🔗 {t("blog.gsc.connect")}</Button>
+          </div>
+        </Card>
       ) : (
         <>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Stat label={t("blog.gsc.clicks")} value={latest.clicks ?? 0} />
-            <Stat label={t("blog.gsc.impressions")} value={latest.impressions ?? 0} />
-            <Stat label="CTR" value={`${latest.ctr ?? 0}%`} />
+          <div style={{ fontSize: 12, color: "var(--fg3)" }}>
+            {t("blog.field.gsc")}: {config?.gsc_connected_email || "connected"} · {config?.gsc_site_url}
           </div>
-          <Card>
-            <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.gsc.topQueries")}</div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {(latest.top_queries || []).slice(0, 12).map((q, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
-                  <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.query}</span>
-                  <span style={{ color: "var(--fg3)", flexShrink: 0 }}>{q.clicks}c · {q.impressions}i · pos {q.position}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
+          {!totals || totals.days === 0 ? (
+            <p style={{ color: "var(--fg3)", fontSize: 13 }}>{t("blog.empty.analytics")}</p>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Stat label={t("blog.gsc.clicks")} value={totals.clicks} />
+                <Stat label={t("blog.gsc.impressions")} value={totals.impressions} />
+                <Stat label="CTR" value={`${totals.ctr}%`} />
+                <Stat label={t("blog.gsc.days")} value={totals.days} />
+              </div>
+              {silent ? (
+                <Card>
+                  <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55 }}>
+                    {t("blog.gsc.silent", { days: totals.days })}
+                  </div>
+                </Card>
+              ) : (
+                <Card>
+                  <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.gsc.topQueries")}</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {(latest?.top_queries || []).slice(0, 12).map((q, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+                        <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.query}</span>
+                        <span style={{ color: "var(--fg3)", flexShrink: 0 }}>{q.clicks}c · {q.impressions}i · pos {q.position}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
+          {analytics?.indexing && <IndexingBlock indexing={analytics.indexing} t={t} />}
         </>
       )}
     </div>
   );
 }
 
-// ─── Speed (PageSpeed Insights) ──────────────────────────────────────────────────
+// ─── Speed (measured by us — see services/site_speed.py) ─────────────────────
+
+function Mark({ v }: { v?: "ok" | "warn" }) {
+  if (!v) return null;
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-block", width: 7, height: 7, borderRadius: 999, flexShrink: 0,
+        background: v === "warn" ? "var(--danger,#ff5c5c)" : "var(--success,#3ddc84)",
+      }}
+    />
+  );
+}
+
+function SpeedPage({ page, t }: {
+  page: BlogSpeedPageT;
+  t: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  const blocking = (page.blocking_scripts ?? 0) + (page.blocking_styles ?? 0);
+  const rows: Array<[string, string, string]> = [
+    ["status", t("blog.speed.status"), page.error ? page.error : String(page.status ?? "—")],
+    ["ttfb_ms", t("blog.speed.ttfb"), page.ttfb_ms != null ? `${page.ttfb_ms} ms` : "—"],
+    ["total_ms", t("blog.speed.total"), page.total_ms != null ? `${page.total_ms} ms` : "—"],
+    ["html_kb", t("blog.speed.html"), page.html_kb != null ? `${page.html_kb} KB` : "—"],
+    ["compressed", t("blog.speed.compressed"), page.compressed ? "✓" : "✗"],
+    ["blocking", t("blog.speed.blocking"), String(blocking)],
+    [
+      "images_kb",
+      t("blog.speed.images"),
+      page.images_kb != null ? `${page.images_kb} KB (${page.images_counted ?? 0})` : "—",
+    ],
+  ];
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+        <span style={{ fontWeight: 700, color: "var(--arctic)", fontSize: 14 }}>{page.path}</span>
+        <span style={{ fontSize: 11, color: "var(--fg3)" }}>{page.http_version || ""}</span>
+      </div>
+      <div style={{ display: "grid", gap: 4 }}>
+        {rows.map(([key, label, value]) => (
+          <div key={key} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+            <span style={{ color: "var(--fg3)", display: "flex", alignItems: "center", gap: 6 }}>
+              <Mark v={page.verdict?.[key]} />
+              {label}
+            </span>
+            <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 function SpeedTab({ analytics, busy, t, onLoad, onRun }: {
   analytics: BlogAnalyticsT | null; busy: boolean;
@@ -602,44 +721,26 @@ function SpeedTab({ analytics, busy, t, onLoad, onRun }: {
 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { onLoad(); }, []);
-  const psi = analytics?.psi as
-    | { performance?: number; seo?: number; accessibility?: number; best_practices?: number; lcp?: string; cls?: string; tbt?: string; fcp?: string; top_opportunities?: Array<{ title?: string; savings_ms?: number }> }
-    | null | undefined;
+  const speed = analytics?.speed;
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <Button disabled={busy} onClick={onRun}>⚡ {t("blog.action.runSpeed")}</Button>
-      {!psi ? (
+      <p style={{ fontSize: 12, color: "var(--fg3)", lineHeight: 1.5, margin: 0 }}>
+        {t("blog.speed.method")}
+      </p>
+      {!speed ? (
         <p style={{ color: "var(--fg3)", fontSize: 13 }}>{t("blog.empty.speed")}</p>
       ) : (
         <>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Stat label={t("blog.speed.performance")} value={psi.performance ?? "—"} />
-            <Stat label="SEO" value={psi.seo ?? "—"} />
-            <Stat label={t("blog.speed.a11y")} value={psi.accessibility ?? "—"} />
-            <Stat label={t("blog.speed.best")} value={psi.best_practices ?? "—"} />
+            <Stat label={t("blog.speed.pages")} value={speed.summary.pages} />
+            <Stat label={t("blog.speed.warnings")} value={speed.summary.warnings} />
+            <Stat label={t("blog.speed.slowest")} value={`${speed.summary.slowest_ttfb_ms} ms`} />
           </div>
-          <Card>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, color: "var(--arctic)" }}>
-              <span>LCP: {psi.lcp ?? "—"}</span>
-              <span>CLS: {psi.cls ?? "—"}</span>
-              <span>TBT: {psi.tbt ?? "—"}</span>
-              <span>FCP: {psi.fcp ?? "—"}</span>
-            </div>
-          </Card>
-          {(psi.top_opportunities || []).length > 0 && (
-            <Card>
-              <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.speed.opportunities")}</div>
-              <div style={{ display: "grid", gap: 6 }}>
-                {(psi.top_opportunities || []).slice(0, 5).map((o, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
-                    <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.title}</span>
-                    <span style={{ color: "var(--fg3)", flexShrink: 0 }}>{o.savings_ms ? `~${Math.round(o.savings_ms)}ms` : ""}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
+          {speed.pages.map((p) => (
+            <SpeedPage key={p.path} page={p} t={t} />
+          ))}
         </>
       )}
     </div>

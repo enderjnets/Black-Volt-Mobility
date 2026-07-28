@@ -39,8 +39,10 @@ BLOG_KEYWORD_STATUSES = ("candidate", "planned", "written", "vetoed")
 # `draft` = written but it did not pass the quality gate, so it will never publish itself —
 # the owner reads `meta.quality_issues`, fixes it, and schedules it by hand (or bins it).
 BLOG_POST_STATUSES = ("generating", "draft", "scheduled", "published", "archived", "failed")
-# Snapshot kinds for the analytics tab.
-SEO_SNAPSHOT_KINDS = ("gsc_day", "psi")
+# Snapshot kinds for the analytics tab. `speed` replaced `psi`: PageSpeed Insights is
+# unusable without an API key (the shared keyless quota is permanently exhausted), so the
+# Speed tab is fed by our own measurement instead. No `psi` row was ever written.
+SEO_SNAPSHOT_KINDS = ("gsc_day", "speed", "indexing")
 
 
 class BlogConfig(Base):

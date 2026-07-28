@@ -413,9 +413,8 @@ class Settings(BaseSettings):
     # Master switch for the daily keyword→write→publish jobs. Off → no autopilot,
     # dashboard/manual generation still work.
     BLOG_AUTOPILOT_ENABLED: bool = True
-    # Google PageSpeed Insights API key (free) for the daily site-speed snapshot. Empty
-    # → the speed job is skipped. Google Search Console reuses the Google OAuth client.
-    GOOGLE_PSI_API_KEY: str = ""
+    # (Site speed needs no key: services/site_speed.py measures the pages itself. Google
+    # Search Console reuses the Google OAuth client.)
 
     # --- Uber Black competitive pricing (formula fallback) — published Denver rates.
     # Used to estimate a comparable Uber Black / Black SUV fare when the live scout is

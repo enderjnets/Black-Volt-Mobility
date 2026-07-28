@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.89.1";
+export const CURRENT_VERSION = "0.90.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.90.0",
+    date: "2026-07-28",
+    title: "Analytics and Speed actually report something",
+    changes: [
+      "Speed works again. It was calling Google PageSpeed, which refuses every request that has no API key — so the tab had never held a single measurement. It now times your own pages from our server: how fast each one answers, how heavy it is, whether it is compressed, and what is holding up the first paint.",
+      "Analytics no longer looks broken when Google has nothing to report. It shows what your engine has actually done — published, scheduled, held back, keywords queued — alongside Search Console, and says plainly that zero impressions is normal for a site that has not started ranking.",
+      "The Search Console history was arriving without dates, so no trend could be drawn and thirteen of the fourteen stored days were thrown away. Fixed: every day is kept and labelled.",
+      "New: whether Google has actually indexed each published article, checked once a day.",
+    ],
+  },
   {
     version: "0.89.1",
     date: "2026-07-28",

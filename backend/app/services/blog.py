@@ -14,10 +14,10 @@ import datetime as dt
 import re
 import secrets
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import BlogConfig, BlogKeyword, BlogPost
+from app.models import BlogConfig, BlogKeyword, BlogPost, SeoSnapshot
 from app.models.blog import BLOG_KEYWORD_STATUSES, BLOG_POST_STATUSES
 from app.services import blog_facts
 from app.services import events as events_service
@@ -305,6 +305,82 @@ async def set_keyword_status(
 
 
 # ─── Internal-link validation (never emit a 404) ─────────────────────────────────
+
+
+_GSC_DAYS = 30
+
+
+async def _counts(db: AsyncSession, column, tenant_column, tenant_id: int) -> dict[str, int]:
+    rows = (
+        await db.execute(
+            select(column, func.count()).where(tenant_column == tenant_id).group_by(column)
+        )
+    ).all()
+    return {str(k): int(n) for k, n in rows}
+
+
+async def analytics(db: AsyncSession, *, tenant_id: int) -> dict:
+    """Everything the Analytics + Speed tabs need, in one read.
+
+    Search Console will report zeros until the site starts ranking, which reads as a broken
+    tab. So the engine's own numbers — what we published, what is queued — ship alongside
+    it: those are true today and let the owner see the machine working before Google does.
+    """
+    gsc_rows = (
+        await db.execute(
+            select(SeoSnapshot)
+            .where(SeoSnapshot.tenant_id == tenant_id, SeoSnapshot.kind == "gsc_day")
+            .order_by(SeoSnapshot.date.desc())
+            .limit(_GSC_DAYS)
+        )
+    ).scalars().all()
+    # Ascending, each day carrying its own date — without it no trend can be drawn, which
+    # is why the tab could only ever show a single anonymous column of zeros.
+    gsc = [{**(r.payload or {}), "date": r.date} for r in reversed(gsc_rows)]
+    clicks = sum(int(d.get("clicks") or 0) for d in gsc)
+    impressions = sum(int(d.get("impressions") or 0) for d in gsc)
+
+    async def newest(kind: str) -> dict | None:
+        row = (
+            await db.execute(
+                select(SeoSnapshot)
+                .where(SeoSnapshot.tenant_id == tenant_id, SeoSnapshot.kind == kind)
+                .order_by(SeoSnapshot.date.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return row.payload if row is not None else None
+
+    posts = await _counts(db, BlogPost.status, BlogPost.tenant_id, tenant_id)
+    keywords = await _counts(db, BlogKeyword.status, BlogKeyword.tenant_id, tenant_id)
+    sources = await _counts(db, BlogKeyword.source, BlogKeyword.tenant_id, tenant_id)
+    last_published = (
+        await db.execute(
+            select(func.max(BlogPost.published_at)).where(
+                BlogPost.tenant_id == tenant_id, BlogPost.status == "published"
+            )
+        )
+    ).scalar_one_or_none()
+    nxt = await next_planned_keyword(db, tenant_id=tenant_id)
+
+    return {
+        "gsc": gsc,
+        "gsc_totals": {
+            "days": len(gsc),
+            "clicks": clicks,
+            "impressions": impressions,
+            "ctr": round(clicks / impressions * 100, 2) if impressions else 0.0,
+        },
+        "speed": await newest("speed"),
+        "indexing": await newest("indexing"),
+        "engine": {
+            "posts": posts,
+            "last_published": last_published,
+            "keywords": keywords,
+            "keyword_sources": sources,
+            "next_keyword": nxt.keyword if nxt is not None else None,
+        },
+    }
 
 
 async def next_planned_keyword(db: AsyncSession, *, tenant_id: int) -> BlogKeyword | None:

@@ -1,86 +1,192 @@
-"""Volt Blog Autopilot — site speed (Google PageSpeed Insights).
+"""Volt Blog Autopilot — site speed, measured by us.
 
-Daily snapshot of the public site's Core Web Vitals via the free PSI API, stored as a
-SeoSnapshot(kind="psi") for the dashboard Speed tab. Skips cleanly when no API key is
-configured. Mirrors Soro's "site speed" module — but on real Lighthouse data.
+This used to call Google PageSpeed Insights. Keyless PSI is not "rate limited at low volume"
+as the old code assumed: every keyless caller in the world shares one anonymous Google
+project whose daily quota is permanently exhausted, so every single request came back 429
+and the Speed tab never held one data point. Verified against the API directly:
+
+    {"code":429,"message":"Quota exceeded for quota metric 'Queries' ...
+     for consumer 'project_number:583797351490'"}
+
+Rather than depend on a key the owner would have to mint and keep alive, we measure what a
+server can honestly measure: how fast the page answers, how heavy it is, and what stands
+between it and first paint. These are NOT Lighthouse scores — the payload says
+`method: "self"` so nobody mistakes them for one — but they are real numbers that move when
+the site gets better, which is more than the Speed tab has ever had.
+
+Stored as SeoSnapshot(kind="speed") for the dashboard.
 """
 from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
+from time import perf_counter
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import SeoSnapshot
+from app.models import BlogPost, SeoSnapshot
 
 logger = logging.getLogger("blackvolt.blog.speed")
 
-_PSI_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 _DENVER_OFFSET = dt.timedelta(hours=-6)  # display date in Denver (approx; DST-agnostic label)
+
+# Thresholds. Deliberately generous — this flags "something is wrong", it does not chase a
+# score. Anything tighter would cry wolf on a cold container start.
+TTFB_WARN_MS = 800
+TOTAL_WARN_MS = 3000
+HTML_WARN_KB = 200
+IMAGES_WARN_KB = 900
+BLOCKING_WARN = 3
+# Enough to catch a page carrying a huge hero; not so many that one audit hammers the site.
+MAX_IMAGES_CHECKED = 12
+_PAGE_TIMEOUT = 25.0
+_ASSET_TIMEOUT = 10.0
+
+_HEAD_RE = re.compile(r"<head[^>]*>(.*?)</head>", re.I | re.S)
+_SCRIPT_RE = re.compile(r"<script\b([^>]*)>", re.I)
+_LINK_RE = re.compile(r"<link\b([^>]*)>", re.I)
+_IMG_SRC_RE = re.compile(r"<img\b[^>]*?\bsrc\s*=\s*[\"']([^\"']+)[\"']", re.I)
+
+
+def _attr(attrs: str, name: str) -> str | None:
+    m = re.search(rf"\b{name}\s*=\s*[\"']([^\"']*)[\"']", attrs, re.I)
+    return m.group(1) if m else None
 
 
 def _denver_date() -> str:
     return (dt.datetime.now(dt.UTC) + _DENVER_OFFSET).strftime("%Y-%m-%d")
 
 
-def parse_psi(data: dict) -> dict:
-    """Extract the numbers the dashboard cares about from a PSI response."""
-    lh = data.get("lighthouseResult", {})
-    cats = lh.get("categories", {})
-    audits = lh.get("audits", {})
+def count_blocking(html: str) -> dict:
+    """Scripts and stylesheets in <head> that hold up first paint.
 
-    def score(cat: str):
-        s = cats.get(cat, {}).get("score")
-        return round(s * 100) if isinstance(s, int | float) else None
-
-    def metric(key: str):
-        a = audits.get(key, {})
-        return a.get("displayValue") or a.get("numericValue")
-
-    opportunities = [
-        {"id": k, "title": a.get("title"), "savings_ms": a.get("numericValue")}
-        for k, a in audits.items()
-        if a.get("details", {}).get("type") == "opportunity"
-        and (a.get("numericValue") or 0) > 100
-    ]
-    opportunities.sort(key=lambda o: o.get("savings_ms") or 0, reverse=True)
-    return {
-        "performance": score("performance"),
-        "seo": score("seo"),
-        "accessibility": score("accessibility"),
-        "best_practices": score("best-practices"),
-        "lcp": metric("largest-contentful-paint"),
-        "cls": metric("cumulative-layout-shift"),
-        "tbt": metric("total-blocking-time"),
-        "fcp": metric("first-contentful-paint"),
-        "top_opportunities": opportunities[:5],
-        "strategy": "mobile",
-    }
+    A `<script src>` without defer/async blocks parsing; a stylesheet blocks rendering.
+    JSON-LD is data, not code, and never blocks — counting it would punish us for the
+    structured data we deliberately emit on every article.
+    """
+    head = _HEAD_RE.search(html or "")
+    if not head:
+        return {"scripts": 0, "styles": 0}
+    inner = head.group(1)
+    scripts = 0
+    for m in _SCRIPT_RE.finditer(inner):
+        attrs = m.group(1)
+        if not _attr(attrs, "src"):
+            continue  # inline script: no round-trip to wait on
+        kind = _attr(attrs, "type") or ""
+        if "json" in kind.lower():
+            continue
+        if re.search(r"\b(defer|async)\b", attrs, re.I):
+            continue
+        scripts += 1
+    styles = sum(
+        1
+        for m in _LINK_RE.finditer(inner)
+        if "stylesheet" in (_attr(m.group(1), "rel") or "").lower()
+    )
+    return {"scripts": scripts, "styles": styles}
 
 
-async def _fetch(url: str, key: str) -> dict | str | None:
-    """Return the PSI JSON, the sentinel "quota" on 403/429 (keyless rate limit / bad key),
-    or None on any other failure."""
-    params = {
-        "url": url,
-        "strategy": "mobile",
-        "category": ["performance", "seo", "accessibility", "best-practices"],
-    }
-    if key:  # keyless is allowed at low volume; a key just raises the quota
-        params["key"] = key
+def image_urls(html: str, base: str) -> list[str]:
+    """Absolute URLs of the images the page asks for, de-duplicated, data: URIs dropped."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for src in _IMG_SRC_RE.findall(html or ""):
+        src = src.strip()
+        if not src or src.startswith("data:"):
+            continue
+        url = urljoin(base, src)
+        if url not in seen:
+            seen.add(url)
+            out.append(url)
+    return out
+
+
+def verdict(metrics: dict) -> dict:
+    """Per-metric ok/warn. Separate from measurement so it is testable on its own."""
+    out: dict[str, str] = {}
+
+    def mark(key: str, bad: bool) -> None:
+        out[key] = "warn" if bad else "ok"
+
+    mark("status", metrics.get("status") != 200)
+    mark("ttfb_ms", (metrics.get("ttfb_ms") or 0) > TTFB_WARN_MS)
+    mark("total_ms", (metrics.get("total_ms") or 0) > TOTAL_WARN_MS)
+    mark("html_kb", (metrics.get("html_kb") or 0) > HTML_WARN_KB)
+    mark("compressed", not metrics.get("compressed"))
+    blocking = (metrics.get("blocking_scripts") or 0) + (metrics.get("blocking_styles") or 0)
+    mark("blocking", blocking > BLOCKING_WARN)
+    if metrics.get("images_kb") is not None:
+        mark("images_kb", metrics["images_kb"] > IMAGES_WARN_KB)
+    return out
+
+
+async def _image_weight(http: httpx.AsyncClient, urls: list[str]) -> tuple[int, int]:
+    """Total KB of the first few images, and how many we could actually weigh.
+
+    HEAD only: we never download the bytes, so auditing a page costs the site almost nothing.
+    """
+    total = 0
+    counted = 0
+    for url in urls[:MAX_IMAGES_CHECKED]:
+        try:
+            r = await http.head(url, timeout=_ASSET_TIMEOUT, follow_redirects=True)
+            length = int(r.headers.get("content-length") or 0)
+        except Exception:
+            continue
+        if length > 0:
+            total += length
+            counted += 1
+    return round(total / 1024), counted
+
+
+async def measure_page(http: httpx.AsyncClient, url: str) -> dict:
+    """Time, weigh and inspect one page. Never raises — a failure is a recorded result."""
+    out: dict = {"url": url, "path": urlparse(url).path or "/"}
     try:
-        async with httpx.AsyncClient(timeout=60.0) as http:
-            resp = await http.get(_PSI_URL, params=params)
-            if resp.status_code in (403, 429):
-                return "quota"
-            resp.raise_for_status()
-            return resp.json()
+        start = perf_counter()
+        async with http.stream("GET", url, timeout=_PAGE_TIMEOUT, follow_redirects=True) as r:
+            # Headers are in: this is real time-to-first-byte, which a plain GET hides.
+            out["ttfb_ms"] = round((perf_counter() - start) * 1000)
+            body = b"".join([chunk async for chunk in r.aiter_bytes()])
+            out["total_ms"] = round((perf_counter() - start) * 1000)
+            out["status"] = r.status_code
+            out["http_version"] = r.http_version
+            encoding = (r.headers.get("content-encoding") or "").lower()
+            out["compressed"] = any(x in encoding for x in ("gzip", "br", "deflate", "zstd"))
+        html = body.decode("utf-8", errors="replace")
+        # Decoded size: httpx un-gzips as it streams. `compressed` above is what says
+        # whether it travelled compressed, so the two together tell the whole story.
+        out["html_kb"] = round(len(body) / 1024)
+        blocking = count_blocking(html)
+        out["blocking_scripts"] = blocking["scripts"]
+        out["blocking_styles"] = blocking["styles"]
+        images = image_urls(html, url)
+        out["images_found"] = len(images)
+        out["images_kb"], out["images_counted"] = await _image_weight(http, images)
     except Exception as e:
-        logger.warning("PSI fetch failed url=%s: %s", url, e)
-        return None
+        logger.info("speed measure failed url=%s: %s", url, e)
+        out["error"] = str(e)[:200]
+        out.setdefault("status", None)
+    out["verdict"] = verdict(out)
+    return out
+
+
+async def _newest_post_path(db: AsyncSession, *, tenant_id: int) -> str | None:
+    slug = (
+        await db.execute(
+            select(BlogPost.slug)
+            .where(BlogPost.tenant_id == tenant_id, BlogPost.status == "published")
+            .order_by(BlogPost.published_at.desc().nullslast(), BlogPost.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return f"/blog/{slug}" if slug else None
 
 
 async def _upsert(db: AsyncSession, *, tenant_id: int, date: str, payload: dict) -> None:
@@ -88,7 +194,7 @@ async def _upsert(db: AsyncSession, *, tenant_id: int, date: str, payload: dict)
         await db.execute(
             select(SeoSnapshot).where(
                 SeoSnapshot.tenant_id == tenant_id,
-                SeoSnapshot.kind == "psi",
+                SeoSnapshot.kind == "speed",
                 SeoSnapshot.date == date,
             )
         )
@@ -96,22 +202,32 @@ async def _upsert(db: AsyncSession, *, tenant_id: int, date: str, payload: dict)
     if existing is not None:
         existing.payload = payload
     else:
-        db.add(SeoSnapshot(tenant_id=tenant_id, kind="psi", date=date, payload=payload))
+        db.add(SeoSnapshot(tenant_id=tenant_id, kind="speed", date=date, payload=payload))
 
 
 async def run_daily(db: AsyncSession, *, tenant_id: int) -> dict:
-    """Run PSI against the public site + blog and persist a snapshot. Works keyless at low
-    volume; GOOGLE_PSI_API_KEY (free) just raises the quota."""
-    settings = get_settings()
-    key = settings.GOOGLE_PSI_API_KEY  # optional
-    site = settings.PUBLIC_SITE_URL.rstrip("/")
-    data = await _fetch(f"{site}/blog", key)
-    if data == "quota":
-        return {"skipped": "psi_quota_or_key"}
-    if not isinstance(data, dict):
-        return {"skipped": "fetch_failed"}
-    payload = parse_psi(data)
+    """Measure the pages that matter and persist one snapshot. No API key, no quota."""
+    site = get_settings().PUBLIC_SITE_URL.rstrip("/")
+    paths = ["/", "/blog", "/book"]
+    newest = await _newest_post_path(db, tenant_id=tenant_id)
+    if newest:
+        paths.append(newest)
+
+    async with httpx.AsyncClient(headers={"Accept-Encoding": "gzip, br"}) as http:
+        pages = [await measure_page(http, f"{site}{p}") for p in paths]
+
+    warnings = sum(1 for p in pages for v in p.get("verdict", {}).values() if v == "warn")
+    payload = {
+        "method": "self",
+        "measured_at": dt.datetime.now(dt.UTC).isoformat(),
+        "pages": pages,
+        "summary": {
+            "pages": len(pages),
+            "warnings": warnings,
+            "slowest_ttfb_ms": max((p.get("ttfb_ms") or 0) for p in pages) if pages else 0,
+        },
+    }
     await _upsert(db, tenant_id=tenant_id, date=_denver_date(), payload=payload)
     await db.commit()
-    logger.info("PSI snapshot tenant=%s perf=%s", tenant_id, payload.get("performance"))
-    return {"ok": True, "performance": payload.get("performance")}
+    logger.info("speed snapshot tenant=%s pages=%s warnings=%s", tenant_id, len(pages), warnings)
+    return {"ok": True, "pages": len(pages), "warnings": warnings}
