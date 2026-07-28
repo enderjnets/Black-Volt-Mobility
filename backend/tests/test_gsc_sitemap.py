@@ -74,6 +74,31 @@ async def test_the_default_feedpath_is_our_real_sitemap():
     assert gsc.default_feedpath().endswith("/sitemap.xml")
 
 
+async def test_refreshing_never_asks_google_for_scopes():
+    """Widening SCOPES broke READING Search Console in production, not just writing.
+
+    A refresh token carries the scopes it was granted; passing `scopes=` at refresh makes
+    Google reject the whole refresh with `invalid_scope`. Leaving it off means an old
+    read-only token keeps working and only the sitemap submit fails, which is recoverable
+    with one reconnect instead of a dead integration.
+    """
+    creds = gsc._credentials("fake-refresh-token")
+    assert not creds.scopes
+
+
+async def test_a_refresh_rejected_for_scope_is_a_reconnect_not_a_crash(db, monkeypatch):
+    """The real production error, which arrives from the refresh step as its own exception
+    type — not as the 403 the first version of this code was watching for."""
+    tid = await _tenant(db)
+    await _connected(db, tid)
+
+    def boom(*a):
+        raise Exception(("invalid_scope: Bad Request", {"error": "invalid_scope"}))
+
+    monkeypatch.setattr(gsc, "_sitemaps_submit", boom)
+    assert await gsc.submit_sitemap(db, tenant_id=tid) == {"skipped": "needs_reauth"}
+
+
 # ─── Status ────────────────────────────────────────────────────────────────────
 
 

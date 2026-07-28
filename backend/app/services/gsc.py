@@ -131,7 +131,12 @@ def _credentials(refresh_token: str):
         client_id=settings.GOOGLE_OAUTH_CLIENT_ID,
         client_secret=settings.GOOGLE_OAUTH_CLIENT_SECRET,
         token_uri=_TOKEN_URL,
-        scopes=SCOPES,
+        # Deliberately no `scopes=`. A refresh token carries the scopes it was granted;
+        # asking for more at refresh time makes Google reject the whole refresh with
+        # `invalid_scope`. Widening SCOPES therefore broke reading Search Console too —
+        # caught in production — instead of only the write we were adding. Without this
+        # argument an old read-only token keeps reading, and only the sitemap submit fails,
+        # with a 403 the caller turns into "reconnect once".
     )
 
 
@@ -165,7 +170,12 @@ def _is_permission_error(exc: Exception) -> bool:
     — it means "reconnect once", which is a completely different instruction for the owner.
     """
     status = getattr(getattr(exc, "resp", None), "status", None)
-    return status in (401, 403) or "insufficientPermissions" in str(exc)
+    if status in (401, 403):
+        return True
+    text = str(exc)
+    # `invalid_scope`/`invalid_grant` come from the refresh step, not the API call — a
+    # different exception type entirely, which is how this was missed the first time.
+    return any(s in text for s in ("insufficientPermissions", "invalid_scope", "invalid_grant"))
 
 
 def _sitemaps_list(refresh_token: str, site_url: str) -> list[dict]:
