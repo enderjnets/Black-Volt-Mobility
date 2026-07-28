@@ -31,7 +31,20 @@ articles, and every page answers 200 in 24–99 ms.
   lists exactly which articles Google has never seen and deep-links each one to its Search Console
   inspection page, saying plainly that this part is manual.
 
-12 new tests (928 total), Google's client mocked throughout. No migration.
+- **Refreshing the Google token no longer requests scopes.** Deploying the wider scope failed
+  immediately with `invalid_scope: Bad Request` — not the 403 the reconnect path was written for,
+  but a rejection of the *token refresh itself*, before any API call. A refresh token carries the
+  scopes it was granted, so asking for more at refresh time kills the whole refresh: widening the
+  scope would have taken the **daily Search Console read** down with it until the owner
+  reconnected. Dropping the argument keeps an old read-only token reading, and confines the
+  failure to the submit, where "reconnect once" is the right answer.
+
+**Confirmed against production**: reading works on the existing token and returns
+`{"sitemaps": []}` — **Google has no sitemap on file for this site at all**, which fully explains
+the "unknown to Google" verdicts. Submitting correctly reports `needs_reauth` until the owner
+reconnects once.
+
+14 new tests (930 total), Google's client mocked throughout. No migration.
 
 ## 0.90.0 — 2026-07-28 — The Analytics and Speed tabs report something real
 
