@@ -134,7 +134,13 @@ async def _llm_article(
         "Return ONLY a JSON object with keys: "
         '{"title": str, "excerpt": str, "body_md": str, '
         '"faq": [{"q": str, "a": str}], '
-        '"internal_links": [{"href": str, "text": str}]}'
+        '"internal_links": [{"href": str, "text": str}]}\n\n'
+        # Repeated last because it is the instruction the model has actually broken: with a
+        # long English prompt and an English fact table it returned a fully English article
+        # for the Spanish slot.
+        f"FINAL CHECK BEFORE YOU ANSWER: every word you write — the title, every heading, "
+        f"every paragraph, every FAQ question and answer — must be in {lang_name}. "
+        f"Place names stay as they are; everything else is {lang_name}."
     )
     if fix_notes:
         prompt += (
@@ -236,25 +242,36 @@ def _links_in_body(body: str, allowed: set[str]) -> list[dict]:
     return [{"href": h, "text": t} for h, t in seen.items()]
 
 
-def _shorten_title(title: str, keyword: str) -> str:
+def _shorten_title(title: str, keyword: str, lang: str = "en") -> str:
     """Drop the subtitle when a good title runs past what Google shows.
 
     "Luxury Airport Shuttle Denver: Premium Electric Chauffeur Service" is 65 characters of
     which the first 29 are the whole point. Asking the model again wastes a call.
+
+    The head must still be in the article's language: a Spanish title is often an English
+    place phrase plus a Spanish description, and cutting at the colon would leave the
+    Spanish page with an English headline.
     """
     title = (title or "").strip()
     if len(title) <= blog_quality.MAX_TITLE:
         return title
     for sep in (": ", " — ", " – ", " | ", " - "):
         head = title.split(sep)[0].strip()
-        if 20 <= len(head) <= blog_quality.MAX_TITLE and blog_quality.on_topic(head, keyword):
-            return head
+        if not (20 <= len(head) <= blog_quality.MAX_TITLE):
+            continue
+        if not blog_quality.on_topic(head, keyword):
+            continue
+        if lang == "es" and blog_facts.detect_lang(head) != "es":
+            continue
+        if lang == "en" and blog_facts.detect_lang(head) == "es":
+            continue
+        return head
     return title
 
 
-def _repair(data: dict, keyword: str, allowed: set[str]) -> dict:
+def _repair(data: dict, keyword: str, allowed: set[str], lang: str = "en") -> dict:
     """Fix what is mechanically fixable before grading, so the gate judges the writing."""
-    data["title"] = _shorten_title(data.get("title") or "", keyword)
+    data["title"] = _shorten_title(data.get("title") or "", keyword, lang)
     body = data.get("body_md") or ""
     if not [f for f in (data.get("faq") or []) if isinstance(f, dict) and f.get("q")]:
         data["faq"] = _harvest_faq(body)
@@ -275,15 +292,17 @@ async def _write_checked(
         return _template_article(brand, keyword, lang), [
             "Every model was unreachable, so this is the placeholder template."
         ]
-    data = _repair(data, keyword, allowed)
-    notes = blog_quality.issues(data, keyword=keyword, allowed=allowed)
+    data = _repair(data, keyword, allowed, lang)
+    notes = blog_quality.issues(data, keyword=keyword, allowed=allowed, lang=lang)
     if notes:
         logger.info("blog quality reject lang=%s kw=%r: %s", lang, keyword, " | ".join(notes))
         await asyncio.sleep(2)
         retry = await _llm_article(brand, keyword, facts, cfg, lang, fix_notes=notes)
         if retry is not None:
-            retry = _repair(retry, keyword, allowed)
-            retry_notes = blog_quality.issues(retry, keyword=keyword, allowed=allowed)
+            retry = _repair(retry, keyword, allowed, lang)
+            retry_notes = blog_quality.issues(
+                retry, keyword=keyword, allowed=allowed, lang=lang
+            )
             # Keep whichever attempt is less broken; a retry that regresses is discarded.
             if len(retry_notes) < len(notes):
                 data, notes = retry, retry_notes

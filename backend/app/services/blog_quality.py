@@ -72,12 +72,26 @@ def on_topic(title: str, keyword: str) -> bool:
     return any(t in low for t in terms) if terms else True
 
 
-def issues(article: dict, *, keyword: str, allowed: set[str]) -> list[str]:
+_LANG_NAME = {"en": "English", "es": "Spanish"}
+
+
+def issues(article: dict, *, keyword: str, allowed: set[str], lang: str = "en") -> list[str]:
     """Everything wrong with this article, phrased as an instruction to fix it."""
     out: list[str] = []
     title = (article.get("title") or "").strip()
     body = article.get("body_md") or ""
     low_body = body.lower()
+
+    # The Spanish slot has come back fully in English. Publishing that puts a duplicate of
+    # the English article on the /es page, which is worse than publishing nothing.
+    if len(body) > 200:
+        actual = blog_facts.detect_lang(body)
+        if actual != "unknown" and actual != lang:
+            out.append(
+                f"The article is written in {_LANG_NAME.get(actual, actual)}, but this is the "
+                f"{_LANG_NAME.get(lang, lang)} version. Rewrite the whole thing — title, body "
+                f"and FAQ — in {_LANG_NAME.get(lang, lang)}."
+            )
 
     if not title:
         out.append("The article has no title.")

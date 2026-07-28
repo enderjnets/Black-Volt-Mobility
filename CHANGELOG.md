@@ -46,7 +46,15 @@ distances and durations from the live quote engine, and **none of it ever reache
 - Chore: named the fare+tip rollup `dashboard.revenue_sum()` (it was copy-pasted in nine
   places) and cleared the eight pre-existing `ruff` line-length errors.
 
-47 new tests (884 total). No migration.
+- **The Spanish article has to be in Spanish** — caught on the first clean production run:
+  an article passed every check and was scheduled to publish with a `body_md_es` that opened
+  *"If you're looking for a reliable and luxurious way to travel from Boulder…"*. Nothing in
+  the gate looked at the language, and that would have put a duplicate of the English article
+  on the `/es` page. The language is now detected from the prose and checked against the slot,
+  the instruction is repeated as the last line of the prompt, and the title shortener refuses
+  a cut that would leave a Spanish page with an English headline.
+
+57 new tests (894 total). No migration.
 
 ## 0.88.0 — 2026-07-26 — Service day in the driver's timezone + tips to the driver + fee on what actually cleared
 

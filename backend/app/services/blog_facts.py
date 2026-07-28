@@ -15,6 +15,7 @@ one error a service business cannot ship, so it is checked, not merely discourag
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # The single vehicle. Plural-vehicle language is a factual error, not a style choice.
@@ -86,6 +87,31 @@ PLACES: tuple[str, ...] = (
     "morrison", "cherry creek", "dtc", "greenwood village", "colorado", "keystone",
     "copper mountain", "winter park", "steamboat", "loveland", "golden", "littleton",
 )
+
+
+# Function words are the cheapest reliable language tell in a 500-word article: no article
+# about Denver transfers avoids "the/and/your" or "de/la/que" for long.
+_EN_WORDS = frozenset(
+    "the and you your for with from that this are our have will can when been".split()
+)
+_ES_WORDS = frozenset(
+    "de la el que en para con los las una por del al es su como más tu nuestro".split()
+)
+
+
+def detect_lang(text: str) -> str:
+    """Which language this actually is: "en", "es", or "unknown" when there is no signal.
+
+    Needed because the model has silently returned a fully English article for the Spanish
+    slot — which would publish as duplicate content on the /es page, worse than publishing
+    nothing at all.
+    """
+    words = re.findall(r"[a-záéíóúñü]+", (text or "").lower())
+    en = sum(1 for w in words if w in _EN_WORDS)
+    es = sum(1 for w in words if w in _ES_WORDS)
+    if en == es:
+        return "unknown"
+    return "en" if en > es else "es"
 
 
 def route_paths() -> set[str]:
