@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.89.1 — 2026-07-28 — "Publish now" actually publishes
+
+The owner pressed Publish on a finished article, twice, and got 200 OK both times. The post
+stayed `scheduled` and never went live.
+
+- **`publish_now` did not publish** (`services/blog_publish.py`) — it only moved `publish_at`
+  forward and left the status at `scheduled` for the background job to release. That job
+  returns early while the blog is paused, so the button was a permanent no-op that reported
+  success. It now sets `published`, stamps `published_at` and fires the auto-share, and it is
+  **not gated by `paused` or `autopublish`**: those stop the autopilot, not the owner. A
+  `draft` can be published from here too — holding an article back is only useful if
+  overriding the hold is one click. The function had no test at all, which is how it survived.
+- **Fixed a test that failed only between midnight and 1am in Denver** — `test_tip_counts_
+  toward_revenue_today` scheduled its ride at "UTC now + 1 hour", which lands on *tomorrow's*
+  service day during that window. The product was right; the test was still thinking in UTC.
+
+9 new tests (902 total). No migration.
+
 ## 0.89.0 — 2026-07-27 — The blog stops writing brochures: real fares, a quality gate, and a button that works
 
 Our own engine had published **zero** articles in the 13 days since it was paused, while Soro

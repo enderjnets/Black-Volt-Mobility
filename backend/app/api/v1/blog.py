@@ -21,7 +21,7 @@ from app.config import get_settings
 from app.db.base import get_db, get_session_factory
 from app.models import BlogConfig
 from app.services import blog as blog_service
-from app.services import blog_keywords, blog_writer, gsc
+from app.services import blog_keywords, blog_publish, blog_writer, gsc
 from app.services.tenancy import owner_tenant_id
 
 router = APIRouter(prefix="/blog", tags=["blog"])
@@ -269,7 +269,7 @@ async def publish_post(
     payload: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    out = await blog_service.publish_now(
+    out = await blog_publish.publish_now(
         db, tenant_id=await owner_tenant_id(db), post_id=post_id
     )
     if out is None:

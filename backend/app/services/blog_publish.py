@@ -33,6 +33,32 @@ async def _auto_share(db: AsyncSession, *, tenant_id: int, post: BlogPost) -> No
         logger.info("blog auto-share skipped post=%s: %s", post.id, e)
 
 
+async def publish_now(db: AsyncSession, *, tenant_id: int, post_id: int) -> dict | None:
+    """Publish one article because the owner said so. Right now, not eventually.
+
+    This used to live in blog_service and only moved `publish_at` forward, leaving the
+    status `scheduled` for the background job to pick up — a job that returns early while
+    the blog is paused. So "Publish now" answered 200 OK and did nothing, for ever. An
+    explicit owner action is not the autopilot and is not gated by it: `paused` means stop
+    the robot, not stop the person.
+
+    A `draft` is publishable here on purpose: holding an article back is only useful if
+    overriding the hold is one click.
+    """
+    post = await blog_service.get_post(db, tenant_id=tenant_id, post_id=post_id)
+    if post is None or post.status not in ("scheduled", "generating", "draft"):
+        return None
+    now = _now()
+    post.status = "published"
+    post.published_at = now
+    post.publish_at = post.publish_at or now
+    await db.commit()
+    await db.refresh(post)
+    await _auto_share(db, tenant_id=tenant_id, post=post)
+    logger.info("blog published by owner tenant=%s post=%s slug=%s", tenant_id, post.id, post.slug)
+    return blog_service._admin_post_dict(post)
+
+
 async def publish_due(db: AsyncSession, *, tenant_id: int) -> dict:
     """Publish every scheduled post whose 24h window has elapsed (autopublish only)."""
     cfg = await blog_service.ensure_config(db, tenant_id=tenant_id)

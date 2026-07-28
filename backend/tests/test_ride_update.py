@@ -1,6 +1,7 @@
 """Smart update of existing rides: editable PATCH, re-quote, conflict preview."""
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 os.environ["AUTH_SECRET"] = "api-test-secret"
@@ -16,6 +17,7 @@ get_settings.cache_clear()
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
+from app.services import dashboard as dash_svc  # noqa: E402
 
 
 def _owner() -> TestClient:
@@ -111,7 +113,12 @@ def test_negative_tip_rejected():
 
 def test_tip_counts_toward_revenue_today():
     c = _owner()
-    when = datetime.now(UTC) + timedelta(hours=1)  # today's service day
+    # Anchor to midday on the DRIVER's service day, not "UTC now + 1h": for the hour after
+    # midnight in Denver that lands on tomorrow locally, the ride is correctly counted on
+    # tomorrow, and this test failed for reasons that had nothing to do with tips.
+    when = datetime.combine(
+        dash_svc.today_local(), time(12, 0), tzinfo=ZoneInfo(dash_svc.service_tz())
+    )
     rid = _mk(c, "Cherry Creek", "DEN", when)
     assert c.patch(f"/api/v1/rides/{rid}", json={"paid": True}).status_code == 200
     before = c.get("/api/v1/dashboard/stats").json()["today"]["revenue"]

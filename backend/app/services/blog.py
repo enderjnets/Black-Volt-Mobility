@@ -498,19 +498,6 @@ async def update_post(
     return _admin_post_dict(post)
 
 
-async def publish_now(db: AsyncSession, *, tenant_id: int, post_id: int) -> dict | None:
-    """Skip the 24h window and publish immediately (owner action)."""
-    post = await get_post(db, tenant_id=tenant_id, post_id=post_id)
-    if post is None or post.status not in ("scheduled", "generating"):
-        return None
-    post.publish_at = _now()
-    if post.status == "generating":
-        post.status = "scheduled"
-    await db.commit()
-    await db.refresh(post)
-    return _admin_post_dict(post)
-
-
 async def set_post_status(
     db: AsyncSession, *, tenant_id: int, post_id: int, status: str
 ) -> dict | None:

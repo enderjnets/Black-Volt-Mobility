@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.89.0";
+export const CURRENT_VERSION = "0.89.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.89.1",
+    date: "2026-07-28",
+    title: "\"Publish now\" actually publishes",
+    changes: [
+      "Pressing Publish on a blog article now puts it live immediately. It was reporting success and doing nothing: the button only moved the scheduled date and left the actual publishing to a background job that stays asleep while the blog is paused.",
+      "You can also publish an article that was held back as a draft — holding it back is only useful if you can overrule it in one click.",
+    ],
+  },
   {
     version: "0.89.0",
     date: "2026-07-27",
