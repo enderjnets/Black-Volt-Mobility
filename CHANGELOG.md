@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.91.3 — 2026-07-29 — Sitemap read by Google; the indexing links stop 404ing
+
+**Milestone**: reconnected with the right account, the sitemap was submitted at `03:09:00` and
+**Google downloaded it at `03:09:57`** — 57 seconds later, 0 warnings, 0 errors. After fifteen days
+of the whole domain being invisible, Google now has the list of all 18 URLs.
+
+The remaining manual step was broken, though: the per-article "Request indexing" links landed on a
+**Google 404**. Verified rather than guessed — the generated href carries its parameters (they are
+in the compiled bundle), but the browser ended on a bare `/search-console/inspect` with **no query
+string at all**: Google's sign-in / account-chooser redirect drops it, and that path is not a page
+without a `resource_id`. All four candidate URL forms return 302 to login when unauthenticated, so
+the failure happens inside Search Console after auth and cannot be fixed by reshaping the link with
+any confidence.
+
+- **Deep links replaced with something that always works** (`components/bv/dash/BlogAdmin.tsx`):
+  each article now shows its **full URL with a Copy button**, plus one link that opens Search
+  Console at the property. If Google eats those parameters too, the worst case is the property
+  picker — usable — instead of an error page. The card previously showed only the path, so the URL
+  could not even be copied by hand.
+- **The step is no longer worded as a blocker.** With the sitemap read, Google will reach the
+  articles on its own; doing it manually only shortens days to hours. The old copy implied nothing
+  would happen without it.
+
+Frontend only — `sitemap_status` and `run_indexing` already return everything needed.
+
 ## 0.91.2 — 2026-07-29 — "Reconnect" is useless advice when you already did
 
 The owner reconnected Google and it still failed. Probing production told us why:

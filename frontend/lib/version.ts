@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.91.2";
+export const CURRENT_VERSION = "0.91.3";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.91.3",
+    date: "2026-07-29",
+    title: "Google has read your sitemap — and the indexing links no longer 404",
+    changes: [
+      "The sitemap went through: submitted and read by Google 57 seconds later, with no errors. Google now knows your site exists and has the list of all 18 pages.",
+      "The \"Request indexing\" links were landing on a Google 404 — Google's sign-in redirect drops the part of the link that says which page to inspect. Replaced with a Copy button for each article URL and a link that opens Search Console itself.",
+      "That step is also no longer presented as a blocker: with the sitemap read, Google will find the articles on its own. Doing it by hand just speeds it up from days to hours.",
+    ],
+  },
   {
     version: "0.91.2",
     date: "2026-07-29",

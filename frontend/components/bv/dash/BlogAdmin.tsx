@@ -692,35 +692,67 @@ function SitemapBlock({ sitemap, busy, t, onSubmit, onReconnect }: {
   );
 }
 
-/** The one step we cannot do for him: Google forbids using its Indexing API for articles. */
+/** The one step we cannot do for him: Google forbids using its Indexing API for articles.
+ *
+ *  Deep-linking straight into URL inspection does not survive Google's login/account-chooser
+ *  redirect — it eats the query string and lands on a bare /inspect, which 404s. So we hand
+ *  him the two things that always work: the full URL to copy, and a link that at worst drops
+ *  him on Search Console's property picker instead of an error page.
+ */
 function ManualIndexing({ indexing, siteUrl, t }: {
   indexing: NonNullable<BlogAnalyticsT["indexing"]>;
   siteUrl: string | null | undefined;
   t: (k: string, v?: Record<string, string | number>) => string;
 }) {
+  const [copied, setCopied] = useState<string | null>(null);
   const unknown = indexing.urls.filter((u) => (u.coverage || "").toLowerCase().includes("unknown"));
   if (unknown.length === 0) return null;
+
+  const copy = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(url);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      /* clipboard blocked — the URL is on screen to select by hand */
+    }
+  };
+
   return (
     <Card>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--danger,#ff5c5c)", marginBottom: 6 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--fg2)", marginBottom: 6 }}>
         {t("blog.index.manualTitle", { n: unknown.length })}
       </div>
-      <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 12 }}>
         {t("blog.index.manualHelp")}
       </div>
-      <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
         {unknown.map((u) => (
-          <a
-            key={u.url}
-            href={`https://search.google.com/search-console/inspect?resource_id=${encodeURIComponent(siteUrl || "")}&id=${encodeURIComponent(u.url)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ fontSize: 13, color: "var(--volt)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          >
-            {u.url.replace(/^https?:\/\/[^/]+/, "")} →
-          </a>
+          <div key={u.url} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              {u.url}
+            </span>
+            <button
+              onClick={() => copy(u.url)}
+              style={{
+                flexShrink: 0, padding: "5px 10px", borderRadius: 8, border: "none",
+                cursor: "pointer", fontSize: 12, fontWeight: 600,
+                background: "var(--obsidian)", color: copied === u.url ? "var(--success,#3ddc84)" : "var(--volt)",
+              }}
+            >
+              {copied === u.url ? t("blog.index.copied") : t("blog.index.copy")}
+            </button>
+          </div>
         ))}
       </div>
+      <a
+        href={`https://search.google.com/search-console?resource_id=${encodeURIComponent(siteUrl || "")}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ fontSize: 13, color: "var(--volt)", textDecoration: "none", fontWeight: 600 }}
+      >
+        {t("blog.index.openConsole")} →
+      </a>
     </Card>
   );
 }
