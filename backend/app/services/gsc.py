@@ -179,6 +179,29 @@ def _is_permission_error(exc: Exception) -> bool:
 
 
 _WRITE_SCOPE = "https://www.googleapis.com/auth/webmasters"
+_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
+
+
+def _token_scopes(access_token: str | None) -> list[str] | None:
+    """Ask Google what this access token is actually allowed to do.
+
+    `Credentials.granted_scopes` is only populated when the refresh response happens to
+    include `scope`, and against the owner's real token it came back empty — leaving the
+    dashboard unable to say "you cannot submit" until after he had pressed the button.
+    Best-effort: any failure means "unknown", never a false "you cannot".
+    """
+    if not access_token:
+        return None
+    import httpx
+
+    try:
+        r = httpx.get(_TOKENINFO_URL, params={"access_token": access_token}, timeout=10.0)
+        if r.status_code != 200:
+            return None
+        scope = (r.json() or {}).get("scope") or ""
+    except Exception:
+        return None
+    return scope.split() or None
 
 
 def _sitemaps_list(refresh_token: str, site_url: str) -> tuple[list[dict], list[str] | None]:
@@ -195,7 +218,7 @@ def _sitemaps_list(refresh_token: str, site_url: str) -> tuple[list[dict], list[
     creds.refresh(Request())
     svc = build("searchconsole", "v1", credentials=creds, cache_discovery=False)
     resp = svc.sitemaps().list(siteUrl=site_url).execute() or {}
-    granted = getattr(creds, "granted_scopes", None)
+    granted = getattr(creds, "granted_scopes", None) or _token_scopes(creds.token)
     return resp.get("sitemap", []) or [], granted
 
 

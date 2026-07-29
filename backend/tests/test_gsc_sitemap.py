@@ -14,7 +14,6 @@ import uuid
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 
-import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
@@ -25,8 +24,6 @@ get_settings.cache_clear()
 from app.models import BlogPost, Tenant  # noqa: E402
 from app.services import blog as blog_service  # noqa: E402
 from app.services import blog_publish, gsc  # noqa: E402
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture
@@ -159,6 +156,29 @@ async def test_a_write_token_reports_it_can_submit(db, monkeypatch):
     await _connected(db, tid)
     monkeypatch.setattr(gsc, "_sitemaps_list", _listing([], [_READONLY, _WRITE]))
     assert (await gsc.sitemap_status(db, tenant_id=tid))["can_submit"] is True
+
+
+def test_token_scopes_parses_googles_answer(monkeypatch):
+    """The fallback that made can_submit work at all: against the real token
+    `granted_scopes` came back empty, so we ask Google about the token directly."""
+    import httpx
+
+    monkeypatch.setattr(
+        gsc.httpx if hasattr(gsc, "httpx") else httpx, "get",
+        lambda *a, **kw: httpx.Response(200, json={"scope": f"openid {_READONLY}"}),
+    )
+    assert gsc._token_scopes("abc") == ["openid", _READONLY]
+
+
+def test_token_scopes_never_guesses_on_failure(monkeypatch):
+    import httpx
+
+    def boom(*a, **kw):
+        raise httpx.ConnectError("no network")
+
+    monkeypatch.setattr(httpx, "get", boom)
+    assert gsc._token_scopes("abc") is None
+    assert gsc._token_scopes(None) is None
 
 
 async def test_unknown_scopes_do_not_disable_the_button(db, monkeypatch):
