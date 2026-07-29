@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.91.0";
+export const CURRENT_VERSION = "0.91.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.91.1",
+    date: "2026-07-28",
+    title: "The sitemap button now tells you what it needs",
+    changes: [
+      "Pressing \"Tell Google about the sitemap\" appeared to do nothing. It was working — Google was refusing it because the saved connection is read-only — but that answer was shown as a message at the top of the page that disappeared after three seconds, while you were looking at the button.",
+      "The card now checks the permission before you press anything: if it cannot send the sitemap, it says so and offers the reconnect button instead.",
+      "Whatever happens when you press it now appears right under the button and stays there.",
+    ],
+  },
   {
     version: "0.91.0",
     date: "2026-07-28",

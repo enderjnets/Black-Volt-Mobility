@@ -107,15 +107,23 @@ async def test_status_without_a_connection_says_so(db):
     assert await gsc.sitemap_status(db, tenant_id=tid) == {"skipped": "gsc_not_connected"}
 
 
+_WRITE = "https://www.googleapis.com/auth/webmasters"
+_READONLY = "https://www.googleapis.com/auth/webmasters.readonly"
+
+
+def _listing(rows, granted):
+    return lambda *a: (rows, granted)
+
+
 async def test_status_reports_never_downloaded(db, monkeypatch):
     """The production smoking gun: registered, but Google has never read it."""
     tid = await _tenant(db)
     await _connected(db, tid)
-    monkeypatch.setattr(gsc, "_sitemaps_list", lambda *a: [
+    monkeypatch.setattr(gsc, "_sitemaps_list", _listing([
         {"path": "https://blackvoltmobility.com/sitemap.xml",
          "lastSubmitted": "2026-07-28T06:00:00Z", "lastDownloaded": None,
          "isPending": True, "warnings": "0", "errors": "0"},
-    ])
+    ], [_WRITE]))
     out = await gsc.sitemap_status(db, tenant_id=tid)
     assert out["expected"].endswith("/sitemap.xml")
     entry = out["sitemaps"][0]
@@ -127,10 +135,39 @@ async def test_status_reports_never_downloaded(db, monkeypatch):
 async def test_no_sitemap_registered_is_an_empty_list_not_an_error(db, monkeypatch):
     tid = await _tenant(db)
     await _connected(db, tid)
-    monkeypatch.setattr(gsc, "_sitemaps_list", lambda *a: [])
+    monkeypatch.setattr(gsc, "_sitemaps_list", _listing([], [_WRITE]))
     out = await gsc.sitemap_status(db, tenant_id=tid)
     assert out["sitemaps"] == []
     assert "skipped" not in out
+
+
+# ─── Knowing before he presses ─────────────────────────────────────────────────
+
+
+async def test_a_readonly_token_reports_it_cannot_submit(db, monkeypatch):
+    """The exact production state. He pressed the button three times and every request
+    came back needs_reauth — which the UI only whispered in a toast that vanished. The
+    status must say so up front so the button is never offered in the first place."""
+    tid = await _tenant(db)
+    await _connected(db, tid)
+    monkeypatch.setattr(gsc, "_sitemaps_list", _listing([], [_READONLY]))
+    assert (await gsc.sitemap_status(db, tenant_id=tid))["can_submit"] is False
+
+
+async def test_a_write_token_reports_it_can_submit(db, monkeypatch):
+    tid = await _tenant(db)
+    await _connected(db, tid)
+    monkeypatch.setattr(gsc, "_sitemaps_list", _listing([], [_READONLY, _WRITE]))
+    assert (await gsc.sitemap_status(db, tenant_id=tid))["can_submit"] is True
+
+
+async def test_unknown_scopes_do_not_disable_the_button(db, monkeypatch):
+    """If Google does not report the grant we must not guess False and hide the only
+    action available — "we don't know" is not "you can't"."""
+    tid = await _tenant(db)
+    await _connected(db, tid)
+    monkeypatch.setattr(gsc, "_sitemaps_list", _listing([], None))
+    assert (await gsc.sitemap_status(db, tenant_id=tid))["can_submit"] is None
 
 
 async def test_an_old_readonly_token_asks_for_a_reconnect_not_an_error(db, monkeypatch):

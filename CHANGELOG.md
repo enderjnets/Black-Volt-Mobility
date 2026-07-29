@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.91.1 — 2026-07-28 — The sitemap button says what it needs, where the button is
+
+The owner pressed **"Tell Google about the sitemap"** and reported that nothing happened.
+Production logs say otherwise: **three** presses, each `POST /admin/sitemap/submit → 200 OK`.
+And `blog_configs.updated_at` was still **2026-07-15** with no `/gsc/authorize` or `/gsc/callback`
+in the logs — he had never reconnected, so the token was still read-only and Google refused every
+submit.
+
+The backend was right. The interface was not: it answered with a toast **at the top of the page**,
+gone in three seconds, while he was looking at a button near the bottom that would never work.
+That is a design failure, not a user error.
+
+- **The permission is checked before he presses anything** (`services/gsc.py`). Google returns the
+  granted scopes on the token refresh `sitemap_status` already performs, so `_sitemaps_list` now
+  hands them back and the endpoint reports **`can_submit`**. It is `true`/`false` when Google says,
+  and **`null` when it does not** — "we don't know" must never hide the only action available.
+- **The card shows the reconnect prompt instead of a button that cannot work**
+  (`components/bv/dash/BlogAdmin.tsx`), and it **stays** in that state after a refused submit
+  instead of relying on a toast.
+- **The outcome renders under the button**, where the action was, and does not time out.
+- The reconnect copy is now an instruction with the concrete next step, not a diagnosis
+  ("the saved permission is read-only") — EN and ES.
+
+3 new tests (933 total), all verified to fail without the change.
+
 ## 0.91.0 — 2026-07-28 — Getting Google to come and read the site
 
 The indexation check added in 0.90.0 came back with the same answer for **both** published

@@ -193,6 +193,9 @@ export const runBlogSpeed = () =>
   jsend<{ ok?: boolean; pages?: number; warnings?: number }>("/v1/blog/admin/speed/run", "POST");
 export interface BlogSitemapT {
   expected?: string;
+  /** Whether the saved Google permission allows submitting. `null` = Google did not say,
+   *  so the action stays available rather than being hidden on a guess. */
+  can_submit?: boolean | null;
   sitemaps?: Array<{
     path: string;
     last_submitted: string | null;

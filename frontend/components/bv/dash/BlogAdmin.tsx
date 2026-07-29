@@ -232,11 +232,20 @@ export function BlogAdmin() {
       {tab === "analytics" && (
         <AnalyticsTab analytics={analytics} config={config} busy={busy} t={t}
           sitemap={sitemap}
-          onSubmitSitemap={() => run(async () => {
-            const r = await submitBlogSitemap();
-            setSitemap(await getBlogSitemap().catch(() => null));
-            flash(r.skipped ? t(`blog.sitemap.${r.skipped}`) : t("blog.sitemap.sent"));
-          })}
+          onSubmitSitemap={async () => {
+            // Returns the reason it was refused (or null) so the card can say it in place,
+            // instead of a toast at the top of the page that is gone in three seconds.
+            setBusy(true);
+            try {
+              const r = await submitBlogSitemap();
+              setSitemap(await getBlogSitemap().catch(() => null));
+              return r.skipped ?? null;
+            } catch {
+              return "submit_failed";
+            } finally {
+              setBusy(false);
+            }
+          }}
           onLoad={() => run(async () => {
             setAnalytics(await getBlogAnalytics());
             setSitemap(await getBlogSitemap().catch(() => null));
@@ -603,53 +612,74 @@ function IndexingBlock({ indexing, t }: {
 function SitemapBlock({ sitemap, busy, t, onSubmit, onReconnect }: {
   sitemap: BlogSitemapT | null; busy: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
-  onSubmit: () => void; onReconnect: () => void;
+  onSubmit: () => Promise<string | null>; onReconnect: () => void;
 }) {
+  // The outcome lives next to the button that caused it. The first version of this only
+  // flashed a toast at the top of the page, three seconds long, while the owner was looking
+  // at the button — he pressed it three times and reasonably concluded nothing happened.
+  const [result, setResult] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);
+
   const entries = sitemap?.sitemaps || [];
-  const needsReauth = sitemap?.skipped === "needs_reauth";
-  // Registered but never fetched is the whole diagnosis: Google has not come round.
+  // Known-false only. `null` means Google did not report the grant, and hiding the one
+  // available action on a guess would be worse than letting it fail loudly.
+  const cannotSubmit = refused || sitemap?.can_submit === false || sitemap?.skipped === "needs_reauth";
   const neverRead = entries.length > 0 && entries.every((e) => !e.last_downloaded);
+
+  if (cannotSubmit) {
+    return (
+      <Card>
+        <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.sitemap.title")}</div>
+        <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 12 }}>
+          {t("blog.sitemap.needs_reauth")}
+        </div>
+        <Button disabled={busy} onClick={onReconnect}>🔗 {t("blog.sitemap.reconnect")}</Button>
+      </Card>
+    );
+  }
 
   return (
     <Card>
       <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.sitemap.title")}</div>
-      {needsReauth ? (
-        <>
-          <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
-            {t("blog.sitemap.needs_reauth")}
-          </div>
-          <Button disabled={busy} onClick={onReconnect}>🔗 {t("blog.gsc.connect")}</Button>
-        </>
+      {entries.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
+          {t("blog.sitemap.none")}
+        </div>
       ) : (
-        <>
-          {entries.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
-              {t("blog.sitemap.none")}
+        <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+          {entries.map((e) => (
+            <div key={e.path} style={{ fontSize: 13 }}>
+              <div style={{ color: "var(--arctic)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {e.path.replace(/^https?:\/\/[^/]+/, "")}
+              </div>
+              <div style={{ color: e.last_downloaded ? "var(--fg3)" : "var(--danger,#ff5c5c)", fontSize: 12 }}>
+                {e.last_downloaded
+                  ? t("blog.sitemap.lastRead", { when: new Date(e.last_downloaded).toLocaleDateString() })
+                  : t("blog.sitemap.neverRead")}
+                {e.errors > 0 ? ` · ${e.errors} errors` : ""}
+              </div>
             </div>
-          ) : (
-            <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
-              {entries.map((e) => (
-                <div key={e.path} style={{ fontSize: 13 }}>
-                  <div style={{ color: "var(--arctic)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {e.path.replace(/^https?:\/\/[^/]+/, "")}
-                  </div>
-                  <div style={{ color: e.last_downloaded ? "var(--fg3)" : "var(--danger,#ff5c5c)", fontSize: 12 }}>
-                    {e.last_downloaded
-                      ? t("blog.sitemap.lastRead", { when: new Date(e.last_downloaded).toLocaleDateString() })
-                      : t("blog.sitemap.neverRead")}
-                    {e.errors > 0 ? ` · ${e.errors} errors` : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {neverRead && (
-            <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
-              {t("blog.sitemap.neverReadHelp")}
-            </div>
-          )}
-          <Button disabled={busy} onClick={onSubmit}>📤 {t("blog.sitemap.submit")}</Button>
-        </>
+          ))}
+        </div>
+      )}
+      {neverRead && (
+        <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 10 }}>
+          {t("blog.sitemap.neverReadHelp")}
+        </div>
+      )}
+      <Button
+        disabled={busy}
+        onClick={async () => {
+          setResult(null);
+          const skipped = await onSubmit();
+          if (skipped === "needs_reauth") setRefused(true);
+          else setResult(skipped ? t(`blog.sitemap.${skipped}`) : t("blog.sitemap.sent"));
+        }}
+      >
+        📤 {t("blog.sitemap.submit")}
+      </Button>
+      {result && (
+        <div style={{ marginTop: 10, fontSize: 13, color: "var(--fg2)", lineHeight: 1.5 }}>{result}</div>
       )}
     </Card>
   );
@@ -692,7 +722,8 @@ function AnalyticsTab({ analytics, config, busy, t, sitemap, onLoad, onConnect, 
   analytics: BlogAnalyticsT | null; config: BlogConfigT | null; busy: boolean;
   sitemap: BlogSitemapT | null;
   t: (k: string, v?: Record<string, string | number>) => string;
-  onLoad: () => void; onConnect: (siteUrl: string) => void; onSubmitSitemap: () => void;
+  onLoad: () => void; onConnect: (siteUrl: string) => void;
+  onSubmitSitemap: () => Promise<string | null>;
 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { onLoad(); }, []);

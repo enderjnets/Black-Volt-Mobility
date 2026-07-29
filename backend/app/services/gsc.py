@@ -178,8 +178,16 @@ def _is_permission_error(exc: Exception) -> bool:
     return any(s in text for s in ("insufficientPermissions", "invalid_scope", "invalid_grant"))
 
 
-def _sitemaps_list(refresh_token: str, site_url: str) -> list[dict]:
-    """Blocking Google API call — run via asyncio.to_thread, like _query_gsc."""
+_WRITE_SCOPE = "https://www.googleapis.com/auth/webmasters"
+
+
+def _sitemaps_list(refresh_token: str, site_url: str) -> tuple[list[dict], list[str] | None]:
+    """The sitemaps Google has on file, plus the scopes this token was actually granted.
+
+    The scopes come free: Google returns them on the refresh we already perform. Knowing
+    them up front is the difference between a button that explains itself and one that only
+    fails after you press it.
+    """
     from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
 
@@ -187,7 +195,8 @@ def _sitemaps_list(refresh_token: str, site_url: str) -> list[dict]:
     creds.refresh(Request())
     svc = build("searchconsole", "v1", credentials=creds, cache_discovery=False)
     resp = svc.sitemaps().list(siteUrl=site_url).execute() or {}
-    return resp.get("sitemap", []) or []
+    granted = getattr(creds, "granted_scopes", None)
+    return resp.get("sitemap", []) or [], granted
 
 
 def _sitemaps_submit(refresh_token: str, site_url: str, feedpath: str) -> None:
@@ -225,7 +234,9 @@ async def sitemap_status(db: AsyncSession, *, tenant_id: int) -> dict:
     if cfg is None:
         return {"skipped": "gsc_not_connected"}
     try:
-        rows = await asyncio.to_thread(_sitemaps_list, cfg.gsc_refresh_token, cfg.gsc_site_url)
+        rows, granted = await asyncio.to_thread(
+            _sitemaps_list, cfg.gsc_refresh_token, cfg.gsc_site_url
+        )
     except Exception as e:
         if _is_permission_error(e):
             return {"skipped": "needs_reauth"}
@@ -233,6 +244,9 @@ async def sitemap_status(db: AsyncSession, *, tenant_id: int) -> dict:
         return {"skipped": "list_failed"}
     return {
         "expected": default_feedpath(),
+        # None, not False, when Google did not say: "we don't know" must not disable the
+        # button. Only a definite "this token cannot write" should replace it with a prompt.
+        "can_submit": (_WRITE_SCOPE in granted) if granted else None,
         "sitemaps": [
             {
                 "path": r.get("path"),
