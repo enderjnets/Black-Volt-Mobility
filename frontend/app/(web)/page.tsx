@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import { getZonePrices } from "@/lib/zonePrices";
 import { Landing } from "@/components/bv/web/Landing";
 import { SITE_ORIGIN } from "@/lib/seoRoutes";
@@ -27,6 +29,11 @@ const localBusinessLd = {
   address: { "@type": "PostalAddress", addressRegion: "CO", addressCountry: "US" },
   priceRange: "$$$",
 };
+
+// Google reported the homepage as "Duplicate without user-selected canonical" and refused to
+// index it: www and the apex both answer 200, and this page — unlike the route pages — never
+// declared which one is the original. Title/description still come from the root layout.
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 export const revalidate = 300; // live zone prices for Popular routes
 

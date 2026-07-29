@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import BlogConfig, SeoSnapshot
 from app.services import blog as blog_service
+from app.services import blog_facts
 
 logger = logging.getLogger("blackvolt.blog.gsc")
 
@@ -158,9 +159,9 @@ def _query_gsc(refresh_token: str, site_url: str) -> dict:
     return resp or {}
 
 
-# Google's URL Inspection quota is 2000/day; we only ever have a handful of articles, and
-# checking politely keeps plenty of headroom for the owner's own Search Console use.
-_MAX_INSPECTED = 10
+# Google's URL Inspection quota is 2000/day; we check a couple of dozen URLs once a day, so
+# there is plenty of headroom left for the owner's own Search Console use.
+_MAX_INSPECTED = 24
 
 
 def _is_permission_error(exc: Exception) -> bool:
@@ -373,7 +374,7 @@ def _inspect_urls(refresh_token: str, site_url: str, urls: list[str]) -> dict:
 
 
 async def run_indexing(db: AsyncSession, *, tenant_id: int) -> dict:
-    """Ask Google whether each published article is actually indexed.
+    """Ask Google whether each page of the site is actually indexed.
 
     "Is it live on our site" and "can anyone find it" are different questions, and only the
     second one pays. Cached as a snapshot and refreshed daily — never on a dashboard load.
@@ -395,9 +396,22 @@ async def run_indexing(db: AsyncSession, *, tenant_id: int) -> dict:
             .limit(_MAX_INSPECTED)
         )
     ).scalars().all()
-    if not slugs:
-        return {"skipped": "no_published_posts"}
-    urls = [f"{site}/blog/{s}" for s in slugs]
+
+    # Watch the whole site, not just the articles. This checked only blog posts, which is why
+    # nobody noticed that all six hand-written /rides/* pages — the ones with real fares, the
+    # ones that actually convert — were unknown to Google, and that the homepage was filed as
+    # a duplicate. The articles are the newest thing here; they are not the most valuable.
+    targets: list[tuple[str, str]] = [
+        ("core", f"{site}/"),
+        ("core", f"{site}/book"),
+        ("core", f"{site}/rides"),
+        ("core", f"{site}/blog"),
+    ]
+    targets += [("route", f"{site}{r.path}") for r in blog_facts.ROUTES]
+    targets += [("article", f"{site}/blog/{s}") for s in slugs]
+    targets = targets[:_MAX_INSPECTED]
+    kinds = {url: kind for kind, url in targets}
+    urls = [url for _, url in targets]
 
     try:
         results = await asyncio.to_thread(
@@ -410,7 +424,7 @@ async def run_indexing(db: AsyncSession, *, tenant_id: int) -> dict:
     payload = {
         "checked": len(results),
         "indexed": sum(1 for r in results.values() if r.get("verdict") == "PASS"),
-        "urls": [{"url": u, **r} for u, r in results.items()],
+        "urls": [{"url": u, "kind": kinds.get(u, "core"), **r} for u, r in results.items()],
     }
     date = _denver_date(-1)
     existing = (

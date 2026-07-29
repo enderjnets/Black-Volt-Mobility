@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.92.0 — 2026-07-29 — The homepage can be indexed, and the whole site is watched
+
+The owner asked why the indexing check only covered two pages. Fair question, and answering it
+found two real problems. Inspected every important URL against Google's API:
+
+| Page | Coverage |
+|---|---|
+| `/book` | Submitted and indexed |
+| `/` | **Duplicate without user-selected canonical** |
+| `/rides`, `/blog`, and **all six `/rides/*` route pages** | URL is unknown to Google |
+
+- **The homepage could not be indexed.** Verified the cause rather than guessed: it exports no
+  metadata at all, so it had **no `<link rel="canonical">`** (the route pages do have one), and
+  **`www.` and the apex both answer 200** with identical content. Google saw two copies with
+  nothing declaring the original. Added the canonical to `/` and `/book`, plus
+  `frontend/middleware.ts` sending `www.` to the apex with a 308 — `app.` is untouched, and Next's
+  own assets and the API proxy are excluded from the matcher.
+- **The indexing check watched only blog articles** (`services/gsc.py`), which is precisely why
+  nobody had noticed that the six hand-written route pages — real fares, route-specific FAQ, the
+  pages that actually take bookings — were unknown to Google. It now inspects the core pages, the
+  eight routes and the articles, labels each with what it is, and the Analytics tab groups them
+  with **route pages first**. The quota is 2000/day; this uses ~18 once a day.
+- It also no longer bails when there are no published articles: a site with zero posts still has
+  pages worth watching.
+
+`/your-driver` is a client component and cannot export metadata; it is personalised and not an
+indexing target, so it was left alone.
+
+6 new tests (942 total).
+
 ## 0.91.3 — 2026-07-29 — Sitemap read by Google; the indexing links stop 404ing
 
 **Milestone**: reconnected with the right account, the sitemap was submitted at `03:09:00` and

@@ -106,7 +106,12 @@ export interface BlogAnalyticsT {
   indexing: {
     checked: number;
     indexed: number;
-    urls: Array<{ url: string; verdict?: string; coverage?: string; last_crawl?: string; error?: string }>;
+    urls: Array<{
+      url: string;
+      /** core = homepage/book/rides/blog · route = a /rides/* page with fares · article */
+      kind?: "core" | "route" | "article";
+      verdict?: string; coverage?: string; last_crawl?: string; error?: string;
+    }>;
   } | null;
   /** What the engine itself has produced — true today, unlike Search Console. */
   engine: {

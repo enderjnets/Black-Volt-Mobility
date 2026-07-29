@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.91.3";
+export const CURRENT_VERSION = "0.92.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.92.0",
+    date: "2026-07-29",
+    title: "Your homepage can finally be indexed — and every page is now watched",
+    changes: [
+      "Google was refusing to index your homepage, calling it a duplicate: the site answered on both www and the plain domain with nothing saying which was the real one. Fixed — www now redirects, and the page declares itself.",
+      "The indexing check only ever looked at blog articles. That hid the important part: all six route pages with your fares — the ones that take bookings — are unknown to Google. It now watches the whole site and groups the results, with the route pages first.",
+    ],
+  },
   {
     version: "0.91.3",
     date: "2026-07-29",

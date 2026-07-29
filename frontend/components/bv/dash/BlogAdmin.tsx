@@ -588,23 +588,44 @@ function IndexingBlock({ indexing, t }: {
   indexing: NonNullable<BlogAnalyticsT["indexing"]>;
   t: (k: string, v?: Record<string, string | number>) => string;
 }) {
+  // Grouped by what the page is for. A route page missing from Google costs more than an
+  // article missing from Google — those are the hand-written pages carrying real fares.
+  const groups: Array<["route" | "core" | "article", string]> = [
+    ["route", t("blog.index.groupRoute")],
+    ["core", t("blog.index.groupCore")],
+    ["article", t("blog.index.groupArticle")],
+  ];
+  const ok = (c?: string) => (c || "").toLowerCase().includes("indexed")
+    && !(c || "").toLowerCase().includes("not indexed");
+
   return (
     <Card>
-      <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 10 }}>
         {t("blog.index.title", { indexed: indexing.indexed, checked: indexing.checked })}
       </div>
-      <div style={{ display: "grid", gap: 6 }}>
-        {indexing.urls.map((u) => (
-          <div key={u.url} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
-            <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {u.url.replace(/^https?:\/\/[^/]+/, "")}
-            </span>
-            <span style={{ color: u.verdict === "PASS" ? "var(--success,#3ddc84)" : "var(--fg3)", flexShrink: 0 }}>
-              {u.error ? "?" : u.coverage || u.verdict || "—"}
-            </span>
+      {groups.map(([kind, label]) => {
+        const rows = indexing.urls.filter((u) => (u.kind || "core") === kind);
+        if (rows.length === 0) return null;
+        return (
+          <div key={kind} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--fg3)", textTransform: "uppercase", marginBottom: 4 }}>
+              {label}
+            </div>
+            <div style={{ display: "grid", gap: 5 }}>
+              {rows.map((u) => (
+                <div key={u.url} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+                  <span style={{ color: "var(--arctic)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {u.url.replace(/^https?:\/\/[^/]+/, "") || "/"}
+                  </span>
+                  <span style={{ color: ok(u.coverage) ? "var(--success,#3ddc84)" : "var(--fg3)", flexShrink: 0 }}>
+                    {u.error ? "?" : u.coverage || u.verdict || "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
     </Card>
   );
 }
@@ -621,9 +642,9 @@ function SitemapBlock({ sitemap, busy, t, onSubmit, onReconnect }: {
   const [refused, setRefused] = useState(false);
 
   const entries = sitemap?.sitemaps || [];
+  const wrongAccount = sitemap?.skipped === "wrong_account";
   // Known-false only. `null` means Google did not report the grant, and hiding the one
   // available action on a guess would be worse than letting it fail loudly.
-  const wrongAccount = sitemap?.skipped === "wrong_account";
   const cannotSubmit =
     wrongAccount || refused || sitemap?.can_submit === false || sitemap?.skipped === "needs_reauth";
   const neverRead = entries.length > 0 && entries.every((e) => !e.last_downloaded);
@@ -679,7 +700,7 @@ function SitemapBlock({ sitemap, busy, t, onSubmit, onReconnect }: {
         onClick={async () => {
           setResult(null);
           const skipped = await onSubmit();
-          if (skipped === "needs_reauth") setRefused(true);
+          if (skipped === "needs_reauth" || skipped === "wrong_account") setRefused(true);
           else setResult(skipped ? t(`blog.sitemap.${skipped}`) : t("blog.sitemap.sent"));
         }}
       >

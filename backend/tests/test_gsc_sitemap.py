@@ -349,3 +349,66 @@ async def test_a_failing_sitemap_ping_never_blocks_the_publish(db, monkeypatch):
     assert out["status"] == "published"
     row = await blog_service.get_post(db, tenant_id=tid, post_id=post.id)
     assert row.status == "published"
+
+
+# ─── Indexing covers the whole site, not just the blog ─────────────────────────
+
+
+async def test_indexing_watches_the_money_pages_not_only_articles(db, monkeypatch):
+    """It used to inspect published articles only, which is exactly why nobody noticed that
+    all six hand-written /rides/* pages — the ones carrying real fares — were unknown to
+    Google, and that the homepage was filed as a duplicate."""
+    from app.services import blog_facts
+
+    tid = await _tenant(db)
+    await _connected(db, tid)
+    seen: dict = {}
+
+    def capture(token, site_url, urls):
+        seen["urls"] = list(urls)
+        return {u: {"verdict": "PASS", "coverage": "Submitted and indexed"} for u in urls}
+
+    monkeypatch.setattr(gsc, "_inspect_urls", capture)
+    out = await gsc.run_indexing(db, tenant_id=tid)
+    assert out["ok"] is True
+
+    paths = [u.split("blackvoltmobility.com")[-1] or "/" for u in seen["urls"]]
+    assert "/" in paths and "/book" in paths          # the homepage was never watched
+    for route in blog_facts.ROUTES:
+        assert route.path in paths                    # nor were the pages that convert
+
+
+async def test_indexing_runs_with_no_published_articles(db, monkeypatch):
+    """A site with zero articles still has pages worth watching — it must not bail."""
+    tid = await _tenant(db)
+    await _connected(db, tid)
+    monkeypatch.setattr(gsc, "_inspect_urls",
+                        lambda t, s, urls: {u: {"verdict": "NEUTRAL"} for u in urls})
+    out = await gsc.run_indexing(db, tenant_id=tid)
+    assert out["ok"] is True
+    assert out["checked"] > 0
+
+
+async def test_each_url_is_labelled_by_what_it_is(db, monkeypatch):
+    """So the dashboard can group them: a route page unindexed matters more than an article."""
+    tid = await _tenant(db)
+    await _connected(db, tid)
+    db.add(BlogPost(tenant_id=tid, slug="an-article", title_en="T", body_md_en="b",
+                    status="published"))
+    await db.commit()
+    monkeypatch.setattr(gsc, "_inspect_urls",
+                        lambda t, s, urls: {u: {"verdict": "NEUTRAL"} for u in urls})
+    await gsc.run_indexing(db, tenant_id=tid)
+
+    from sqlalchemy import select as _select
+
+    from app.models import SeoSnapshot
+    row = (
+        await db.execute(
+            _select(SeoSnapshot).where(
+                SeoSnapshot.tenant_id == tid, SeoSnapshot.kind == "indexing"
+            )
+        )
+    ).scalar_one()
+    kinds = {u["kind"] for u in row.payload["urls"]}
+    assert kinds == {"core", "route", "article"}
