@@ -205,8 +205,12 @@ export interface BlogSitemapT {
     warnings: number;
     errors: number;
   }>;
-  /** `needs_reauth` = the stored Google token predates our write scope. */
+  /** `needs_reauth` = permission too narrow. `wrong_account` = signed in with a Google
+   *  account that cannot see this property, which needs a different instruction entirely. */
   skipped?: string;
+  connected_email?: string | null;
+  expected_property?: string;
+  properties?: string[];
 }
 
 export const getBlogSitemap = () => jget<BlogSitemapT>("/v1/blog/admin/sitemap");

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.91.2 — 2026-07-29 — "Reconnect" is useless advice when you already did
+
+The owner reconnected Google and it still failed. Probing production told us why:
+
+```
+account: blackvoltmobility@gmail.com  ·  property: sc-domain:blackvoltmobility.com
+403 "User does not have sufficient permission for site ..."
+VISIBLE PROPERTIES: []
+```
+
+He picked the **wrong Google account** on the consent screen (`authuser=1`). That account owns
+**no** Search Console properties at all — the property belongs to `enderjnets@gmail.com`, which had
+been reading data fine for fifteen days.
+
+And the app answered that 403 with the same words as a narrow scope: *"reconnect once"* — the exact
+thing he had just done. He would have looped forever.
+
+- **A 403 is now diagnosed, not guessed** (`services/gsc.py`). On denial we ask Google which
+  properties the account can actually see. If ours is not among them the answer is
+  **`wrong_account`**, carrying the connected email and the property we expected, and the card says
+  *"you connected X, which cannot see Y — reconnect and pick the account that owns it"*. If the
+  property **is** visible, the scope really is the problem and it stays `needs_reauth`.
+- Both the status read and the submit go through the same diagnosis, and the underlying Google
+  message is now logged — it was being swallowed, which is why this took a live probe to see.
+
+⚠️ **This reconnect also broke the working Search Console read**: the new account cannot see the
+property, so the daily snapshot will fail until it is reconnected with `enderjnets@gmail.com`.
+
+6 new tests (939 total).
+
 ## 0.91.1 — 2026-07-28 — The sitemap button says what it needs, where the button is
 
 The owner pressed **"Tell Google about the sitemap"** and reported that nothing happened.

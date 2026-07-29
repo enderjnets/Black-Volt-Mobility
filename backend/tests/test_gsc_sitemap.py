@@ -190,6 +190,64 @@ async def test_unknown_scopes_do_not_disable_the_button(db, monkeypatch):
     assert (await gsc.sitemap_status(db, tenant_id=tid))["can_submit"] is None
 
 
+async def test_the_wrong_google_account_is_named_as_such(db, monkeypatch):
+    """The owner reconnected — and picked the wrong Google account. Google answered 403,
+    which we were reporting as "reconnect once", the exact thing he had just done. He would
+    have looped forever. A 403 plus a property list that does not contain ours is a
+    different instruction: reconnect AND pick the other account."""
+    tid = await _tenant(db)
+    await _connected(db, tid)
+
+    def denied(*a):
+        raise _HttpError(403)
+
+    monkeypatch.setattr(gsc, "_sitemaps_list", denied)
+    monkeypatch.setattr(gsc, "_visible_properties", lambda *a: [])
+    out = await gsc.sitemap_status(db, tenant_id=tid)
+    assert out["skipped"] == "wrong_account"
+    assert out["expected_property"] == "sc-domain:blackvoltmobility.com"
+    assert out["properties"] == []
+
+
+async def test_the_right_account_with_a_narrow_scope_is_still_a_reconnect(db, monkeypatch):
+    """Same 403, but the property IS visible — so the account is right and only the
+    permission is too narrow. That one really is a plain reconnect."""
+    tid = await _tenant(db)
+    await _connected(db, tid)
+
+    def denied(*a):
+        raise _HttpError(403)
+
+    monkeypatch.setattr(gsc, "_sitemaps_list", denied)
+    monkeypatch.setattr(gsc, "_visible_properties",
+                        lambda *a: ["sc-domain:blackvoltmobility.com"])
+    assert (await gsc.sitemap_status(db, tenant_id=tid))["skipped"] == "needs_reauth"
+
+
+async def test_a_failing_property_probe_falls_back_to_reconnect(db, monkeypatch):
+    tid = await _tenant(db)
+    await _connected(db, tid)
+
+    def denied(*a):
+        raise _HttpError(403)
+
+    monkeypatch.setattr(gsc, "_sitemaps_list", denied)
+    monkeypatch.setattr(gsc, "_visible_properties", denied)
+    assert (await gsc.sitemap_status(db, tenant_id=tid))["skipped"] == "needs_reauth"
+
+
+async def test_submitting_with_the_wrong_account_says_wrong_account(db, monkeypatch):
+    tid = await _tenant(db)
+    await _connected(db, tid)
+
+    def denied(*a):
+        raise _HttpError(403)
+
+    monkeypatch.setattr(gsc, "_sitemaps_submit", denied)
+    monkeypatch.setattr(gsc, "_visible_properties", lambda *a: [])
+    assert (await gsc.submit_sitemap(db, tenant_id=tid))["skipped"] == "wrong_account"
+
+
 async def test_an_old_readonly_token_asks_for_a_reconnect_not_an_error(db, monkeypatch):
     """A token minted before we widened the scope can read but not write. "Reconnect once"
     is a different instruction from "something broke", and the owner needs the right one."""

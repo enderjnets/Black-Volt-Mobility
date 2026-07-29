@@ -623,7 +623,9 @@ function SitemapBlock({ sitemap, busy, t, onSubmit, onReconnect }: {
   const entries = sitemap?.sitemaps || [];
   // Known-false only. `null` means Google did not report the grant, and hiding the one
   // available action on a guess would be worse than letting it fail loudly.
-  const cannotSubmit = refused || sitemap?.can_submit === false || sitemap?.skipped === "needs_reauth";
+  const wrongAccount = sitemap?.skipped === "wrong_account";
+  const cannotSubmit =
+    wrongAccount || refused || sitemap?.can_submit === false || sitemap?.skipped === "needs_reauth";
   const neverRead = entries.length > 0 && entries.every((e) => !e.last_downloaded);
 
   if (cannotSubmit) {
@@ -631,7 +633,12 @@ function SitemapBlock({ sitemap, busy, t, onSubmit, onReconnect }: {
       <Card>
         <div style={{ fontSize: 12, color: "var(--fg3)", marginBottom: 8 }}>{t("blog.sitemap.title")}</div>
         <div style={{ fontSize: 13, color: "var(--fg2)", lineHeight: 1.55, marginBottom: 12 }}>
-          {t("blog.sitemap.needs_reauth")}
+          {wrongAccount
+            ? t("blog.sitemap.wrong_account", {
+                email: sitemap?.connected_email || "?",
+                property: sitemap?.expected_property || "",
+              })
+            : t("blog.sitemap.needs_reauth")}
         </div>
         <Button disabled={busy} onClick={onReconnect}>🔗 {t("blog.sitemap.reconnect")}</Button>
       </Card>

@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.91.1";
+export const CURRENT_VERSION = "0.91.2";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.91.2",
+    date: "2026-07-29",
+    title: "It now tells you when you signed in with the wrong Google account",
+    changes: [
+      "Reconnecting Google still failed, and the app just said \"reconnect\" again — the exact thing you had done. The real problem was the account: the one picked on the Google screen cannot see this site in Search Console.",
+      "A refusal from Google is now diagnosed instead of guessed. If the account cannot see the property, the card names the account you connected and tells you to choose the one that owns the site. If the account is right and only the permission is short, it still just asks you to reconnect.",
+    ],
+  },
   {
     version: "0.91.1",
     date: "2026-07-28",

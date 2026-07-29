@@ -222,6 +222,42 @@ def _sitemaps_list(refresh_token: str, site_url: str) -> tuple[list[dict], list[
     return resp.get("sitemap", []) or [], granted
 
 
+def _visible_properties(refresh_token: str) -> list[str]:
+    """Which Search Console properties this account can see at all.
+
+    A 403 means two very different things: the permission is too narrow, or the person
+    signed in with the wrong Google account. Telling them apart is the difference between
+    "reconnect" and "reconnect *and pick the other account*" — and without it the owner
+    reconnects, gets the same message, and loops.
+    """
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+
+    creds = _credentials(refresh_token)
+    creds.refresh(Request())
+    svc = build("searchconsole", "v1", credentials=creds, cache_discovery=False)
+    resp = svc.sites().list().execute() or {}
+    return [s.get("siteUrl") for s in resp.get("siteEntry", []) if s.get("siteUrl")]
+
+
+async def _diagnose_denied(cfg) -> dict:
+    """Turn a 403 into the instruction that actually fixes it."""
+    import asyncio
+
+    try:
+        visible = await asyncio.to_thread(_visible_properties, cfg.gsc_refresh_token)
+    except Exception:
+        return {"skipped": "needs_reauth"}
+    if cfg.gsc_site_url not in visible:
+        return {
+            "skipped": "wrong_account",
+            "connected_email": cfg.gsc_connected_email,
+            "expected_property": cfg.gsc_site_url,
+            "properties": visible,
+        }
+    return {"skipped": "needs_reauth"}
+
+
 def _sitemaps_submit(refresh_token: str, site_url: str, feedpath: str) -> None:
     from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
@@ -262,7 +298,8 @@ async def sitemap_status(db: AsyncSession, *, tenant_id: int) -> dict:
         )
     except Exception as e:
         if _is_permission_error(e):
-            return {"skipped": "needs_reauth"}
+            logger.info("sitemap list denied tenant=%s: %s", tenant_id, str(e)[:200])
+            return await _diagnose_denied(cfg)
         logger.warning("sitemap list failed tenant=%s: %s", tenant_id, e)
         return {"skipped": "list_failed"}
     return {
@@ -300,7 +337,8 @@ async def submit_sitemap(
         )
     except Exception as e:
         if _is_permission_error(e):
-            return {"skipped": "needs_reauth"}
+            logger.info("sitemap submit denied tenant=%s: %s", tenant_id, str(e)[:200])
+            return await _diagnose_denied(cfg)
         logger.warning("sitemap submit failed tenant=%s: %s", tenant_id, e)
         return {"skipped": "submit_failed"}
     logger.info("sitemap submitted tenant=%s path=%s", tenant_id, path)
