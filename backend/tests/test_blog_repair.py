@@ -12,7 +12,7 @@ import os
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 
-from app.services import blog_facts, blog_writer  # noqa: E402
+from app.services import blog_facts, blog_quality, blog_writer  # noqa: E402
 
 ALLOWED = {"/", "/book", "/rides", "/blog"} | blog_facts.route_paths()
 
@@ -147,3 +147,46 @@ def test_repair_does_not_overwrite_a_faq_the_model_supplied():
     }
     out = blog_writer._repair(data, "Aurora to DEN airport", ALLOWED)
     assert out["faq"] == supplied
+
+
+# ─── Malformed links and over-long titles seen on the first autopilot run ───────
+
+
+def test_a_link_wrapped_in_an_extra_bracket_pair_is_unwrapped():
+    """Seven links in the first autopilot article came out as `[[text](url)]`, which renders
+    the brackets literally. The link worked, so nothing flagged it — it just looked like a
+    typo, which on a page selling a premium service is its own kind of wrong."""
+    body = "See [[Aurora to DEN route details](/rides/aurora-to-den-airport)] for more."
+    out = blog_writer._unwrap_links(body)
+    assert out == "See [Aurora to DEN route details](/rides/aurora-to-den-airport) for more."
+
+
+def test_a_normal_link_is_left_exactly_as_it_is():
+    body = "Just [book online](/book) and you are done."
+    assert blog_writer._unwrap_links(body) == body
+
+
+def test_bracketed_prose_around_a_link_is_not_mangled():
+    """Only a bracket pair hugging the whole link is redundant."""
+    body = "[note] and [book](/book)"
+    assert blog_writer._unwrap_links(body) == body
+
+
+def test_every_wrapped_link_in_a_body_is_unwrapped():
+    body = "[[a](/book)] mid [[b](/rides)] end"
+    assert blog_writer._unwrap_links(body) == "[a](/book) mid [b](/rides) end"
+
+
+def test_a_short_trailing_clause_after_a_comma_is_droppable():
+    """The real one: the Spanish title landed at 65 characters and the only thing over the
+    line was ", Colorado" — no colon to cut at, so it was drafted for five characters."""
+    long_es = "Precios de alquiler de autos en el Aeropuerto de Denver, Colorado"
+    assert len(long_es) > blog_quality.MAX_TITLE
+    out = blog_writer._shorten_title(long_es, "denver colorado airport car rental price", "es")
+    assert out == "Precios de alquiler de autos en el Aeropuerto de Denver"
+
+
+def test_a_long_trailing_clause_is_not_cut_at_the_comma():
+    """Cutting at any comma would maul a real sentence; only a short tail is safe."""
+    long_en = "Denver to Vail Transfers, and everything else worth knowing before you go"
+    assert blog_writer._shorten_title(long_en, "Denver to Vail", "en") == long_en

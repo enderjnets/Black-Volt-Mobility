@@ -5,9 +5,18 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.92.0";
+export const CURRENT_VERSION = "0.92.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.92.1",
+    date: "2026-07-30",
+    title: "Two rough edges from the autopilot's first article",
+    changes: [
+      "Some internal links were coming out wrapped in stray square brackets, which would have shown up as visible brackets on the page. Cleaned up automatically now.",
+      "A title held back for being five characters too long — where the only thing over the line was a trailing \", Colorado\" — now gets trimmed instead of waiting for you.",
+    ],
+  },
   {
     version: "0.92.0",
     date: "2026-07-29",

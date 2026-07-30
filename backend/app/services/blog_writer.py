@@ -255,8 +255,13 @@ def _shorten_title(title: str, keyword: str, lang: str = "en") -> str:
     title = (title or "").strip()
     if len(title) <= blog_quality.MAX_TITLE:
         return title
-    for sep in (": ", " — ", " – ", " | ", " - "):
-        head = title.split(sep)[0].strip()
+    candidates = [title.split(sep)[0].strip() for sep in (": ", " — ", " – ", " | ", " - ")]
+    # A short trailing clause after the last comma is droppable too: the model produced
+    # "Precios de alquiler de autos en el Aeropuerto de Denver, Colorado" at 65 characters,
+    # where the last four words are the only thing over the line.
+    if "," in title and len(title.rsplit(",", 1)[1].strip()) <= 15:
+        candidates.append(title.rsplit(",", 1)[0].strip())
+    for head in candidates:
         if not (20 <= len(head) <= blog_quality.MAX_TITLE):
             continue
         if not blog_quality.on_topic(head, keyword):
@@ -269,9 +274,20 @@ def _shorten_title(title: str, keyword: str, lang: str = "en") -> str:
     return title
 
 
+def _unwrap_links(body: str) -> str:
+    """Drop a redundant bracket pair around a markdown link.
+
+    The model wrote seven links as `[[text](url)]`, which renders the brackets literally on
+    the page. The link still works, so no check caught it — but it looks like a typo, which
+    on a page selling a premium service is its own kind of wrong.
+    """
+    return re.sub(r"\[(\[[^\]]+\]\([^)]+\))\]", r"\1", body or "")
+
+
 def _repair(data: dict, keyword: str, allowed: set[str], lang: str = "en") -> dict:
     """Fix what is mechanically fixable before grading, so the gate judges the writing."""
     data["title"] = _shorten_title(data.get("title") or "", keyword, lang)
+    data["body_md"] = _unwrap_links(data.get("body_md") or "")
     body = data.get("body_md") or ""
     if not [f for f in (data.get("faq") or []) if isinstance(f, dict) and f.get("q")]:
         data["faq"] = _harvest_faq(body)

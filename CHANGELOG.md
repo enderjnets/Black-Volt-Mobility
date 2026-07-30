@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.92.1 — 2026-07-30 — Two rough edges from the autopilot's first unattended article
+
+The autopilot ran for the first time and behaved exactly as designed: it wrote, the gate caught a
+real flaw, and it parked the article as a `draft` with the reason attached. Reading that article
+turned up two things worth repairing rather than rejecting.
+
+- **Seven internal links came out as `[[text](url)]`** — a redundant bracket pair that renders the
+  brackets literally on the page. Nothing flagged it, because the link inside still resolves and
+  the link count passed. It just looks like a typo, which on a page selling a premium service is
+  its own kind of wrong. `_unwrap_links` strips only a pair hugging a whole link, so bracketed
+  prose next to a link is untouched. The two already-published articles are clean; this never
+  reached the site.
+- **A title was drafted for five characters.** The Spanish title landed at 65 with `", Colorado"`
+  as the only thing over the line, and there was no colon or dash to cut at. `_shorten_title` now
+  also considers dropping a **short** trailing clause after the last comma (≤15 chars) — a long
+  clause is still left alone, because cutting mid-sentence would maul a real headline.
+
+On the topic choice, worth recording: the keyword was `denver colorado airport car rental price`,
+which reads off-target for a chauffeur service. The article is not bait — it opens *"Why Choose a
+Premium Electric Chauffeur?"* and compares renting against the real published fares. Somebody
+pricing a rental car is precisely who this business wants to intercept, so the keyword stays.
+
+7 new tests (948 total).
+
 ## 0.92.0 — 2026-07-29 — The homepage can be indexed, and the whole site is watched
 
 The owner asked why the indexing check only covered two pages. Fair question, and answering it
