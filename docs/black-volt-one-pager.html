@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Black Volt Mobility — One-pager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0A0A0F; --surface:#15161D; --line:#23242E;
+    --cyan:#00E5FF; --silver:#A8ADB8; --white:#F2F4F7;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--void);color:var(--white);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .page{max-width:840px;margin:0 auto;padding:34px 40px 28px}
+  .eyebrow{font-family:'Rajdhani',sans-serif;font-weight:600;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan)}
+  h1,h2,h3{font-family:'Rajdhani',sans-serif;font-weight:600}
+  p,li{font-size:12.5px;line-height:1.5;color:var(--silver)}
+  b{color:var(--white);font-weight:600}
+
+  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+  .brand{display:flex;align-items:center;gap:11px}
+  .bolt{width:26px;height:26px;flex:none}
+  .wordmark{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:25px;letter-spacing:.08em;line-height:1;color:var(--white)}
+  .position{font-size:12px;color:var(--silver);margin-top:3px;letter-spacing:.01em}
+  .tagline{font-family:'Rajdhani',sans-serif;font-weight:500;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);text-align:right;white-space:nowrap}
+  .rule{height:2px;background:linear-gradient(90deg,var(--cyan),rgba(0,229,255,0));margin:16px 0 18px;border-radius:2px}
+
+  .hero{font-family:'Rajdhani',sans-serif;font-weight:600;font-size:21px;line-height:1.3;color:var(--white);margin-bottom:6px}
+  .hero .hl{color:var(--cyan)}
+  .hero-sub{font-size:12.5px;color:var(--silver);margin-bottom:18px}
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+  .stat{background:var(--surface);border:.5px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat .n{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:23px;color:var(--cyan);line-height:1}
+  .stat .l{font-size:11px;color:var(--silver);margin-top:5px;line-height:1.35}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:20px}
+  h3{font-size:15px;color:var(--white);margin-bottom:9px;letter-spacing:.01em}
+  ul{list-style:none}
+  ul li{position:relative;padding-left:16px;margin-bottom:6px}
+  ul li::before{content:"";position:absolute;left:0;top:7px;width:6px;height:6px;background:var(--cyan);border-radius:1px}
+
+  .band{background:var(--surface);border:.5px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:20px}
+  .band h3{margin-bottom:12px}
+  .tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+  .tier{border:.5px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--void)}
+  .tier.rec{border:1.5px solid var(--cyan)}
+  .tier .t{font-family:'Rajdhani',sans-serif;font-weight:600;font-size:14px;color:var(--white)}
+  .tier .pr{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;color:var(--cyan);margin:2px 0}
+  .tier .d{font-size:10.5px;color:var(--silver);line-height:1.35}
+  .layers{font-size:12px;color:var(--silver);line-height:1.55}
+  .layers b{color:var(--white)}
+  .proofnote{font-size:11px;color:var(--silver);margin-top:10px;padding-top:10px;border-top:.5px solid var(--line)}
+  .proofnote b{color:var(--cyan)}
+
+  .cta{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:2px solid var(--cyan);padding-top:14px}
+  .cta .ask{font-family:'Rajdhani',sans-serif;font-weight:600;font-size:14px;color:var(--white)}
+  .cta .ask span{display:block;font-family:'Inter';font-weight:400;font-size:11.5px;color:var(--silver);margin-top:3px}
+  .cta .contact{text-align:right;font-size:11.5px;color:var(--silver);line-height:1.6}
+  .cta .contact b{color:var(--white)}
+
+  @media print{
+    @page{size:letter;margin:0;}
+    html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .page{padding:28px 38px;max-width:none}
+  }
+  @media(max-width:640px){
+    .stats,.tiers{grid-template-columns:1fr}
+    .grid2{grid-template-columns:1fr}
+    .head{flex-direction:column}
+    .tagline{text-align:left}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="head">
+    <div class="brand">
+      <svg class="bolt" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 L5 13 H11 L10 22 L19 9 H13 Z" fill="#00E5FF"/></svg>
+      <div>
+        <div class="wordmark">BLACK VOLT MOBILITY</div>
+        <div class="position">El sistema operativo del chofer con licencia</div>
+      </div>
+    </div>
+    <div class="tagline">Silent Power.<br>Premium Arrival.</div>
+  </div>
+
+  <div class="rule"></div>
+
+  <p class="hero">El operador de <span class="hl">limo, livery o black-car con licencia</span> mueve miles de dólares al mes desde WhatsApp y una hoja de Excel. Black Volt es su sistema operativo — y nuestro motor de ingresos.</p>
+  <p class="hero-sub">El modelo de Credit Karma, aplicado al transporte premium con permiso: una herramienta gratis que engancha al operador, datos que se vuelven dinero, y afiliados que pagan por cada cliente.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="n">$0 → $149</div><div class="l">Rango de planes mensuales por operador (SaaS recurrente)</div></div>
+    <div class="stat"><div class="n">1 carrera</div><div class="l">privada al mes paga el plan anual completo</div></div>
+    <div class="stat"><div class="n">3 capas</div><div class="l">de ingreso: suscripción · afiliados · datos</div></div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <div class="eyebrow">El problema</div>
+      <h3>Un nicho rentable y desatendido</h3>
+      <ul>
+        <li>El chofer con licencia entrega ~30% a las plataformas y gestiona su cartera a mano.</li>
+        <li>Las apps de drivers (Gridwise, Moves) sirven al gig masivo, <b>no</b> al operador premium con permiso.</li>
+        <li>Nadie le da herramientas de negocio ni lo ayuda a crecer sus clientes privados.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="eyebrow">El producto</div>
+      <h3>Dashboard con IA + cumplimiento</h3>
+      <ul>
+        <li><b>Operaciones IA:</b> reservas desde un screenshot, calendario, CRM, cotización y pagos.</li>
+        <li><b>Compliance gate:</b> el booking público solo se activa para permisos verificados.</li>
+        <li><b>Motor de clientes:</b> SEO, reseñas, referidos y marketing automatizado.</li>
+        <li>Arquitectura multi-tenant: nace como SaaS para vender a cualquier operador.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="eyebrow">Cómo gana dinero</div>
+    <h3>Modelo Credit Karma, tres capas</h3>
+    <div class="tiers">
+      <div class="tier"><div class="t">Free</div><div class="pr">$0</div><div class="d">El anzuelo: Driver Score, CRM y el gate de cumplimiento.</div></div>
+      <div class="tier rec"><div class="t">Operator</div><div class="pr">$29<span style="font-size:11px;color:var(--silver)">/mes</span></div><div class="d">Automatización IA completa de operaciones. El plan ancla.</div></div>
+      <div class="tier"><div class="t">Growth</div><div class="pr">$79–149</div><div class="d">Motor de clientes: marketing IA, reseñas, leads.</div></div>
+    </div>
+    <div class="layers"><b>+ Afiliados recurrentes:</b> seguro comercial, impuestos, financiamiento EV. &nbsp;<b>+ A escala:</b> licenciamiento de datos de movilidad e interchange de la tarjeta del operador.</div>
+    <div class="proofnote">El modelo está probado: Credit Karma ofrece su herramienta gratis y genera <b>+$600M por trimestre</b> vía afiliados, publicidad de datos y banca. Black Volt lo enfoca en un nicho premium, con licencia y de alto valor.</div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <div class="eyebrow">Por qué ahora · el foso</div>
+      <h3>Tiempo y defensa</h3>
+      <ul>
+        <li>El transporte ejecutivo EV crece y el gig driver se profesionaliza.</li>
+        <li>El compliance gate convierte el cumplimiento en confianza y diferenciación.</li>
+        <li>La automatización con IA es lo que ningún competidor le ofrece al operador con licencia.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="eyebrow">Ya construido · tracción</div>
+      <h3>No es una idea en papel</h3>
+      <ul>
+        <li>Plataforma multi-tenant funcionando: pagos, extracción con visión IA, calendario, CRM, analítica.</li>
+        <li>Black Volt Mobility (Kia EV9, Denver) opera como primer tenant y socio de diseño.</li>
+        <li>Historial real de clientes y pagos ya importado al sistema.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="cta">
+    <div class="ask">Buscamos socio / capital para acelerar.<span>Piloto con operadores con licencia en Colorado → expansión multi-estado.</span></div>
+    <div class="contact"><b>Black Volt Mobility LLC</b><br>Denver / Aurora, CO<br>blackvoltmobility.com</div>
+  </div>
+
+</div>
+</body>
+</html>

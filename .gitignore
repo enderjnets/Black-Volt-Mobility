@@ -38,3 +38,6 @@ secrets/*
 # OAuth secrets, even if written outside secrets/ (the setup script's default out)
 gcal-oauth.json
 client_secret*.json
+
+# graphify knowledge graph artifacts
+graphify-out/

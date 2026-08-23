@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Black Volt Mobility — para operadores con licencia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0A0A0F; --surface:#15161D; --surface2:#1B1C24; --line:#23242E;
+    --cyan:#00E5FF; --silver:#A8ADB8; --white:#F2F4F7;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--void);color:var(--white);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.55}
+  h1,h2,h3,.rj{font-family:'Rajdhani',sans-serif;font-weight:600}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+  .eyebrow{font-family:'Rajdhani',sans-serif;font-weight:600;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:20;background:rgba(10,10,15,.82);backdrop-filter:blur(10px);border-bottom:.5px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .bolt{width:24px;height:24px;flex:none}
+  .wm{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:19px;letter-spacing:.07em}
+  .navlinks{display:flex;align-items:center;gap:22px;font-size:14px;color:var(--silver)}
+  .navlinks a:hover{color:var(--white)}
+
+  /* buttons */
+  .btn{font-family:'Inter',sans-serif;font-size:14px;font-weight:500;border-radius:9px;padding:11px 18px;border:.5px solid var(--line);background:var(--surface2);color:var(--white);cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px}
+  .btn:hover{border-color:#3a3b46;background:#21222b}
+  .btn.cyan{background:var(--cyan);color:#04161a;border-color:var(--cyan);font-weight:600}
+  .btn.cyan:hover{background:#3aecff}
+  .btn.block{width:100%;justify-content:center}
+
+  /* hero */
+  header{padding:78px 0 64px;position:relative;overflow:hidden}
+  .hline{height:2px;width:120px;background:linear-gradient(90deg,var(--cyan),rgba(0,229,255,0));margin-bottom:26px;border-radius:2px}
+  h1{font-size:clamp(34px,5vw,54px);line-height:1.08;letter-spacing:.005em;max-width:760px}
+  h1 .hl{color:var(--cyan)}
+  .sub{font-size:17px;color:var(--silver);max-width:580px;margin:20px 0 30px}
+  .herocta{display:flex;gap:12px;flex-wrap:wrap}
+  .tag{margin-top:24px;font-size:13px;color:var(--silver);display:inline-flex;align-items:center;gap:8px}
+  .tag b{color:var(--cyan);font-weight:600}
+
+  /* value props */
+  .props{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;padding:8px 0 64px}
+  .prop{background:var(--surface);border:.5px solid var(--line);border-radius:14px;padding:22px}
+  .prop .ic{width:34px;height:34px;border-radius:9px;background:rgba(0,229,255,.1);display:flex;align-items:center;justify-content:center;color:var(--cyan);font-size:19px;margin-bottom:13px}
+  .prop h3{font-size:18px;margin-bottom:7px}
+  .prop p{font-size:14px;color:var(--silver)}
+
+  /* pricing */
+  .pricing{padding:18px 0 30px;text-align:center}
+  .pricing .eyebrow{display:block;margin-bottom:10px}
+  .pricing h2{font-size:32px;margin-bottom:8px}
+  .pricing .lead{font-size:15px;color:var(--silver);max-width:520px;margin:0 auto 38px}
+  .tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;text-align:left;align-items:stretch}
+  .tier{background:var(--surface);border:.5px solid var(--line);border-radius:16px;padding:26px 24px;display:flex;flex-direction:column}
+  .tier.rec{border:1.5px solid var(--cyan);box-shadow:0 0 0 1px rgba(0,229,255,.15)}
+  .badge{align-self:flex-start;background:rgba(0,229,255,.12);color:var(--cyan);font-size:12px;font-weight:600;padding:4px 11px;border-radius:7px;margin-bottom:14px}
+  .tier .nm{font-family:'Rajdhani',sans-serif;font-weight:600;font-size:21px}
+  .tier .tg{font-size:14px;color:var(--silver);margin:2px 0 16px}
+  .price{display:flex;align-items:baseline;gap:5px}
+  .price .n{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:40px;line-height:1}
+  .price .u{font-size:14px;color:var(--silver)}
+  .price .n.cy{color:var(--cyan)}
+  .submeta{font-size:12.5px;color:var(--silver);margin-top:5px;min-height:16px}
+  .inc{font-size:13px;color:var(--silver);margin:18px 0 10px}
+  .feat{list-style:none;display:flex;flex-direction:column;gap:11px;margin-bottom:24px}
+  .feat li{display:flex;gap:9px;align-items:flex-start;font-size:14px}
+  .feat svg{flex:none;margin-top:2px}
+  .feat .soon svg{color:var(--silver)}
+  .tier .cta{margin-top:auto}
+  .lockline{font-size:12.5px;color:var(--silver);margin-top:12px;display:flex;gap:7px;align-items:center}
+
+  /* trust */
+  .trust{border-top:.5px solid var(--line);border-bottom:.5px solid var(--line);margin-top:54px;padding:22px 0;background:var(--surface)}
+  .trust .wrap{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 34px;font-size:13.5px;color:var(--silver)}
+  .trust span{display:inline-flex;align-items:center;gap:8px}
+  .trust b{color:var(--white);font-weight:500}
+
+  footer{padding:40px 0 48px;color:var(--silver);font-size:13px}
+  footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;align-items:center}
+  footer b{color:var(--white)}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .overlay.on{display:flex}
+  .modal{background:var(--surface);border:.5px solid var(--line);border-radius:16px;width:100%;max-width:440px;padding:26px}
+  .modal h3{font-size:22px}
+  .modal .mt{font-size:14px;color:var(--silver);margin:4px 0 20px}
+  .modal label{display:block;font-size:13px;color:var(--silver);margin:0 0 6px}
+  .modal input{width:100%;background:var(--void);border:.5px solid var(--line);border-radius:9px;padding:11px 12px;color:var(--white);font-size:14px;font-family:inherit;margin-bottom:14px}
+  #bv-card{background:var(--void);border:.5px solid var(--line);border-radius:9px;padding:4px 10px;margin-bottom:6px;min-height:48px}
+  .msg{font-size:13px;margin:10px 0;min-height:18px}
+  .msg.err{color:#ff8a8a}.msg.ok{color:#7fe7c4}.msg.info{color:var(--silver)}
+  .modal .foot{font-size:12px;color:var(--silver);margin-top:14px;text-align:center}
+  .closex{float:right;cursor:pointer;color:var(--silver);font-size:20px;line-height:1;margin:-6px -6px 0 0}
+
+  @media(max-width:820px){.props,.tiers{grid-template-columns:1fr}.navlinks a:not(.btn){display:none}}
+</style>
+</head>
+<body>
+
+<!-- ============ CONFIG: ajusta estas 2 líneas al deployar ============ -->
+<script>
+  window.BV = {
+    // Backend API (donde corre tu FastAPI con Square). Requiere CORS para este subdominio.
+    apiBase: "https://app.blackvoltmobility.com/api/v1",
+    // A dónde mandar el registro gratis / iniciar sesión.
+    appUrl:  "https://app.blackvoltmobility.com/dashboard",
+    // Correo para el plan Growth (ventas).
+    salesEmail: "hola@blackvoltmobility.com"
+  };
+</script>
+
+<nav><div class="wrap">
+  <a class="brand" href="#top">
+    <svg class="bolt" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2 L5 13 H11 L10 22 L19 9 H13 Z" fill="#00E5FF"/></svg>
+    <span class="wm">BLACK VOLT</span>
+  </a>
+  <div class="navlinks">
+    <a href="#planes">Planes</a>
+    <a href="#" onclick="goApp(event)">Iniciar sesión</a>
+    <a class="btn cyan" href="#planes">Ver planes</a>
+  </div>
+</div></nav>
+
+<header id="top"><div class="wrap">
+  <div class="hline"></div>
+  <div class="eyebrow">Solo para operadores con licencia</div>
+  <h1 style="margin-top:14px">El sistema operativo del <span class="hl">chofer con licencia</span>.</h1>
+  <p class="sub">Maneja tus clientes privados, automatiza tus reservas con IA y crece tu cartera — sin vivir pegado a la comisión de la plataforma.</p>
+  <div class="herocta">
+    <a class="btn cyan" href="#planes">Ver planes</a>
+    <a class="btn" href="#como">Cómo funciona</a>
+  </div>
+  <div class="tag">⚡ <span>Verificamos tu permiso antes de activar tu perfil público.</span></div>
+</div></header>
+
+<section id="como"><div class="wrap props">
+  <div class="prop">
+    <div class="ic">⚡</div>
+    <h3>Operaciones en piloto IA</h3>
+    <p>Crea una reserva desde un screenshot del WhatsApp del cliente. Calendario, cotización y confirmaciones, automáticos.</p>
+  </div>
+  <div class="prop">
+    <div class="ic">🛡</div>
+    <h3>Cumplimiento primero</h3>
+    <p>Verificamos tu permiso for-hire. El booking público se activa solo para operadores con licencia — es tu sello de confianza.</p>
+  </div>
+  <div class="prop">
+    <div class="ic">📈</div>
+    <h3>Más clientes privados</h3>
+    <p>SEO local, reseñas, referidos y marketing con IA para que tu cartera crezca sin depender de Uber.</p>
+  </div>
+</div></section>
+
+<section id="planes" class="pricing"><div class="wrap">
+  <span class="eyebrow">Planes</span>
+  <h2>Elige tu plan</h2>
+  <p class="lead">Empieza gratis y mídete. Sube a Operator cuando quieras el piloto automático. Una sola carrera privada al mes paga el año completo.</p>
+
+  <div class="tiers">
+    <!-- FREE -->
+    <div class="tier">
+      <div class="nm">Free</div>
+      <div class="tg">Empieza y mídete</div>
+      <div class="price"><span class="n">$0</span><span class="u">/mes</span></div>
+      <div class="submeta">para siempre</div>
+      <ul class="feat" style="margin-top:18px">
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Driver Score y benchmarking</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>CRM básico de clientes</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Registro de viajes</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Verificación de permiso</li>
+      </ul>
+      <div class="cta">
+        <button class="btn block" onclick="goApp(event)">Empezar gratis</button>
+        <div class="lockline">🔒 Perfil público al verificar</div>
+      </div>
+    </div>
+
+    <!-- OPERATOR (ancla) -->
+    <div class="tier rec">
+      <span class="badge">Más popular</span>
+      <div class="nm">Operator</div>
+      <div class="tg">Tu negocio en piloto IA</div>
+      <div class="price"><span class="n cy">$29</span><span class="u">/mes</span></div>
+      <div class="submeta">$290/año · 2 meses gratis</div>
+      <div class="inc">Todo en Free, más:</div>
+      <ul class="feat">
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Reservas por screenshot (IA)</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Calendario y cambios automáticos</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Confirmaciones IA por SMS/email</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Perfil público + QR + booking</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Clientes y viajes ilimitados</li>
+      </ul>
+      <div class="cta">
+        <button class="btn cyan block" onclick="openCheckout('operator')">Elegir Operator</button>
+      </div>
+    </div>
+
+    <!-- GROWTH (rango → hablemos) -->
+    <div class="tier">
+      <div class="nm">Growth</div>
+      <div class="tg">Consigue más clientes</div>
+      <div class="price"><span class="n">$79</span><span class="u">–149/mes</span></div>
+      <div class="submeta">o pay-per-lead</div>
+      <div class="inc">Todo en Operator, más:</div>
+      <ul class="feat">
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>SEO local + mini-sitio</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Motor de reseñas y referidos</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Marketing con IA + retargeting</li>
+        <li class="soon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Entrega de leads (pronto)</li>
+      </ul>
+      <div class="cta">
+        <button class="btn block" onclick="contactGrowth()">Hablar de Growth</button>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<div class="trust"><div class="wrap">
+  <span>✓ <b>Verificamos tu permiso</b></span>
+  <span>✓ <b>Suscripción deducible</b> de impuestos</span>
+  <span>✓ Pagos seguros con <b>Square</b></span>
+  <span>✓ <b>Cancela</b> cuando quieras</span>
+</div></div>
+
+<footer><div class="wrap">
+  <div><b>Black Volt Mobility LLC</b> · Denver / Aurora, CO</div>
+  <div>Silent Power. Premium Arrival.</div>
+</div></footer>
+
+<!-- ============ Checkout modal (Operator) ============ -->
+<div class="overlay" id="ov">
+  <div class="modal">
+    <span class="closex" onclick="closeCheckout()">&times;</span>
+    <h3>Suscríbete a Operator</h3>
+    <div class="mt">$29/mes · cancela cuando quieras</div>
+    <label for="bv-email">Tu correo</label>
+    <input id="bv-email" type="email" placeholder="tucorreo@ejemplo.com" autocomplete="email">
+    <label>Tarjeta</label>
+    <div id="bv-card"><!-- Square Web Payments SDK monta aquí --></div>
+    <div class="msg info" id="bv-msg">Pago seguro procesado por Square.</div>
+    <button class="btn cyan block" id="bv-pay" onclick="subscribe()">Suscribirme · $29/mes</button>
+    <div class="foot">No guardamos tu tarjeta. La procesa Square con cifrado.</div>
+  </div>
+</div>
+
+<script>
+  function goApp(e){ if(e) e.preventDefault(); location.href = window.BV.appUrl; }
+  function contactGrowth(){
+    location.href = "mailto:"+window.BV.salesEmail+"?subject=Plan%20Growth%20-%20Black%20Volt&body=Hola,%20quiero%20saber%20mas%20del%20plan%20Growth.";
+  }
+
+  // ---- Square checkout (Operator) ----
+  var sqCard = null, sqReady = false, sqEnv = "production";
+  function setMsg(t, cls){ var m=document.getElementById('bv-msg'); m.textContent=t; m.className='msg '+(cls||'info'); }
+
+  async function openCheckout(plan){
+    document.getElementById('ov').classList.add('on');
+    if(sqReady) return;
+    setMsg("Cargando pago seguro…","info");
+    try{
+      // 1) Config PÚBLICA desde tu backend (mismo patrón que /payments/config).
+      var cfg = await fetch(window.BV.apiBase+"/payments/config").then(r=>r.json());
+      if(!cfg.application_id || !cfg.location_id){
+        setMsg("El checkout se activa cuando conectemos Square. Por ahora, escríbenos.","info");
+        document.getElementById('bv-pay').textContent = "Contáctanos";
+        document.getElementById('bv-pay').onclick = contactGrowth;
+        return;
+      }
+      sqEnv = cfg.env || "production";
+      // 2) Cargar el SDK (sandbox o producción según tu env).
+      var src = sqEnv==="sandbox"
+        ? "https://sandbox.web.squarecdn.com/v1/square.js"
+        : "https://web.squarecdn.com/v1/square.js";
+      await loadScript(src);
+      var payments = window.Square.payments(cfg.application_id, cfg.location_id);
+      sqCard = await payments.card();
+      await sqCard.attach('#bv-card');
+      sqReady = true;
+      setMsg("Pago seguro procesado por Square.","info");
+    }catch(err){
+      setMsg("No pudimos cargar el pago. Inténtalo de nuevo o escríbenos.","err");
+    }
+  }
+  function closeCheckout(){ document.getElementById('ov').classList.remove('on'); }
+
+  function loadScript(src){
+    return new Promise(function(res,rej){
+      var s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  async function subscribe(){
+    var email=(document.getElementById('bv-email').value||"").trim();
+    if(!email || email.indexOf('@')<0){ setMsg("Escribe un correo válido.","err"); return; }
+    if(!sqReady || !sqCard){ setMsg("El pago aún no está listo.","err"); return; }
+    var btn=document.getElementById('bv-pay'); btn.disabled=true; setMsg("Procesando…","info");
+    try{
+      var result = await sqCard.tokenize();
+      if(result.status!=="OK"){ setMsg("Revisa los datos de la tarjeta.","err"); btn.disabled=false; return; }
+      // 3) El TOKEN (no la tarjeta) va a TU backend, que crea la suscripción
+      //    con el token SECRETO de Square del lado del servidor.
+      var resp = await fetch(window.BV.apiBase+"/subscriptions", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ plan_key:"operator", source_id:result.token, email:email })
+      });
+      if(!resp.ok){ var e=await resp.json().catch(()=>({})); setMsg(e.detail||"No se pudo crear la suscripción.","err"); btn.disabled=false; return; }
+      setMsg("¡Listo! Tu plan Operator está activo. Revisa tu correo para entrar.","ok");
+      btn.textContent="Suscripción activa ✓";
+    }catch(err){
+      setMsg("Algo falló al procesar. Inténtalo de nuevo.","err"); btn.disabled=false;
+    }
+  }
+
+  // cerrar modal al hacer click fuera
+  document.getElementById('ov').addEventListener('click', function(e){ if(e.target===this) closeCheckout(); });
+</script>
+</body>
+</html>
