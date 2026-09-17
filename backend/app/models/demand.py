@@ -148,13 +148,13 @@ class DispatchWindow(Base):
     dedup_key: Mapped[str] = mapped_column(String(64))
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    minutes_online: Mapped[float] = mapped_column(Float, default=0.0)
-    minutes_active: Mapped[float] = mapped_column(Float, default=0.0)
-    dispatches: Mapped[int] = mapped_column(Integer, default=0)
-    rejections: Mapped[int] = mapped_column(Integer, default=0)
-    accepts: Mapped[int] = mapped_column(Integer, default=0)
-    expireds: Mapped[int] = mapped_column(Integer, default=0)
-    completed_trips: Mapped[int] = mapped_column(Integer, default=0)
+    minutes_online: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    minutes_active: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    dispatches: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    rejections: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    accepts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    expireds: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    completed_trips: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class DemandImport(Base):
@@ -174,10 +174,10 @@ class HexPrior(Base):
     __tablename__ = "hex_priors"
 
     h3_r8: Mapped[str] = mapped_column(String(16), primary_key=True)
-    affluence: Mapped[float] = mapped_column(Float, default=0.0)
-    hotels: Mapped[int] = mapped_column(Integer, default=0)
-    generators: Mapped[int] = mapped_column(Integer, default=0)
-    den_distance_mi: Mapped[float] = mapped_column(Float, default=0.0)
+    affluence: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    hotels: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    generators: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    den_distance_mi: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
     zone_key: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -194,8 +194,8 @@ class DenFlightBaseline(Base):
     month: Mapped[int] = mapped_column(Integer)   # 1-12
     dow: Mapped[int] = mapped_column(Integer)     # 0=Monday … 6=Sunday
     hour: Mapped[int] = mapped_column(Integer)    # 0-23 local
-    departures: Mapped[float] = mapped_column(Float, default=0.0)  # avg per day
-    arrivals: Mapped[float] = mapped_column(Float, default=0.0)
+    departures: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")  # avg per day
+    arrivals: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
     source_period: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
