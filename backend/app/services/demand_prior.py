@@ -86,6 +86,31 @@ def build_priors(
     return rows
 
 
+def _num(v: str | float | None) -> float | None:
+    """Census ACS cells use large negative sentinels (e.g. -666666666) for
+    'not computed'/suppressed values; treat those and blanks as missing."""
+    if v in (None, ""):
+        return None
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if n < 0 else n
+
+
+def _tract_stats(
+    raw_income: str | float | None,
+    raw_total: str | float | None,
+    raw_rich: str | float | None,
+) -> tuple[float | None, float | None]:
+    """(income, share_200k) from one ACS row's raw cell values, sentinel-safe."""
+    income = _num(raw_income)
+    total = _num(raw_total)
+    rich = _num(raw_rich)
+    share = (rich / total) if (total and rich is not None) else None
+    return income, share
+
+
 async def fetch_census(counties: list[str] | None = None) -> list[dict]:
     """ACS 5-year 2020-2024 tract rows + TIGERweb tract polygons for the metro counties.
     Returns [{"geoid", "income", "share_200k", "rings"}]. Needs CENSUS_API_KEY."""
@@ -110,11 +135,9 @@ async def fetch_census(counties: list[str] | None = None) -> list[dict]:
             stats: dict[str, tuple[float | None, float | None]] = {}
             for row in data:
                 geoid = f"08{row[idx['county']]}{row[idx['tract']]}"
-                raw_inc = row[idx["B19013_001E"]]
-                inc = float(raw_inc) if raw_inc not in (None, "", "-666666666") else None
-                total = float(row[idx["B19001_001E"]] or 0)
-                rich = float(row[idx["B19001_017E"]] or 0)
-                stats[geoid] = (inc, (rich / total) if total else None)
+                stats[geoid] = _tract_stats(
+                    row[idx["B19013_001E"]], row[idx["B19001_001E"]], row[idx["B19001_017E"]]
+                )
             g = await http.get(
                 "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/"
                 "Tracts_Blocks/MapServer/8/query",

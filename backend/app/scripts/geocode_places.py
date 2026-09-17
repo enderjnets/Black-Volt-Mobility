@@ -43,7 +43,9 @@ def main() -> None:
                 print(f"{p['name']}: {out[p['name']]['lat']}, {out[p['name']]['lng']}")
             time.sleep(1.1)
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    OUT.write_text(
+        json.dumps(out, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print(f"wrote {OUT} ({len(out)} places)")
 
 

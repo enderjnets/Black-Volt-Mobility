@@ -45,3 +45,30 @@ def test_curated_lists_have_names_and_addresses():
     for lst in (places.LUXURY_HOTELS, places.FBOS, places.GENERATORS):
         assert lst and all(p["name"] and p["address"] for p in lst)
     assert {z["key"] for z in places.ZONES} >= {"cherry_hills", "greenwood_dtc", "den", "downtown"}
+
+
+def test_tract_stats_treats_acs_sentinels_as_missing():
+    # Normal values: $85k income, 50 of 500 households $200k+.
+    income, share = dp._tract_stats("85000", "500", "50")
+    assert income == 85000.0
+    assert share == pytest.approx(0.1)
+
+    # Income suppressed (-666666666): income is None, share still computes.
+    income, share = dp._tract_stats("-666666666", "500", "50")
+    assert income is None
+    assert share == pytest.approx(0.1)
+
+    # Total suppressed: share can't be computed, even though rich is a number.
+    income, share = dp._tract_stats("85000", "-666666666", "50")
+    assert income == 85000.0
+    assert share is None
+
+    # Both household counts suppressed: no false "100% rich" signal.
+    income, share = dp._tract_stats("-666666666", "-666666666", "-666666666")
+    assert income is None
+    assert share is None
+
+    # Total of zero households: share is None, not a ZeroDivisionError.
+    income, share = dp._tract_stats("85000", "0", "0")
+    assert income == 85000.0
+    assert share is None
