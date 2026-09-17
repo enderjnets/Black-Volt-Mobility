@@ -1,0 +1,177 @@
+{
+  "Four Seasons Hotel Denver": {
+    "lat": 39.74655,
+    "lng": -104.99801,
+    "display": "Four Seasons Hotel Denver & Private Residences, 1111, 14th Street, Central Business District, Denver, Colorado, 80202, United States"
+  },
+  "The Ritz-Carlton, Denver": {
+    "lat": 39.74987,
+    "lng": -104.99204,
+    "display": "1881, Curtis Street, Central Business District, Denver, Colorado, 80202, United States"
+  },
+  "The Brown Palace Hotel": {
+    "lat": 39.74411,
+    "lng": -104.98787,
+    "display": "The Brown Palace Hotel and Spa, Autograph Collection, 321, 17th Street, Central Business District, Denver, Colorado, 80202, United States"
+  },
+  "The Oxford Hotel": {
+    "lat": 39.75217,
+    "lng": -104.99919,
+    "display": "The Oxford Hotel, 1600, 17th Street, Lower Downtown, Denver, Colorado, 80202, United States"
+  },
+  "The Crawford Hotel": {
+    "lat": 39.75323,
+    "lng": -105.00009,
+    "display": "Union Station, 1701, Wynkoop Street, 16th Street Mall, Denver, Colorado, 80202, United States"
+  },
+  "Limelight Hotel Denver": {
+    "lat": 39.75319,
+    "lng": -105.00195,
+    "display": "Limelight Hotel, 1600, Wewatta Street, 16th Street Mall, Denver, Colorado, 80202, United States"
+  },
+  "Thompson Denver": {
+    "lat": 39.74987,
+    "lng": -104.99779,
+    "display": "Thompson Denver, 1616, Market Street, Central Business District, Denver, Colorado, 80202, United States"
+  },
+  "Kimpton Hotel Monaco Denver": {
+    "lat": 39.74788,
+    "lng": -104.99271,
+    "display": "Kimpton Hotel Monaco Denver by IHG, 1717, Champa Street, Central Business District, Denver, Colorado, 80202, United States"
+  },
+  "Le Méridien Denver Downtown": {
+    "lat": 39.74423,
+    "lng": -104.99394,
+    "display": "1475, California Street, Central Business District, Denver, Colorado, 80202, United States"
+  },
+  "Populus": {
+    "lat": 39.74035,
+    "lng": -104.99112,
+    "display": "Populus Denver, 240, 14th Street, Central Business District, Denver, Colorado, 80202, United States"
+  },
+  "Hotel Clio": {
+    "lat": 39.71881,
+    "lng": -104.95575,
+    "display": "150, North Clayton Lane, Denver, Colorado, 80206, United States"
+  },
+  "Halcyon, a hotel in Cherry Creek": {
+    "lat": 39.72039,
+    "lng": -104.95741,
+    "display": "Halcyon, 245, Columbine Street, Denver, Colorado, 80206, United States"
+  },
+  "Clayton Hotel & Members Club": {
+    "lat": 39.71995,
+    "lng": -104.95595,
+    "display": "233, North Clayton Street, Denver, Colorado, 80206, United States"
+  },
+  "Kimpton Claret Hotel": {
+    "lat": 39.62564,
+    "lng": -104.90573,
+    "display": "6985, East Chenango Avenue, Denver, Colorado, 80237, United States"
+  },
+  "The Inverness Denver": {
+    "lat": 39.57029,
+    "lng": -104.86707,
+    "display": "The Inverness Denver, a Hilton Golf & Spa Resort, 200, Inverness Drive West, Englewood, Arapahoe County, Colorado, 80112, United States"
+  },
+  "Omni Interlocken Hotel": {
+    "lat": 39.9276,
+    "lng": -105.11848,
+    "display": "Omni Interlocken Hotel, 500, Interlocken Boulevard, Interlocken, Broomfield, Colorado, 80021, United States"
+  },
+  "Gaylord Rockies Resort": {
+    "lat": 39.8188,
+    "lng": -104.75113,
+    "display": "Gaylord Rockies Convention Center, 6700, North Gaylord Rockies Boulevard, Gaylord Rockies Resort & Convention Center, Aurora, Adams County, Colorado, 80019, United States"
+  },
+  "St Julien Hotel & Spa": {
+    "lat": 40.01585,
+    "lng": -105.28261,
+    "display": "St Julien Hotel & Spa, 900, Walnut Street, Boulder, Boulder County, Colorado, 80302, United States"
+  },
+  "Modern Aviation Centennial": {
+    "lat": 39.57066,
+    "lng": -104.84429,
+    "display": "Centennial Airport, 7800, South Peoria Street, Englewood, Arapahoe County, Colorado, 80112, United States"
+  },
+  "Signature BJC": {
+    "lat": 39.90948,
+    "lng": -105.11183,
+    "display": "Pilatus Business A/C, 11755, Airport Way, Broomfield, Jefferson County, Colorado, 80021, United States"
+  },
+  "Sheltair BJC": {
+    "lat": 39.91433,
+    "lng": -105.1068,
+    "display": "Airport Way, Interlocken, Broomfield, Colorado, 80021, United States"
+  },
+  "Cherry Creek Shopping Center": {
+    "lat": 39.71661,
+    "lng": -104.9525,
+    "display": "Cherry Creek Shopping Center, 3000, East 1st Avenue, Denver, Colorado, 80206, United States"
+  },
+  "Denver Tech Center": {
+    "lat": 39.62201,
+    "lng": -104.89276,
+    "display": "Denver Tech Center, Greenwood Village, Arapahoe County, Colorado, United States"
+  },
+  "Union Station Denver": {
+    "lat": 39.75323,
+    "lng": -105.00009,
+    "display": "Union Station, 1701, Wynkoop Street, 16th Street Mall, Denver, Colorado, 80202, United States"
+  },
+  "Colorado Convention Center": {
+    "lat": 39.74248,
+    "lng": -104.99656,
+    "display": "Colorado Convention Center, 700, 14th Street, Central Business District, Denver, Colorado, 80202, United States"
+  },
+  "Anschutz Medical Campus": {
+    "lat": 39.74519,
+    "lng": -104.83759,
+    "display": "University of Colorado Health Sciences Center Administration, 13001, East 17th Place, Aurora, Adams County, Colorado, 80045, United States"
+  },
+  "Cherry Hills Country Club": {
+    "lat": 39.64337,
+    "lng": -104.96653,
+    "display": "Cherry Hills Country Club, 4125, South University Boulevard, Cherry Hills Village, Arapahoe County, Colorado, 80113, United States"
+  },
+  "Denver Country Club": {
+    "lat": 39.71756,
+    "lng": -104.96636,
+    "display": "1700, East 1st Avenue, Denver, Colorado, 80218, United States"
+  },
+  "Belleview Station": {
+    "lat": 39.65798,
+    "lng": -104.90986,
+    "display": "South Newport Street, Denver, Colorado, 80237, United States"
+  },
+  "Empower Field at Mile High": {
+    "lat": 39.74395,
+    "lng": -105.01922,
+    "display": "Empower Field at Mile High, 1701, Mile High Stadium Circle, Jefferson Park, Denver, Colorado, 80204, United States"
+  },
+  "Ball Arena": {
+    "lat": 39.74868,
+    "lng": -105.00754,
+    "display": "Ball Arena, 1000, Chopper Circle, Auraria, Denver, Colorado, 80204, United States"
+  },
+  "Coors Field": {
+    "lat": 39.75603,
+    "lng": -104.99293,
+    "display": "Coors Field, 2001, Blake Street, Five Points, Denver, Colorado, 80205, United States"
+  },
+  "Park Meadows": {
+    "lat": 39.55972,
+    "lng": -104.87851,
+    "display": "Park Meadows Mall, Lone Tree, Douglas County, Colorado, United States"
+  },
+  "Signature APA-South": {
+    "lat": 39.57066,
+    "lng": -104.84429,
+    "display": "Centennial Airport, 7800, South Peoria Street, Englewood, Douglas County, Colorado, 80112, United States"
+  },
+  "Denver jetCenter": {
+    "lat": 39.57066,
+    "lng": -104.84429,
+    "display": "Centennial Airport, 7800, South Peoria Street, Englewood, Douglas County, Colorado, 80112, United States"
+  }
+}
