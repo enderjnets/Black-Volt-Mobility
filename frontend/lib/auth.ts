@@ -13,6 +13,7 @@ export interface Me {
   is_admin?: boolean;
   profile_complete?: boolean;
   agreements_pending?: string[];
+  features?: { demand?: boolean };
 }
 
 async function jpost(path: string, body?: unknown): Promise<Response> {
