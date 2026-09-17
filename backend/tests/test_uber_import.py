@@ -61,8 +61,8 @@ TRIPS_2025_HEADER = (
 )
 TRIPS_2025_ROW = (
     "Denver,USD,America/Denver,p2p,Black SUV,Uber Black SUV,ABC123,1200,900,"
-    "2025-03-01 05:40:12,2025-03-01T12:40:12.000Z,2025-03-01 05:52:00,2025-03-01T12:52:00.000Z,"
-    "2025-03-01 06:30:10,2025-03-01T13:30:10.000Z,600,1.0,1.0,false,true,false,true,false,"
+    "2025-03-01 05:40:12,2025-03-01 12:40:12,2025-03-01 05:52:00,2025-03-01 12:52:00,"
+    "2025-03-01 06:30:10,2025-03-01 13:30:10,600,1.0,1.0,false,true,false,true,false,"
     "23.4,2290,completed,true,131.50,0"
 )
 
@@ -82,6 +82,7 @@ def test_normalize_product():
     assert ui.normalize_product("Uber Comfort") == "comfort"
     assert ui.normalize_product("uberX") == "x"
     assert ui.normalize_product("GREEN") == "x"
+    assert ui.normalize_product("Uber Green") == "x"
     assert ui.normalize_product("UberXL") == "xl"
     assert ui.normalize_product("Connect") == "other"
     assert ui.normalize_product(None) == "other"
@@ -129,8 +130,29 @@ def test_parse_2025_us_format_flags_airport_and_missing_segments():
     t = p.trips[0]
     assert t.product == "black_suv" and t.is_airport is True and t.is_scheduled is False
     assert t.city == "Denver" and t.fare_total == pytest.approx(131.50)
+    # Real 2025 export: *_utc is naive ("2025-03-01 12:40:12") and IS UTC; *_local is Denver.
+    assert t.request_at == datetime(2025, 3, 1, 12, 40, 12, tzinfo=UTC)
+    assert t.begin_at == datetime(2025, 3, 1, 12, 52, 0, tzinfo=UTC)
+    assert t.dropoff_at == datetime(2025, 3, 1, 13, 30, 10, tzinfo=UTC)
     missing = {m["kind"]: m["consequence"] for m in p.files_missing}
     assert "online_offline" in missing and "logs" in missing["online_offline"]
+
+
+def test_naive_utc_columns_in_segments_and_windows_are_utc():
+    onoff = ONOFF_2021_HEADER + "\n" + (
+        "open;3;39.85;-104.67;39.85;-104.67;2025-03-01 12:40:12;2025-03-01 13:00:00;"
+        "1188000;2025-03-01 05:40:12;2025-03-01 06:00:00\n"
+    )
+    disp = DISPATCH_2021_HEADER + "\n" + (
+        "2025-03-01 12:00:00;2025-03-01 13:00:00;2025-03-01 05:00:00;2025-03-01 06:00:00;3;"
+        "55.0;40.0;4;1;3;0;0;0;3;41.2;38.0;p2p;0;25\n"
+    )
+    p = ui.parse_zip(_zip({"Driver Online Offline.csv": onoff,
+                           "Driver Dispatches Offered and Accepted.csv": disp}))
+    assert p.skipped_rows == 0
+    assert p.segments[0].begin_at == datetime(2025, 3, 1, 12, 40, 12, tzinfo=UTC)
+    assert p.segments[0].end_at == datetime(2025, 3, 1, 13, 0, 0, tzinfo=UTC)
+    assert p.windows[0].window_start == datetime(2025, 3, 1, 12, 0, 0, tzinfo=UTC)
 
 
 def test_dedup_key_is_stable_and_row_errors_are_counted():

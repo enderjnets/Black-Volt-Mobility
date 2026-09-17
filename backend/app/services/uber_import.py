@@ -8,8 +8,12 @@ format over the years. Three layouts were seen in real exports (research appendi
 - 2022 (US): `Trip details (Driver).csv`, `,`-delimited, WITH pickup coordinates and a
   `fare_profile` product column.
 - 2025 (US): `driver_lifetime_trips-0.csv`, `,`-delimited, 73 columns, product but NO
-  coordinates. Whether `Driver Online Offline` ships in the US export is unknown until
-  the owner's own ZIP arrives — hence `files_missing` with a consequence per file.
+  coordinates. Confirmed against the owner's own export (17-Sep-2026): the US ZIP ships
+  NO `Driver Online Offline` and NO `Dispatches` file — hence `files_missing` with a
+  consequence per file — but it does ship `driver_app_analytics-0.csv` (30 days of
+  geolocated app pings with an online flag; not parsed here). In that layout every
+  `*_utc` column is a NAIVE timestamp ("2024-12-20 00:16:28") that IS UTC, and the
+  matching `*_local` column is the row's `timezone`; `_utc()` below reads `*_utc` as UTC.
 
 `parse_zip` is pure (bytes → dataclasses) and fully unit-tested; `import_export`
 (Task 5) does the idempotent upsert. Nothing here executes or writes anything from the
@@ -146,6 +150,8 @@ def normalize_product(raw: str | None) -> str:
         return "comfort"
     if "xl" in s:
         return "xl"
+    if "green" in s:
+        return "x"
     if s in {"uberx", "x", "green", "uberx share", "uber x"} or s.startswith("uberx"):
         return "x"
     return "other"
@@ -214,6 +220,12 @@ def _s(row: dict, *keys: str) -> str | None:
     return None
 
 
+def _utc(row: dict, *keys: str) -> datetime | None:
+    """`*_utc` columns (and the 2022 `*_time` ones) are UTC even when written without a
+    zone; never localize them to the row's `timezone`."""
+    return _parse_ts(_s(row, *keys), "UTC")
+
+
 def _key(*parts: object) -> str:
     return hashlib.sha256("|".join("" if p is None else str(p) for p in parts).encode()).hexdigest()
 
@@ -228,13 +240,13 @@ def _reader(text: str) -> csv.DictReader:
 def _trip(row: dict) -> ParsedTrip:
     tz = _s(row, "timezone")
     # 2021/2025 layouts carry *_utc; the 2022 layout has request_time etc. in UTC.
-    request_at = _parse_ts(_s(row, "request_timestamp_utc", "request_time"), tz) or _parse_ts(
+    request_at = _utc(row, "request_timestamp_utc", "request_time") or _parse_ts(
         _s(row, "request_timestamp_local"), tz
     )
-    begin_at = _parse_ts(_s(row, "begintrip_timestamp_utc", "begintrip_time"), tz) or _parse_ts(
+    begin_at = _utc(row, "begintrip_timestamp_utc", "begintrip_time") or _parse_ts(
         _s(row, "begintrip_timestamp_local"), tz
     )
-    dropoff_at = _parse_ts(_s(row, "dropoff_timestamp_utc", "dropoff_time"), tz) or _parse_ts(
+    dropoff_at = _utc(row, "dropoff_timestamp_utc", "dropoff_time") or _parse_ts(
         _s(row, "dropoff_timestamp_local"), tz
     )
     product_raw = _s(row, "product_type_name", "global_product_name", "fare_profile")
@@ -273,8 +285,8 @@ def _segment(row: dict) -> ParsedSegment:
     state = (_s(row, "earner_state") or "").lower()
     if state not in {"open", "enroute", "ontrip", "offline"}:
         raise ValueError(f"unknown earner_state {state!r}")
-    begin_at = _parse_ts(_s(row, "begin_timestamp_utc"))
-    end_at = _parse_ts(_s(row, "end_timestamp_utc"))
+    begin_at = _utc(row, "begin_timestamp_utc")
+    end_at = _utc(row, "end_timestamp_utc")
     if begin_at is None:
         raise ValueError("segment without begin")
     return ParsedSegment(
@@ -290,8 +302,8 @@ def _segment(row: dict) -> ParsedSegment:
 
 
 def _window(row: dict) -> ParsedWindow:
-    start = _parse_ts(_s(row, "start_timestamp_utc"))
-    end = _parse_ts(_s(row, "end_timestamp_utc"))
+    start = _utc(row, "start_timestamp_utc")
+    end = _utc(row, "end_timestamp_utc")
     if start is None or end is None:
         raise ValueError("window without bounds")
     return ParsedWindow(
