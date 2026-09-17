@@ -149,3 +149,10 @@ def test_rejects_non_zip_and_zip_without_csv():
     with pytest.raises(ui.ImportError_) as e:
         ui.parse_zip(_zip({"readme.txt": "hi", "photo.png": "\x89PNG"}))
     assert e.value.code == "no_csv"
+
+
+def test_rejects_oversized_payload(monkeypatch):
+    monkeypatch.setattr(ui, "MAX_ZIP_BYTES", 10)
+    with pytest.raises(ui.ImportError_) as e:
+        ui.parse_zip(b"x" * 11)  # never reaches zipfile: size is checked first
+    assert e.value.code == "too_large"
