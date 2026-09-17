@@ -27,6 +27,20 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import (
+    DemandImport,
+    DispatchWindow,
+    DriverStateSegment,
+    EarnerState,
+    SegmentSource,
+    UberProduct,
+    UberTrip,
+)
+
 logger = logging.getLogger("blackvolt.demand.import")
 
 MAX_ZIP_BYTES = 50 * 1024 * 1024
@@ -350,3 +364,130 @@ def parse_zip(data: bytes) -> ParsedExport:
         if kind not in seen_kinds:
             out.files_missing.append({"kind": kind, "consequence": consequence})
     return out
+
+
+# ── Persistence ─────────────────────────────────────────────────────────────────
+def _round5(v: float | None) -> float | None:
+    return None if v is None else round(v, 5)
+
+
+async def _upsert(db: AsyncSession, table, rows: list[dict], conflict: tuple[str, ...]) -> int:
+    """INSERT … ON CONFLICT DO NOTHING in chunks; returns rows actually inserted."""
+    inserted = 0
+    for i in range(0, len(rows), 500):
+        chunk = rows[i : i + 500]
+        if not chunk:
+            continue
+        stmt = pg_insert(table).values(chunk).on_conflict_do_nothing(index_elements=list(conflict))
+        res = await db.execute(stmt)
+        inserted += res.rowcount or 0
+    return inserted
+
+
+async def import_export(db: AsyncSession, *, tenant_id: int, data: bytes) -> dict:
+    parsed = parse_zip(data)
+    trip_rows = [
+        {
+            "tenant_id": tenant_id,
+            "dedup_key": t.dedup_key,
+            "product": UberProduct(t.product),
+            "product_raw": t.product_raw,
+            "request_at": t.request_at,
+            "begin_at": t.begin_at,
+            "dropoff_at": t.dropoff_at,
+            "begin_lat": _round5(t.begin_lat),
+            "begin_lng": _round5(t.begin_lng),
+            "city": t.city,
+            "is_airport": t.is_airport,
+            "is_scheduled": t.is_scheduled,
+            "status": t.status,
+            "is_completed": t.is_completed,
+            "fare_total": t.fare_total,
+            "surge_multiplier": t.surge_multiplier,
+            "distance_mi": t.distance_mi,
+            "duration_s": t.duration_s,
+        }
+        for t in parsed.trips
+    ]
+    seg_rows = [
+        {
+            "tenant_id": tenant_id,
+            "dedup_key": s.dedup_key,
+            "state": EarnerState(s.state),
+            "begin_at": s.begin_at,
+            "end_at": s.end_at,
+            "begin_lat": _round5(s.begin_lat),
+            "begin_lng": _round5(s.begin_lng),
+            "end_lat": _round5(s.end_lat),
+            "end_lng": _round5(s.end_lng),
+            "h3_r8": _cell(s.begin_lat, s.begin_lng),
+            "source": SegmentSource.EXPORT,
+        }
+        for s in parsed.segments
+    ]
+    win_rows = [
+        {
+            "tenant_id": tenant_id,
+            "dedup_key": w.dedup_key,
+            "window_start": w.window_start,
+            "window_end": w.window_end,
+            "minutes_online": w.minutes_online,
+            "minutes_active": w.minutes_active,
+            "dispatches": w.dispatches,
+            "rejections": w.rejections,
+            "accepts": w.accepts,
+            "expireds": w.expireds,
+            "completed_trips": w.completed_trips,
+        }
+        for w in parsed.windows
+    ]
+    t_ins = await _upsert(db, UberTrip, trip_rows, ("tenant_id", "dedup_key"))
+    s_ins = await _upsert(db, DriverStateSegment, seg_rows, ("tenant_id", "dedup_key"))
+    w_ins = await _upsert(db, DispatchWindow, win_rows, ("tenant_id", "dedup_key"))
+
+    dates = [t.begin_at or t.request_at for t in parsed.trips if (t.begin_at or t.request_at)]
+    by_product: dict[str, int] = {}
+    for t in parsed.trips:
+        by_product[t.product] = by_product.get(t.product, 0) + 1
+    summary = {
+        "files_found": parsed.files_found,
+        "files_missing": parsed.files_missing,
+        "skipped_rows": parsed.skipped_rows,
+        "trips": {
+            "inserted": t_ins,
+            "skipped": len(trip_rows) - t_ins,
+            "date_min": min(dates).isoformat() if dates else None,
+            "date_max": max(dates).isoformat() if dates else None,
+            "by_product": by_product,
+        },
+        "segments": {"inserted": s_ins, "skipped": len(seg_rows) - s_ins},
+        "windows": {"inserted": w_ins, "skipped": len(win_rows) - w_ins},
+    }
+    db.add(DemandImport(tenant_id=tenant_id, summary=summary))
+    await db.commit()
+    return summary
+
+
+async def last_import(db: AsyncSession, *, tenant_id: int) -> dict | None:
+    row = (
+        await db.execute(
+            select(DemandImport)
+            .where(DemandImport.tenant_id == tenant_id)
+            .order_by(DemandImport.at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    return {"at": row.at.isoformat(), **row.summary}
+
+
+def _cell(lat: float | None, lng: float | None) -> str | None:
+    if lat is None or lng is None:
+        return None
+    try:
+        import h3
+
+        return h3.latlng_to_cell(lat, lng, 8)
+    except Exception:
+        return None
