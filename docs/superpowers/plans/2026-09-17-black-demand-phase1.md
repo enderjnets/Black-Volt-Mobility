@@ -5039,7 +5039,7 @@ The planner needs three things once, plus the owner's data.
 |---|---|
 | `DEMAND_ENABLED` | `true` (shows the tab, schedules the hourly recompute) |
 | `CENSUS_API_KEY` | free key from https://api.census.gov/data/key_signup.html |
-| `DEN_LOT_LAT` / `DEN_LOT_LNG` | centre of the DEN Commercial Hold Lot, confirmed on site by the owner (leave empty until then: DEN-lot tagging stays off) |
+| `DEN_LOT_LAT` / `DEN_LOT_LNG` | `39.8399691` / `-104.6698651` — Google Maps place pin "Commercial Holding Lot", 8500 Peña Blvd, Denver, CO 80249 (place id `0x876c67929cf14ec3:0x1cf80066bd0b9c72`), confirmed by the owner on 2026-09-17 and already set in the local root `.env`. The map embed/viewport centre (`39.8399732, -104.67244`) sits 220 m west of the pin: inside the 400 m radius, but use the pin. Leaving both empty keeps DEN-lot tagging off |
 | `DEN_LOT_RADIUS_M` | `400` |
 | `DEMAND_BRIDGE_FARE_DEFAULT` | `35` |
 

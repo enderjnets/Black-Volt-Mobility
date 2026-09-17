@@ -237,6 +237,6 @@ Deferred, not planned: paid live flight schedules toggle; Poisson GLM / gradient
 
 1. Request the Uber data export ("Request your personal Uber data" in Uber help) and upload the ZIP in the Import tab when Phase 1 is deployed; tell us whether a file with `earner_state` and `begin_lat` was inside.
 2. Get a free Census API key (api.census.gov/data/key_signup.html) → `CENSUS_API_KEY` in the VPS `.env`.
-3. Confirm the DEN Commercial Hold Lot position on site (the app will show the configured circle on the Week/Map views) → `DEN_LOT_LAT/LNG`.
+3. ✅ 2026-09-17 — DEN Commercial Holding Lot (8500 Peña Blvd, Denver, CO 80249) confirmed by the owner via its Google Maps pin: `DEN_LOT_LAT=39.8399691`, `DEN_LOT_LNG=-104.6698651` (in the local root `.env`; Task 14 copies both to the VPS `.env`, values in the plan's Task 14 env table). The app shows the configured 400 m circle on the Week/Map views.
 4. Review the curated hotel/FBO/generator list in `demand_places.py` before the priors are built.
 5. Log every shift for 4 weeks: Online, Here on each move, Offer with product on every ping, Offline.
