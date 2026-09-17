@@ -7,6 +7,20 @@ from app.models.chat import ChatConversation, ChatMessage, ChatRole, ChatStatus
 from app.models.client import Client
 from app.models.client_address import ClientAddress
 from app.models.client_notification import ClientNotification, ClientNotificationKind
+from app.models.demand import (  # noqa: F401
+    DemandImport,
+    DenFlightBaseline,
+    DispatchWindow,
+    DriverStateSegment,
+    EarnerState,
+    HexPrior,
+    HexScore,
+    OfferEvent,
+    SegmentSource,
+    UberProduct,
+    UberTrip,
+    WeekScore,
+)
 from app.models.discount import DiscountCampaign, DiscountCode
 from app.models.document_consent import DocumentConsent
 from app.models.driver_funnel import DriverFunnelLog, DriverGoal
@@ -74,4 +88,16 @@ __all__ = [
     "SocialPost",
     "SocialFeedback",
     "SocialInteraction",
+    "DemandImport",
+    "DenFlightBaseline",
+    "DispatchWindow",
+    "DriverStateSegment",
+    "EarnerState",
+    "HexPrior",
+    "HexScore",
+    "OfferEvent",
+    "SegmentSource",
+    "UberProduct",
+    "UberTrip",
+    "WeekScore",
 ]
