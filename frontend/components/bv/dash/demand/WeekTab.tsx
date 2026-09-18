@@ -32,6 +32,18 @@ function shade(v: number, max: number, min: number): string {
   return `rgba(0,229,255,${a.toFixed(3)})`;
 }
 
+// `mean`, `lo` and `hi` are the posterior rate in offers per MINUTE — the frame the
+// model works in, and the one top_blocks already leaves when it reports a block's
+// total as the rate times 60. Printed raw at one decimal, every cell of every zone
+// read "0.0 (0.0–0.0) expected offers", DEN's best hour included: a 19% chance of a
+// Black offer within 15 minutes, displayed as zero. A cell is one hour, so the
+// number the driver should read is the rate over that hour.
+const MIN_PER_HOUR = 60;
+
+function offersInTheHour(ratePerMinute: number): string {
+  return (ratePerMinute * MIN_PER_HOUR).toFixed(1);
+}
+
 function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
@@ -150,7 +162,7 @@ export function WeekTab() {
             {t(`dash.demand.dow.${DOW_KEYS[sel.d]}`)} {sel.h}:00 — <span style={{ color: "var(--volt)" }}>{pct(cell.p15)}</span> {t("dash.demand.week.p15")}
           </div>
           <div style={{ color: "var(--silver)" }}>
-            {cell.mean.toFixed(1)} ({cell.lo.toFixed(1)}–{cell.hi.toFixed(1)}) {t("dash.demand.week.expected")}
+            {offersInTheHour(cell.mean)} ({offersInTheHour(cell.lo)}–{offersInTheHour(cell.hi)}) {t("dash.demand.week.expected")}
           </div>
           <div style={{ color: "var(--silver)" }}>
             {pct(cell.own_share)} {t("dash.demand.week.ownData")} · {((cell.reasons.own_minutes ?? 0) / 60).toFixed(1)} {t("dash.demand.week.hoursLogged")}
