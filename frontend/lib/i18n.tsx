@@ -2042,7 +2042,7 @@ const ES: Record<string, string> = {
   "dash.demand.log.saved": "Guardado",
   "dash.demand.log.failed": "No se guardó, toca de nuevo",
   "dash.demand.log.denLot": "Lote DEN",
-  "dash.demand.log.ping": "Aviso",
+  "dash.demand.log.ping": "Ping",
   "dash.demand.log.autoPing": "Registro automático cada minuto mientras esta pantalla está abierta",
   "dash.demand.log.hint": "Tu exportación mensual de Uber cubre dónde esperaste; toca cada oferta.",
   "dash.demand.product.black_suv": "Black SUV",
