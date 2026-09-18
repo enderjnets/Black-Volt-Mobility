@@ -142,14 +142,51 @@ def _log(c: TestClient, kind: str, at: datetime, **extra):
     assert r.status_code in (200, 201), r.text
 
 
-def test_base_profile_from_trips_is_normalized_to_mean_one():
+def test_base_profile_from_trips_is_a_bounded_shape_around_the_level():
+    # The week mean is deliberately no longer pinned to `level`: clamping each hour's
+    # ratio is what keeps an unobserved hour off zero, and that floor lifts the mean.
     t0 = datetime(2026, 9, 15, 12, 0, tzinfo=UTC)  # Tue 06:00 Denver
     trips = [UberTrip(product=UberProduct.BLACK, request_at=t0 + timedelta(minutes=i))
              for i in range(10)]
     prof = demand.base_profile(windows=[], trips=trips, live_rate=None)
+    lo, hi = demand.dm.BASE_SHAPE_RANGE
+    level = demand.dm.DEFAULT_BASE_RATE
     assert len(prof) == 168
-    assert abs(sum(prof) / 168 - demand.dm.DEFAULT_BASE_RATE) < 1e-9
+    assert all(lo * level <= v <= hi * level for v in prof)
     assert prof[24 + 6] > prof[24 + 12]
+
+
+def test_base_profile_never_claims_an_hour_is_impossible():
+    """A spiky history must never read as '0.0% chance of a Black offer': an hour with
+    no trip in it is thin evidence, not proof of impossibility."""
+    t0 = datetime(2026, 9, 14, 6, 0, tzinfo=UTC)  # Mon 00:00 Denver
+    trips = [UberTrip(product=UberProduct.BLACK,
+                      request_at=t0 + timedelta(hours=16 * (i % 10)))
+             for i in range(30)]
+    prof = demand.base_profile(windows=[], trips=trips, live_rate=None)
+    lo, hi = demand.dm.BASE_SHAPE_RANGE
+    level = demand.dm.DEFAULT_BASE_RATE
+    assert not any(v == 0.0 for v in prof)
+    assert min(prof) == pytest.approx(lo * level)
+    assert max(prof) == pytest.approx(hi * level)
+    # The peak used to read 15.1 offers/hour and a 97.7% chance in 15 minutes.
+    assert demand.dm.p_within(max(prof)) < 0.85
+
+
+def test_base_profile_keeps_a_real_day_night_pattern():
+    """Bounding the shape must not flatten it: a genuine day/night histogram still has
+    to read as contrast, not as one grey week."""
+    t0 = datetime(2026, 9, 14, 6, 0, tzinfo=UTC)
+    trips = [
+        UberTrip(product=UberProduct.BLACK,
+                 request_at=t0 + timedelta(days=dow, hours=hour, minutes=m))
+        for dow in range(7)
+        for hour in range(24)
+        for m in range(10 if 7 <= hour <= 20 else 1)
+    ]
+    prof = demand.base_profile(windows=[], trips=trips, live_rate=None)
+    assert max(prof) / min(prof) > 5.0
+    assert prof[12] > prof[3]
 
 
 def test_base_profile_prefers_dispatch_windows():
@@ -158,6 +195,22 @@ def test_base_profile_prefers_dispatch_windows():
                        minutes_online=60, dispatches=6)
     prof = demand.base_profile(windows=[w], trips=[], live_rate=None)
     assert prof[24 + 6] == max(prof)
+
+
+def test_base_profile_windows_with_no_minutes_are_not_impossible_hours():
+    """The `minutes_online == 0` branch feeds the same shape as the trips histogram:
+    an hour the owner was never dispatched in must not come out at exactly zero."""
+    t0 = datetime(2026, 9, 15, 12, 0, tzinfo=UTC)  # Tue 06:00 Denver
+    busy = DispatchWindow(window_start=t0, window_end=t0 + timedelta(hours=1),
+                          minutes_online=60, dispatches=6)
+    idle = DispatchWindow(window_start=t0 + timedelta(hours=5),
+                          window_end=t0 + timedelta(hours=6), minutes_online=0, dispatches=0)
+    prof = demand.base_profile(windows=[busy, idle], trips=[], live_rate=None)
+    lo, hi = demand.dm.BASE_SHAPE_RANGE
+    level = demand.dm.DEFAULT_BASE_RATE
+    assert not any(v == 0.0 for v in prof)
+    assert prof[24 + 11] == pytest.approx(lo * level)
+    assert prof[24 + 6] == max(prof) == pytest.approx(hi * level)
 
 
 def test_event_multipliers_lift_hours_around_the_event():
@@ -170,6 +223,34 @@ def test_event_multipliers_lift_hours_around_the_event():
     assert "Concert" in reasons[19]
     far = {"key": "boulder", "lat": 40.0150, "lng": -105.2705, "radius_mi": 2.5}
     assert demand.event_multipliers([ev], far, now)[0] == [1.0] * 168
+
+
+def test_week_has_no_top_blocks_before_any_data():
+    """The fresh-tenant path — `week_payload` recomputes on demand for anyone who opens
+    the tab before importing anything, so this is the first thing a new driver sees. A
+    week with no shape has no defensible 'best block': the UI has to reach its empty
+    state instead of five whole-day rows reading '0.0 expected offers'. Every existing
+    top_blocks test hand-builds an obvious hot set, which is why none of them caught it.
+    """
+    _reset_demand_tenant_state()
+    _seed_priors()
+    c = _owner()
+    tid = _tenant_id(c)
+
+    async def _run():
+        async with get_session_factory()() as db:
+            return await demand.recompute_week(
+                db, tenant_id=tid, now=datetime(2026, 9, 16, tzinfo=UTC)
+            )
+
+    assert asyncio.run(_run())["rows"] >= 168
+    body = c.get("/api/v1/demand/week", params={"zone": "cherry_creek"}).json()
+    assert body["own_minutes_total"] == 0  # precondition: nothing imported, nothing logged
+    means = {round(cell["mean"], 12) for row in body["grid"] for cell in row}
+    # Precondition, not the claim under test: with no flight baseline and no events
+    # every hour carries the same prior, so the week genuinely has no shape.
+    assert len(means) == 1 and means.pop() > 0
+    assert body["top_blocks"] == []
 
 
 def test_recompute_and_week_endpoint():
@@ -249,6 +330,14 @@ def test_gps_coverage_and_home_rules():
     body = c.get("/api/v1/demand/week", params={"zone": "cherry_creek"}).json()
     assert body["grid"][1][7]["reasons"]["own_minutes"] == 50  # the GPS wait, not 100
     assert body["grid"][1][9]["reasons"]["own_minutes"] == 0  # home excluded
+    # "Hours you have logged here" is the raw exposure, never the pooled model input:
+    # hour 7's neighbours have nothing logged in them, and used to report the 25
+    # minutes and 0.5 offers they borrowed from hour 7.
+    for h in (6, 8):
+        assert body["grid"][1][h]["reasons"]["own_minutes"] == 0
+        assert body["grid"][1][h]["reasons"]["own_offers"] == 0
+    assert body["grid"][1][7]["reasons"]["own_offers"] == 2
+    assert body["own_minutes_total"] == 50  # the one real wait, not 2x it
 
 
 def test_gps_enroute_dedupes_against_live_accepted_offer():
@@ -309,7 +398,12 @@ def test_live_segment_outside_gps_window_still_counts():
     asyncio.run(_seed_and_run())
     dow, hour = divmod(demand.dm.hour_of_week(t), 24)
     body = c.get("/api/v1/demand/week", params={"zone": "cherry_creek"}).json()
-    assert body["grid"][dow][hour]["reasons"]["own_minutes"] > 0
+    assert body["grid"][dow][hour]["reasons"]["own_minutes"] == 30  # the whole wait
+    # `> 0` would pass on a neighbour too, which is the bug this has to exclude: the
+    # hour before pools half of the 50-minute GPS wait two hours earlier and half of
+    # this one, and must still report nothing logged.
+    assert body["grid"][dow][hour - 1]["reasons"]["own_minutes"] == 0
+    assert body["grid"][dow][hour + 1]["reasons"]["own_minutes"] == 0
 
 
 def test_recompute_error_does_not_kill_the_job(monkeypatch, caplog):

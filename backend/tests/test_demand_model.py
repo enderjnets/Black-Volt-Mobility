@@ -1,5 +1,6 @@
 """Pure-math tests for the 'Where to wait' model. No DB, no network."""
 import math
+import random
 from datetime import UTC, date, datetime
 
 import pytest
@@ -36,6 +37,22 @@ def test_posterior_with_no_data_is_the_prior():
     e = dm.posterior(prior=0.02, offers=0, exposure_min=0)
     assert e.mean == pytest.approx(0.02)
     assert e.own_share == 0.0
+    assert e.lo <= e.mean <= e.hi
+
+
+def test_posterior_point_estimate_is_always_inside_its_own_interval():
+    # The UI prints the mean and the interval side by side, so `lo <= mean <= hi` has
+    # to hold for every prior the planner can produce — including the very smallest,
+    # where the Gamma is skewed enough that its true 90th percentile sits below its
+    # own mean.
+    priors = [0.0] + [10.0 ** -k for k in range(9, -1, -1)]
+    for p in priors:
+        e = dm.posterior(prior=p, offers=0, exposure_min=0)
+        assert e.lo <= e.mean <= e.hi, (p, e)
+    # The floor `base_profile` now produces: a quarter of the smallest plausible
+    # level, times the smallest static and flight multipliers.
+    floor = dm.BASE_SHAPE_RANGE[0] * 1e-5 * dm.AFFLUENCE_RANGE[0] * dm.FLIGHT_RANGE[0]
+    e = dm.posterior(prior=floor, offers=0, exposure_min=0)
     assert e.lo <= e.mean <= e.hi
 
 
@@ -93,10 +110,69 @@ def test_top_blocks_respects_min_hours_and_threshold():
     assert b.expected_offers == pytest.approx(0.1 * 60 * 3)
 
 
-def test_top_blocks_default_threshold_is_top_quartile():
-    hot = set(range(0, 42))  # 25% of the week hot
+def test_top_blocks_default_threshold_is_the_top_quartile_floored_at_the_best_hour():
+    hot = set(range(0, 42))  # Monday 00-24 and Tuesday 00-18, at the week's top rate
     blocks = dm.top_blocks(_grid(hot), min_hours=2, limit=10)
-    assert blocks and all(b.mean >= 0.1 for b in blocks)
+    # A full day IS allowed here — every one of Monday's hours is at 0.1, the best
+    # rate in the week — which is exactly what makes it defensible.
+    assert [(b.dow, b.start_hour, b.end_hour) for b in blocks] == [(0, 0, 24), (1, 0, 18)]
+    assert blocks[0].expected_offers == pytest.approx(0.1 * 60 * 24)
+    assert blocks[1].expected_offers == pytest.approx(0.1 * 60 * 18)
+
+
+def test_top_blocks_returns_nothing_when_the_week_has_no_shape():
+    """The fresh-tenant week: every hour is the same prior. There is no 'where to
+    wait' in a flat week, and saying there is would be a fabricated recommendation."""
+    flat = [dm.Estimate(mean=0.03, lo=0.02, hi=0.04, own_share=0.0, offers=0, exposure_min=0)
+            for _ in range(168)]
+    assert dm.top_blocks(flat) == []
+
+
+def test_top_blocks_returns_nothing_when_every_hour_is_the_prior_floor():
+    """The exact production reproducer: 168 cells all at the floor used to yield five
+    whole-day blocks, each rendering 'Mon 0:00-24:00 - 0.0 expected offers'."""
+    floor = [dm.Estimate(mean=4e-7, lo=0.0, hi=1e-6, own_share=0.0, offers=0, exposure_min=0)
+             for _ in range(168)]
+    assert dm.top_blocks(floor) == []
+
+
+def test_top_blocks_never_returns_a_zero_offer_block():
+    rng = random.Random(20260917)
+    grid = [
+        dm.Estimate(mean=4e-7 if h % 4 == 0 else rng.uniform(0.0002, 0.42),
+                    lo=0.0, hi=1.0, own_share=0.0, offers=0, exposure_min=0)
+        for h in range(168)
+    ]
+    blocks = dm.top_blocks(grid)
+    assert blocks
+    assert all(round(b.expected_offers, 1) > 0 for b in blocks)
+    assert all(b.end_hour - b.start_hour < 24 for b in blocks)
+
+
+def test_top_blocks_allows_a_full_day_when_every_hour_earns_it():
+    """The deliberate decision: a 24-hour block is fine when the data supports it."""
+    grid = [
+        dm.Estimate(mean=0.1 if h < 24 else 0.01, lo=0, hi=1, own_share=0,
+                    offers=0, exposure_min=0)
+        for h in range(168)
+    ]
+    blocks = dm.top_blocks(grid)
+    assert [(b.dow, b.start_hour, b.end_hour) for b in blocks] == [(0, 0, 24)]
+    assert blocks[0].expected_offers == pytest.approx(144.0)
+
+
+def test_top_blocks_ignores_a_mediocre_plateau_above_p75():
+    """A 60-hour plateau drags the 75th percentile down to itself. The floor at 60% of
+    the week's best hour is what keeps 'where to wait' pointing at the peak."""
+    means = [0.01] * 168
+    for h in range(40, 100):
+        means[h] = 0.05
+    for h in (3 * 24 + 18, 3 * 24 + 19, 3 * 24 + 20):
+        means[h] = 0.4
+    grid = [dm.Estimate(mean=m, lo=0, hi=1, own_share=0, offers=0, exposure_min=0)
+            for m in means]
+    blocks = dm.top_blocks(grid)
+    assert [(b.dow, b.start_hour, b.end_hour) for b in blocks] == [(3, 18, 21)]
 
 
 def test_bridge_rule():

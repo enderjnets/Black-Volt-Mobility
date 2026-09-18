@@ -359,6 +359,109 @@ def test_import_pings_replace_window_and_backfill():
     assert got == expected
 
 
+def test_import_pings_earlier_file_after_a_later_one_keeps_the_later_month():
+    """Window replacement has to replace a WINDOW. The delete was bounded on the left
+    only, so uploading August's export after September's wiped every GPS segment from
+    August onward — all of September's included — and the August file cannot put them
+    back. The response is still 201 and the summary still looks healthy."""
+    tenants = _rows("SELECT id FROM tenants WHERE slug IN ('ender-ocando', 'black-volt')")
+    assert tenants, "no tenant matched: the cleanup below would be a silent no-op"
+    for row in tenants:
+        _rows("DELETE FROM driver_state_segments WHERE tenant_id = $1 AND source = 'gps'",
+              row["id"])
+        _rows("DELETE FROM demand_imports WHERE tenant_id = $1", row["id"])
+
+    c = _owner()
+    september = _export_zip(_fixture_pings())
+    r = c.post("/api/v1/demand/import",
+               files=[("file", ("uber-sep.zip", september, "application/zip"))])
+    assert r.status_code == 201, r.text
+    tenant_id = _rows("SELECT tenant_id FROM demand_imports ORDER BY id DESC LIMIT 1")[0][
+        "tenant_id"
+    ]
+
+    def _gps_rows():
+        return _rows(
+            "SELECT dedup_key, begin_at, end_at FROM driver_state_segments "
+            "WHERE tenant_id = $1 AND source = 'gps' ORDER BY begin_at",
+            tenant_id,
+        )
+
+    sept_rows = _gps_rows()
+    assert len(sept_rows) == 10
+
+    aug_day = DAY - timedelta(days=12)  # 2026-08-20, a month the owner still has in Downloads
+    august = [(t, A, True) for t in _seq(_at(13, 0, day=aug_day), _at(13, 40, day=aug_day))]
+    r2 = c.post(
+        "/api/v1/demand/import",
+        files=[("file", ("uber-aug.zip",
+                         _zip({"driver_app_analytics-0.csv": _analytics_text(august)}),
+                         "application/zip"))],
+    )
+    assert r2.status_code == 201, r2.text
+
+    after = _gps_rows()
+    assert [(row["dedup_key"], row["begin_at"], row["end_at"]) for row in after
+            if row["begin_at"] >= DAY] == [
+        (row["dedup_key"], row["begin_at"], row["end_at"]) for row in sept_rows
+    ]
+    assert len(after) == len(sept_rows) + 1
+    assert after[0]["begin_at"] == _at(13, 0, day=aug_day)
+
+
+def test_import_pings_trims_a_segment_that_runs_past_the_window_end():
+    """The trailing edge mirrors the leading one: a segment that begins inside the
+    replaced window but runs past its end keeps its tail instead of being deleted."""
+    tenants = _rows("SELECT id FROM tenants WHERE slug IN ('ender-ocando', 'black-volt')")
+    for row in tenants:
+        _rows("DELETE FROM driver_state_segments WHERE tenant_id = $1 AND source = 'gps'",
+              row["id"])
+        _rows("DELETE FROM demand_imports WHERE tenant_id = $1", row["id"])
+
+    c = _owner()
+    d = DAY - timedelta(days=30)
+    # Two waits with a 20-minute ping gap between them, so they segment separately.
+    first = (
+        [(t, A, True) for t in _seq(_at(10, 0, day=d), _at(10, 40, day=d))]
+        + [(t, A, True) for t in _seq(_at(11, 0, day=d), _at(12, 0, day=d))]
+    )
+    r = c.post("/api/v1/demand/import",
+               files=[("file", ("long.zip",
+                                _zip({"driver_app_analytics-0.csv": _analytics_text(first)}),
+                                "application/zip"))])
+    assert r.status_code == 201, r.text
+    tenant_id = _rows("SELECT tenant_id FROM demand_imports ORDER BY id DESC LIMIT 1")[0][
+        "tenant_id"
+    ]
+
+    def _gps_rows():
+        return _rows(
+            "SELECT begin_at, end_at FROM driver_state_segments "
+            "WHERE tenant_id = $1 AND source = 'gps' ORDER BY begin_at",
+            tenant_id,
+        )
+
+    assert [(r["begin_at"], r["end_at"]) for r in _gps_rows()] == [
+        (_at(10, 0, day=d), _at(10, 40, day=d)),
+        (_at(11, 0, day=d), _at(12, 0, day=d)),
+    ]
+
+    # A second file whose window ENDS inside the 11:00→12:00 wait.
+    mid = [(t, A, True) for t in _seq(_at(10, 50, day=d), _at(11, 30, day=d))]
+    r2 = c.post("/api/v1/demand/import",
+                files=[("file", ("mid.zip",
+                                 _zip({"driver_app_analytics-0.csv": _analytics_text(mid)}),
+                                 "application/zip"))])
+    assert r2.status_code == 201, r2.text
+    # The 11:30→12:00 tail survives; only the part the new file actually covers is
+    # replaced. The old delete dropped the whole 11:00→12:00 row.
+    assert [(r["begin_at"], r["end_at"]) for r in _gps_rows()] == [
+        (_at(10, 0, day=d), _at(10, 40, day=d)),
+        (_at(10, 50, day=d), _at(11, 30, day=d)),
+        (_at(11, 30, day=d), _at(12, 0, day=d)),
+    ]
+
+
 def test_home_majority_rule():
     # ~250 m east of HOME, inside HOME's own res-8 cell (asserted, not assumed) —
     # so the run never splits by cell; only the time-weighted majority decides.

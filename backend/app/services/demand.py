@@ -57,10 +57,14 @@ def _miles(lat1, lng1, lat2, lng2) -> float:
 
 # ── Pure pieces ─────────────────────────────────────────────────────────────────
 def _normalize(profile: list[float], level: float) -> list[float]:
+    """Scale the pooled shape to `level` with every hour clamped to BASE_SHAPE_RANGE of
+    the week mean. The clamp is the point: an hour the owner happened to log no trip in
+    is thin evidence, not proof that no Black offer can arrive there, and an unbounded
+    spike hands the driver with the least history the most confident-looking answer."""
     mean = sum(profile) / len(profile)
     if mean <= 0:
         return [level] * len(profile)
-    return [level * v / mean for v in profile]
+    return [dm.clamp(v / mean, *dm.BASE_SHAPE_RANGE) * level for v in profile]
 
 
 def base_profile(
@@ -320,12 +324,16 @@ async def recompute_week(
             )
             y, e = pooled[how]
             est = dm.posterior(prior, y, e)
+            # The posterior consumes the POOLED pair; `own_minutes`/`own_offers` report
+            # the RAW ones. Pooling sums to exactly 2× the real week, and it is what the
+            # driver reads to decide whether to trust a cell at all — an hour he has
+            # never been online in has to say so, not borrow half of each neighbour.
             reasons = {
                 "flights": round(flight_mult, 2),
                 "events": ev_reasons[how],
                 "holiday": holidays_by_dow.get(dow),
-                "own_minutes": round(e, 1),
-                "own_offers": round(y, 2),
+                "own_minutes": round(exposure[how], 1),
+                "own_offers": round(offer_counts[how], 2),
             }
             db.add(
                 WeekScore(

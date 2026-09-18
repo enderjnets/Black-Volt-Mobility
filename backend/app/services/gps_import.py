@@ -22,7 +22,7 @@ import math
 from datetime import datetime, timedelta
 
 import h3
-from sqlalchemy import delete, update
+from sqlalchemy import delete, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -451,11 +451,32 @@ async def import_pings(
         home = (settings.DEMAND_HOME_LAT, settings.DEMAND_HOME_LNG)
     segments = segment_pings(pings, trips, home=home, home_radius_m=settings.DEMAND_HOME_RADIUS_M)
 
+    # Replace the window this file covers — and only that window. Bounded on the left
+    # alone, uploading an older export after a newer one deleted everything from the
+    # older start onward, newer months included, and the older file cannot put them
+    # back. Both straddling edges are trimmed instead of dropped; the trailing trim runs
+    # before the delete so the rows it saves no longer satisfy `end_at <= end`.
+    await db.execute(
+        update(DriverStateSegment)
+        .where(
+            DriverStateSegment.tenant_id == tenant_id,
+            DriverStateSegment.source == SegmentSource.GPS,
+            DriverStateSegment.begin_at >= start,
+            DriverStateSegment.begin_at <= end,
+            DriverStateSegment.end_at > end,
+        )
+        .values(begin_at=end)
+    )
     await db.execute(
         delete(DriverStateSegment).where(
             DriverStateSegment.tenant_id == tenant_id,
             DriverStateSegment.source == SegmentSource.GPS,
             DriverStateSegment.begin_at >= start,
+            DriverStateSegment.begin_at <= end,
+            or_(
+                DriverStateSegment.end_at.is_(None),
+                DriverStateSegment.end_at <= end,
+            ),
         )
     )
     await db.execute(

@@ -10,7 +10,10 @@ he logs shifts, each cell blends toward his observed rate with a Gamma-Poisson
 (empirical-Bayes) update: posterior mean = (α + offers) / (β + minutes), where the
 prior mean is α/β and β is "how many of his own minutes it takes to out-vote the
 proxies". `own_share` = minutes / (minutes + β) is what the UI shows as "x% from
-your data".
+your data" — those are the POOLED minutes the posterior actually consumed, so it
+answers "how much of the ESTIMATE comes from your data", which is a different (and
+larger) claim than "hours you have logged here". That second question is answered
+by `reasons.own_minutes`, which carries the raw exposure.
 
 All the tunable numbers live in the constants block below, one comment each.
 """
@@ -40,6 +43,10 @@ GENERATOR_STEP, GENERATOR_MAX = 0.10, 2.0  # +10% per generator within ~1.5 km, 
 FLIGHT_RANGE = (0.5, 3.0)                # hour's DEN flights ÷ daily mean, clamped
 EVENT_RANGE = (1.0, 3.0)                 # event windows only ever lift
 WEATHER_RANGE = (0.7, 1.5)
+# Base hour-of-week shape ÷ its week mean, clamped: a 16× peak-to-trough range is
+# ample for a real day/night pattern, and no history is thin enough to prove an
+# hour impossible.
+BASE_SHAPE_RANGE = (0.25, 4.0)
 # Wilson–Hilferty normal quantiles for the Gamma interval.
 _Z = {0.1: -1.2815515655, 0.5: 0.0, 0.9: 1.2815515655}
 
@@ -75,7 +82,7 @@ class Estimate:
     mean: float        # offers per minute
     lo: float          # 10th percentile
     hi: float          # 90th percentile
-    own_share: float   # 0..1, share of the estimate that comes from the owner's data
+    own_share: float   # 0..1, share of the ESTIMATE from his data (pooled, not logged)
     offers: float
     exposure_min: float
 
@@ -115,10 +122,14 @@ def posterior(
 ) -> Estimate:
     alpha = max(prior, 1e-9) * pseudo_min + max(0.0, offers)
     beta = pseudo_min + max(0.0, exposure_min)
+    mean = alpha / beta
+    # At a very small shape the Gamma is skewed enough that its true 90th percentile
+    # sits BELOW its own mean, so the honest quantiles would print an interval that
+    # excludes the number next to it. Widen the displayed interval to contain it.
     return Estimate(
-        mean=alpha / beta,
-        lo=gamma_quantile(alpha, beta, 0.1),
-        hi=gamma_quantile(alpha, beta, 0.9),
+        mean=mean,
+        lo=min(gamma_quantile(alpha, beta, 0.1), mean),
+        hi=max(gamma_quantile(alpha, beta, 0.9), mean),
         own_share=max(0.0, exposure_min) / beta,
         offers=offers,
         exposure_min=exposure_min,
@@ -153,20 +164,30 @@ class Block:
     mean: float       # average rate over the block
 
 
+BLOCK_FLOOR_SHARE = 0.6   # an hour below 60% of the week's best is not "where to wait"
+MIN_BLOCK_OFFERS = 1.0    # below one expected offer the row would read "0.0 expected"
+
+
 def top_blocks(
     grid: list[Estimate],
     *,
     threshold: float | None = None,
     min_hours: int = 2,
     limit: int = 5,
+    min_offers: float = MIN_BLOCK_OFFERS,
 ) -> list[Block]:
-    """Contiguous runs (within a day) of hours whose mean ≥ threshold, ranked by
-    expected offers. Default threshold = 75th percentile of the week's means."""
+    """Contiguous runs (within a day) of hours whose mean >= threshold, ranked by
+    expected offers. Default threshold = the 75th percentile of the week's means,
+    floored at BLOCK_FLOOR_SHARE of the best hour. Returns [] when the week has no
+    shape (top quartile indistinguishable from the bottom) or when no run promises
+    `min_offers` offers."""
     if len(grid) != HOURS_PER_WEEK:
         raise ValueError("grid must have 168 entries")
+    means = sorted(e.mean for e in grid)
     if threshold is None:
-        means = sorted(e.mean for e in grid)
-        threshold = means[int(0.75 * len(means))]
+        threshold = max(means[int(0.75 * len(means))], means[-1] * BLOCK_FLOOR_SHARE)
+        if threshold <= means[len(means) // 4]:
+            return []
     blocks: list[Block] = []
     for dow in range(7):
         h = 0
@@ -178,9 +199,11 @@ def top_blocks(
                 if h - start >= min_hours:
                     hours = [grid[dow * 24 + x] for x in range(start, h)]
                     mean = sum(e.mean for e in hours) / len(hours)
-                    blocks.append(
-                        Block(dow, start, h, expected_offers=mean * 60 * len(hours), mean=mean)
-                    )
+                    expected = mean * 60 * len(hours)
+                    if expected >= min_offers:
+                        blocks.append(
+                            Block(dow, start, h, expected_offers=expected, mean=mean)
+                        )
             else:
                 h += 1
     blocks.sort(key=lambda b: b.expected_offers, reverse=True)
