@@ -72,3 +72,63 @@ def test_tract_stats_treats_acs_sentinels_as_missing():
     income, share = dp._tract_stats("85000", "0", "0")
     assert income == 85000.0
     assert share is None
+
+
+def _feature(geoid: str):
+    """One TIGERweb GeoJSON polygon, in the shape the service actually returns."""
+    return {
+        "properties": {"GEOID": geoid},
+        "geometry": {
+            "type": "Polygon",
+            # GeoJSON is (lng, lat); the join flips it.
+            "coordinates": [[[-104.960, 39.710], [-104.945, 39.710],
+                             [-104.945, 39.724], [-104.960, 39.724]]],
+        },
+    }
+
+
+def test_affluence_of_a_real_denver_tract():
+    """Tract 1.02, Denver County, ACS 2024: $174,271 median, 708 of 1,691 households
+    over $200k. Both halves max out, so this tract is fully affluent. Pinned to real
+    numbers because the whole layer read 0.0 in production for months."""
+    income, share = dp._tract_stats("174271", "1691", "708")
+    assert income == 174271.0
+    assert share == pytest.approx(708 / 1691)
+    assert dp.affluence_score(income, share) == 1.0
+
+
+def test_join_tracts_carries_income_onto_the_polygon():
+    stats = {"08031000102": (174271.0, 0.42)}
+    out = dp._join_tracts([_feature("08031000102")], stats)
+    assert len(out) == 1
+    assert out[0]["income"] == 174271.0 and out[0]["share_200k"] == 0.42
+    # The ring comes back as (lat, lng), which is what cells_for_polygon expects.
+    assert out[0]["rings"][0][0] == (39.710, -104.960)
+
+
+def test_join_tracts_refuses_a_silent_geography_mismatch():
+    """The bug this guard exists for: TIGERweb layer 8 returns 12-char block-group ids
+    (08031004603'5'), the ACS is keyed by 11-char tract ids, nothing matched, and every
+    cell in the metro silently got affluence 0.0 while the build script still reported
+    success. A total miss has to be loud."""
+    stats = {"08031000102": (174271.0, 0.42)}
+    with pytest.raises(RuntimeError) as e:
+        dp._join_tracts([_feature("080310046035")], stats)
+    msg = str(e.value)
+    assert "12 chars" in msg and "11 chars" in msg
+    assert "Block Groups" in msg
+
+
+def test_join_tracts_tolerates_one_tract_the_acs_did_not_return():
+    """A partial miss is normal (a tract with no reported income) and must NOT raise —
+    only a total miss means the wrong geography."""
+    stats = {"08031000102": (174271.0, 0.42)}
+    out = dp._join_tracts([_feature("08031000102"), _feature("08031999999")], stats)
+    assert len(out) == 2
+    assert [r["income"] for r in out] == [174271.0, None]
+
+
+def test_the_tiger_url_points_at_the_tract_layer():
+    """Layer 0 is Census Tracts; layer 8 is Census Block Groups and was the defect."""
+    assert dp._TIGER_TRACT_LAYER == 0
+    assert dp._TIGER.endswith("Tracts_Blocks/MapServer/0/query")
