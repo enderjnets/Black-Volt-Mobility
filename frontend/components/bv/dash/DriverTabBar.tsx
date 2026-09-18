@@ -22,6 +22,7 @@ const MORE = [
   { seg: "discounts", href: "/dashboard/discounts", icon: "tag", key: "dash.nav.discounts" },
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];
+const DEMAND_ITEM = { seg: "demand", href: "/dashboard/demand", icon: "map-pin", key: "dash.nav.demand" };
 // Super-admin only (social management + the access list).
 const ADMIN_ITEMS = [
   { seg: "events", href: "/dashboard/events", icon: "calendar", key: "dash.nav.events" },
@@ -50,7 +51,8 @@ export function DriverTabBar() {
     };
   }, []);
 
-  const moreActive = (me?.is_admin ? [...MORE, ...ADMIN_ITEMS] : MORE).some((m) => m.seg === seg);
+  const moreItems = [...(me?.features?.demand ? [DEMAND_ITEM] : []), ...MORE];
+  const moreActive = (me?.is_admin ? [...moreItems, ...ADMIN_ITEMS] : moreItems).some((m) => m.seg === seg);
   const identity = me?.email ? me.email.split("@")[0] : me?.is_admin ? "Owner" : "Driver";
   const roleLabel = t(me?.is_admin ? "dash.role.admin" : "dash.role.driver");
 
@@ -162,7 +164,7 @@ export function DriverTabBar() {
                   <div style={{ height: 1, background: "var(--line)", margin: "6px 2px" }} />
                 </>
               )}
-              {MORE.map((it) => {
+              {moreItems.map((it) => {
                 const active = seg === it.seg;
                 return (
                   <Link

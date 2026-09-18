@@ -73,6 +73,7 @@ const NAV: { seg: string; href: string; icon: string; key: string }[] = [
   { seg: "discounts", href: "/dashboard/discounts", icon: "tag", key: "dash.nav.discounts" },
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];
+const DEMAND_NAV = { seg: "demand", href: "/dashboard/demand", icon: "map-pin", key: "dash.nav.demand" };
 
 // Super-admin only (social management + the access list). Appended to the nav
 // when me.is_admin — regular drivers never see these.
@@ -133,7 +134,8 @@ export function DashShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const nav = me?.is_admin ? [...NAV, ...ADMIN_NAV] : NAV;
+  const base = me?.features?.demand ? [...NAV.slice(0, 5), DEMAND_NAV, ...NAV.slice(5)] : NAV;
+  const nav = me?.is_admin ? [...base, ...ADMIN_NAV] : base;
   const identity = me?.email ? me.email.split("@")[0] : me?.is_admin ? "Owner" : "Driver";
   const roleLabel = t(me?.is_admin ? "dash.role.admin" : "dash.role.driver");
 
