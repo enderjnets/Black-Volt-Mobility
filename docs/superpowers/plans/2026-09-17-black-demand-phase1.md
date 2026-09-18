@@ -3373,7 +3373,7 @@ git commit -m "feat(demand): import the 30-day GPS file — waits, offers, picku
 - Test: `backend/tests/test_demand_jobs.py`
 
 **Interfaces:**
-- Consumes: `demand_model` (Task 3), models, `flights_baseline.load_baseline/multipliers` (Task 8), `demand_places.ZONES` (Task 7), `shift_log.DENVER`. **Amendment (Task 15 / Addendum A):** also `SegmentSource` and `DemandImport` (GPS coverage windows); the four counting rules of Addendum A bind `recompute_week` — they are written into the code and tests below.
+- Consumes: `demand_model` (Task 3), models, `flights_baseline.load_baseline/multipliers` (Task 8), `demand_places.ZONES` (Task 7), `shift_log.DENVER`. **Amendment (Task 15 / Addendum A):** also `SegmentSource` and `DemandImport` (GPS coverage windows); the four counting rules of Addendum A bind `recompute_week` — they are written into the code and tests below. **Post-review rulings (2026-09-17, binding over the code below where they differ):** (a) `_upcoming_events` filters `EventSuggestion.tenant_id == tenant_id` and takes the tenant's suggestions of the coming 7 days whatever their approval status; (b) inside a GPS coverage window every non-`gps` `open` segment is dropped (live and export); (c) `_demand_week_job` opens one session per tenant so a failing tenant can never leave pending rows or a `PendingRollbackError` for the next; (d) `live_rate` is `None` unless `total_open_min ≥ 600` AND `live_offers > 0`; (e) `_seed_priors` snapshots the `hex_priors` rows it touches and restores them (or deletes the ones it created) in the module teardown — the table is shared geography; (f) tests assert rule 3 (`reasons.own_offers == 2` at Tue 07 plus the exact posterior identity), rule 4 (a gps `enroute` matched to a premium `uber_trips` request with a live accepted offer within ±3 min counts once), a rule-1 negative control (a live open segment outside every window still counts), and the scheduler test checks via `caplog` that the failure was logged.
 - Produces:
   - `async def recompute_week(db, *, tenant_id: int, now: datetime | None = None) -> dict` → `{"zones": int, "rows": int, "computed_at": iso}`; replaces the tenant's `week_scores`.
   - `async def week_payload(db, *, tenant_id: int, zone: str | None) -> dict | None` → `None` for an unknown zone; otherwise `{"zone", "zone_name", "zones": [{"key","name"}], "computed_at", "grid": [[cell×24]×7], "top_blocks": [...], "private_rides": [...], "own_minutes_total": float}` where cell = `{"mean","lo","hi","p15","own_share","reasons"}`; computes on the fly when the tenant has no scores yet.
@@ -3802,7 +3802,7 @@ async def recompute_week(
         s
         for s in segs
         if s.zone_key != "home"
-        and not (s.source == SegmentSource.LIVE and _covered(s.begin_at))
+        and not (s.source != SegmentSource.GPS and _covered(s.begin_at))
     ]
     offers = (
         await db.execute(
@@ -3842,7 +3842,9 @@ async def recompute_week(
     total_open_min = sum(_segment_minutes_by_hour(segs))
     live_offers = len(offers) + sum(1 for s in enroute if _is_premium_at(s.begin_at))
     live_rate = (
-        live_offers / total_open_min if total_open_min >= _LIVE_RATE_MIN_MINUTES else None
+        live_offers / total_open_min
+        if total_open_min >= _LIVE_RATE_MIN_MINUTES and live_offers > 0
+        else None
     )
     base = base_profile(windows=list(windows), trips=list(trips), live_rate=live_rate)
 

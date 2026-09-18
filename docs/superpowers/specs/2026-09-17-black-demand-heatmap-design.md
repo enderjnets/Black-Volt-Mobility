@@ -230,7 +230,7 @@ Coverage is measured, not nominal: `start = min(ping time)`, `end = max(ping tim
 
 Live taps and the GPS file cover the same days, so:
 
-1. Inside any GPS coverage window `[start, end]`, exposure comes only from `source = gps` `open` segments; a `live` `open` segment whose `begin_at` falls inside a window is ignored. Outside every window live segments count as before.
+1. Inside any GPS coverage window `[start, end]`, exposure comes only from `source = gps` `open` segments; any other `open` segment (`live` or `export`) whose `begin_at` falls inside a window is ignored. Outside every window live and export segments count as before.
 2. A segment with `zone_key = "home"` never counts as exposure, whatever its source.
 3. Live `offer_events` always count, accepted and declined (they carry the product).
 4. A `gps` `enroute` segment counts as one accepted offer (product via the ±3 min trip match already in the plan) unless a live accepted `offer_events` row exists within ±3 min of its `begin_at`.
