@@ -165,18 +165,24 @@ async def _blog_gsc_job() -> None:
 
 
 async def _demand_week_job() -> None:
-    """Hourly: rebuild the 'Where to wait' 7×24 planner for every tenant with data."""
+    """Hourly: rebuild the 'Where to wait' 7×24 planner for every tenant with data.
+
+    One session per tenant: a failing tenant's rollback/pending state must never
+    leak into the next tenant's recompute (post-review ruling (c))."""
     try:
         from app.db.base import get_session_factory
         from app.services import demand
 
-        async with get_session_factory()() as db:
-            for tid in await demand.tenants_with_data(db):
-                try:
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            tenant_ids = await demand.tenants_with_data(db)
+        for tid in tenant_ids:
+            try:
+                async with session_factory() as db:
                     result = await demand.recompute_week(db, tenant_id=tid)
-                    logger.info("demand week %s: %s", tid, result)
-                except Exception as e:
-                    logger.warning("demand week job failed for tenant %s: %s", tid, e)
+                logger.info("demand week %s: %s", tid, result)
+            except Exception as e:
+                logger.warning("demand week job failed for tenant %s: %s", tid, e)
     except Exception as e:  # never let a job crash the scheduler
         logger.warning("demand week job failed: %s", e)
 

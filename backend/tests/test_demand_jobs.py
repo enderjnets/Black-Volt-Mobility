@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import asyncpg
 import pytest
+from sqlalchemy import delete
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 os.environ["AUTH_SECRET"] = "api-test-secret"
@@ -58,6 +59,7 @@ def _rows(query: str, *args) -> list:
 
 def _reset_demand_tenant_state():
     tenants = _rows("SELECT id FROM tenants WHERE slug IN ('ender-ocando', 'black-volt')")
+    assert tenants, "no tenant matched ender-ocando/black-volt: cleanup would be a silent no-op"
     for row in tenants:
         tid = row["id"]
         _rows("DELETE FROM week_scores WHERE tenant_id = $1", tid)
@@ -80,19 +82,52 @@ def _cleanup_demand_jobs_tenant_state():
     `demand_imports` are cleaned by its fixture) and `test_demand_api.py` has no
     cleanup fixture at all, leaving 2 `source='export'` segments from its ONOFF
     fixture. Neither is ours to fix, so reset the tenant's demand tables before
-    AND after this module's tests to be independent of run order either way."""
+    AND after this module's tests to be independent of run order either way. Also
+    restore `hex_priors` (ruling (e)): that table is shared geography, has no
+    `tenant_id`, and `_seed_priors` overwrites ~19 real cells with `db.merge`."""
     _reset_demand_tenant_state()
     yield
     _reset_demand_tenant_state()
+    _restore_hex_priors()
+
+
+_HEX_PRIOR_ORIGINALS: dict[str, dict | None] = {}
+
+
+def _restore_hex_priors():
+    async def _run():
+        async with get_session_factory()() as db:
+            for cell, original in _HEX_PRIOR_ORIGINALS.items():
+                if original is None:
+                    await db.execute(delete(HexPrior).where(HexPrior.h3_r8 == cell))
+                else:
+                    await db.merge(HexPrior(h3_r8=cell, **original))
+            await db.commit()
+
+    asyncio.run(_run())
+    _HEX_PRIOR_ORIGINALS.clear()
 
 
 def _seed_priors():
+    """Seeds the ~19-cell Cherry Creek disk with fixture values, snapshotting
+    whatever was there first (real row or none) so the module teardown can put it
+    back — `hex_priors` is shared geography, not tenant-scoped, not truncated by
+    conftest (ruling (e))."""
     import h3
 
     async def _run():
         async with get_session_factory()() as db:
             centre = h3.latlng_to_cell(*CHERRY_CREEK, 8)
             for cell in h3.grid_disk(centre, 2):
+                if cell not in _HEX_PRIOR_ORIGINALS:
+                    existing = await db.get(HexPrior, cell)
+                    _HEX_PRIOR_ORIGINALS[cell] = None if existing is None else {
+                        "affluence": existing.affluence,
+                        "hotels": existing.hotels,
+                        "generators": existing.generators,
+                        "den_distance_mi": existing.den_distance_mi,
+                        "zone_key": existing.zone_key,
+                    }
                 await db.merge(HexPrior(h3_r8=cell, affluence=0.8, hotels=2, generators=3,
                                         den_distance_mi=20.0, zone_key="cherry_creek"))
             await db.commit()
@@ -162,10 +197,12 @@ def test_recompute_and_week_endpoint():
     assert body["zone"] == "cherry_creek" and len(body["grid"]) == 7 and len(body["grid"][0]) == 24
     tue7 = body["grid"][1][7]
     assert tue7["own_share"] > 0 and 0 < tue7["p15"] < 1
-    # Observed 2 offers / 40 open min (0.05/min) sits below the seeded prior
-    # (0.03 base x 4.095 static from affluence=0.8/hotels=2/generators=3 = 0.12285/min),
-    # so blending own data pulls 07's estimate below the untouched 03 baseline.
-    assert tue7["mean"] < body["grid"][1][3]["mean"]
+    # Rule 3: both accepted Black offers count (the enroute segments they open are
+    # deduped against them, so this is 2, not 4).
+    assert tue7["reasons"]["own_offers"] == 2
+    # Exact posterior identity: prior 0.03 base x 4.095 static (affluence=0.8,
+    # hotels=2, generators=3) = 0.12285/min; y=2 offers, e=40 open min (pseudo=600).
+    assert abs(tue7["mean"] - (0.12285 * 600 + 2) / 640) < 1e-9
     assert "top_blocks" in body and "private_rides" in body
     etag1 = r.headers.get("etag")
     assert etag1
@@ -214,12 +251,78 @@ def test_gps_coverage_and_home_rules():
     assert body["grid"][1][9]["reasons"]["own_minutes"] == 0  # home excluded
 
 
+def test_gps_enroute_dedupes_against_live_accepted_offer():
+    """Addendum A rule 4 (ruling f): a gps enroute segment matched to a premium
+    trip request must not double-count once a live accepted offer already covers
+    the same acceptance."""
+    import h3
 
-def test_recompute_error_does_not_kill_the_job(monkeypatch):
+    from app.models import DriverStateSegment, EarnerState, SegmentSource
+
+    _seed_priors()
+    c = _owner()
+    tid = _tenant_id(c)
+    cell = h3.latlng_to_cell(*CHERRY_CREEK, 8)
+    t = datetime(2026, 9, 15, 20, 0, tzinfo=UTC)  # Tue 14:00 Denver, away from other tests' hours
+    _log(c, "offer", t, product="black", accepted=True)
+
+    async def _seed_and_run():
+        async with get_session_factory()() as db:
+            db.add(UberTrip(tenant_id=tid, dedup_key="rule4-trip", product=UberProduct.BLACK,
+                             request_at=t))
+            db.add(DriverStateSegment(
+                tenant_id=tid, dedup_key="rule4-gps-enroute", state=EarnerState.ENROUTE,
+                begin_at=t, end_at=t + timedelta(minutes=10), h3_r8=cell,
+                source=SegmentSource.GPS))
+            await db.commit()
+            return await demand.recompute_week(
+                db, tenant_id=tid, now=datetime(2026, 9, 16, tzinfo=UTC)
+            )
+
+    asyncio.run(_seed_and_run())
+    dow, hour = divmod(demand.dm.hour_of_week(t), 24)
+    body = c.get("/api/v1/demand/week", params={"zone": "cherry_creek"}).json()
+    assert body["grid"][dow][hour]["reasons"]["own_offers"] == 1  # not 2: deduped
+
+
+def test_live_segment_outside_gps_window_still_counts():
+    """Addendum A rule 1 negative control (ruling f): a live open segment outside
+    every GPS coverage window must still count as exposure."""
+    from app.models import DemandImport
+
+    _seed_priors()
+    c = _owner()
+    tid = _tenant_id(c)
+    t = datetime(2026, 8, 25, 15, 0, tzinfo=UTC)  # well before the seeded GPS window
+    _log(c, "online", t)
+    _log(c, "offline", t + timedelta(minutes=30))
+
+    async def _seed_and_run():
+        async with get_session_factory()() as db:
+            db.add(DemandImport(tenant_id=tid, summary={"gps": {
+                "start": "2026-09-01T00:00:00+00:00", "end": "2026-09-10T00:00:00+00:00"}}))
+            await db.commit()
+            return await demand.recompute_week(
+                db, tenant_id=tid, now=datetime(2026, 9, 16, tzinfo=UTC)
+            )
+
+    asyncio.run(_seed_and_run())
+    dow, hour = divmod(demand.dm.hour_of_week(t), 24)
+    body = c.get("/api/v1/demand/week", params={"zone": "cherry_creek"}).json()
+    assert body["grid"][dow][hour]["reasons"]["own_minutes"] > 0
+
+
+def test_recompute_error_does_not_kill_the_job(monkeypatch, caplog):
     from app.services import scheduler
 
     async def boom(*a, **k):
         raise RuntimeError("compute failed")
 
+    async def fake_tenants_with_data(db):
+        return [424242]
+
     monkeypatch.setattr(demand, "recompute_week", boom)
+    monkeypatch.setattr(demand, "tenants_with_data", fake_tenants_with_data)
+    caplog.set_level("WARNING", logger="blackvolt.social.scheduler")
     asyncio.run(scheduler._demand_week_job())  # must not raise
+    assert "demand week job failed for tenant 424242: compute failed" in caplog.text

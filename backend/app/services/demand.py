@@ -146,10 +146,11 @@ async def _zone_cells(db: AsyncSession) -> dict[str, list[HexPrior]]:
     return out
 
 
-async def _upcoming_events(db: AsyncSession, now: datetime) -> list[dict]:
+async def _upcoming_events(db: AsyncSession, tenant_id: int, now: datetime) -> list[dict]:
     rows = (
         await db.execute(
             select(EventSuggestion).where(
+                EventSuggestion.tenant_id == tenant_id,
                 EventSuggestion.starts_at >= now,
                 EventSuggestion.starts_at <= now + timedelta(days=7),
                 EventSuggestion.venue_lat.is_not(None),
@@ -230,7 +231,7 @@ async def recompute_week(
         s
         for s in segs
         if s.zone_key != "home"
-        and not (s.source == SegmentSource.LIVE and _covered(s.begin_at))
+        and not (s.source != SegmentSource.GPS and _covered(s.begin_at))
     ]
     offers = (
         await db.execute(
@@ -270,13 +271,15 @@ async def recompute_week(
     total_open_min = sum(_segment_minutes_by_hour(segs))
     live_offers = len(offers) + sum(1 for s in enroute if _is_premium_at(s.begin_at))
     live_rate = (
-        live_offers / total_open_min if total_open_min >= _LIVE_RATE_MIN_MINUTES else None
+        live_offers / total_open_min
+        if total_open_min >= _LIVE_RATE_MIN_MINUTES and live_offers > 0
+        else None
     )
     base = base_profile(windows=list(windows), trips=list(trips), live_rate=live_rate)
 
     zone_cells = await _zone_cells(db)
     baseline = await fb.load_baseline(db)
-    events = await _upcoming_events(db, now)
+    events = await _upcoming_events(db, tenant_id, now)
     holidays_by_dow = _holiday_dows(now)
     denver_now = now.astimezone(dm.DENVER)
 
