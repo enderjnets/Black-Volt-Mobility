@@ -173,6 +173,10 @@ services:
       DEMAND_HOME_LNG: ${DEMAND_HOME_LNG:-}
       DEMAND_HOME_RADIUS_M: ${DEMAND_HOME_RADIUS_M:-300}
       DEMAND_BRIDGE_FARE_DEFAULT: ${DEMAND_BRIDGE_FARE_DEFAULT:-35}
+      # Flights screen (Phase A). Declared here on purpose: this environment block is
+      # the only path into the container, which is why FLIGHT_API_KEY has sat in .env
+      # since the start without ever reaching the process.
+      FLIGHTS_ENABLED: ${FLIGHTS_ENABLED:-false}
       DEMAND_RECOMPUTE_MIN: ${DEMAND_RECOMPUTE_MIN:-15}
       NWS_USER_AGENT: ${NWS_USER_AGENT:-BlackVoltMobility/1.0 (blackvoltmobility@gmail.com)}
     volumes:
