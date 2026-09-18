@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.96.0";
+export const CURRENT_VERSION = "0.96.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.96.1",
+    date: "2026-09-18",
+    title: "Flights now reaches as far ahead as you actually book",
+    changes: [
+      "The Flights screen looked three days ahead and showed one of your four booked flights, because you take bookings a week out. It now looks two weeks ahead.",
+    ],
+  },
   {
     version: "0.96.0",
     date: "2026-09-18",
