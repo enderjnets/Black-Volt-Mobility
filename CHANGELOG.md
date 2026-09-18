@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.93.1 — 2026-09-18 — Every hour of the planner was showing zero expected offers
+
+Found in production minutes after v0.93.0 went live, against real data.
+
+- **Fixed: every cell of the Week tab read "0.0 (0.0–0.0) expected offers"** — all 168 hours, in
+  every zone, including DEN's best hour at a 19% chance of a Black offer within 15 minutes. The
+  posterior is a rate in offers per *minute*; the detail panel printed it to one decimal and
+  labelled it "expected offers", so it collapsed to zero everywhere. A cell is one hour, so it now
+  shows the rate over that hour — that same hour reads "0.9 (0.5–1.2)".
+
 ## 0.93.0 — 2026-09-18 — Where to wait: your week, planned from your own Black data
 
 Phase 1 of "Where to wait" ships: a planner built entirely from the driver's own Black and Black

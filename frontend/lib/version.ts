@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.93.0";
+export const CURRENT_VERSION = "0.93.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.93.1",
+    date: "2026-09-18",
+    title: "Every hour of the planner was showing zero expected offers",
+    changes: [
+      "Fixed: tapping any hour in the Week tab read '0.0 (0.0-0.0) expected offers', in every zone, including the best hours. The number was the rate per minute printed as if it were the offers for the hour.",
+    ],
+  },
   {
     version: "0.93.0",
     date: "2026-09-18",
