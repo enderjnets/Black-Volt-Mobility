@@ -17,7 +17,10 @@ function WaitLabel({ w, t }: { w: GpsSummary["top_waits"][number]; t: (key: stri
   if (w.place) {
     return (
       <>
-        {w.place} <span style={{ color: "var(--silver)" }}>({(w.distance_km ?? 0).toFixed(1)} km)</span>
+        {w.place}
+        {w.distance_km != null && (
+          <span style={{ color: "var(--silver)" }}> ({w.distance_km.toFixed(1)} km)</span>
+        )}
       </>
     );
   }
@@ -144,7 +147,7 @@ export function ImportTab() {
                         <td style={{ padding: "4px 6px" }}><WaitLabel w={w} t={t} /></td>
                         <td style={{ padding: "4px 6px" }}>{w.hours.toFixed(1)} h</td>
                         <td style={{ padding: "4px 6px" }}>{w.premium_requests}</td>
-                        <td style={{ padding: "4px 6px" }}>${w.per_hour.toFixed(2)}</td>
+                        <td style={{ padding: "4px 6px" }}>{w.per_hour.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
