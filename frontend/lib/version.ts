@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.93.1";
+export const CURRENT_VERSION = "0.94.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.94.0",
+    date: "2026-09-18",
+    title: "Every block now tells you where to park, and why",
+    changes: [
+      "Each block in the Week tab carries a waiting spot and a Go button that opens Maps. Events send you a block out from the venue, not to its door; DEN sends you to the holding lot; elsewhere it is where you have waited and been paid, or the highest-income part of the zone.",
+      "Where several hotels sit together, the spot is the point between them rather than one entrance.",
+      "Fixed: the Census income layer had never worked. Every cell in the metro carried the same flat score, so the planner could not tell one corner of a zone from another. All your numbers move with this.",
+    ],
+  },
   {
     version: "0.93.1",
     date: "2026-09-18",
