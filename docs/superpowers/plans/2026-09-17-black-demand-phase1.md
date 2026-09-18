@@ -4590,6 +4590,8 @@ git commit -m "feat(frontend): 'Where to wait' route, API client, i18n and nav (
 
 ### Task 11: Log tab — four one-tap buttons, offer chips, auto-ping, today's list
 
+**Amendment 2 (2026-09-17, controller rulings after implementation):** (a) the spec's "no header, no scroll" in Android split-screen (~390×400) is met with a viewport-height-keyed compact mode contained to this tab: `LogTab` sets `document.documentElement.dataset.bvCompact = "log"` while mounted, `globals.css` hides `.bv-dash-header`, `.bv-tabbar` and `.bv-log-hint` under `@media (max-width: 899px) and (max-height: 520px)` for `html[data-bv-compact="log"]`, and `DashShell`'s mobile header div carries `className="bv-dash-header"`; full-height phones are unaffected. (b) Product chips fit one row at 390 px (padding 10px 12px, gap 6, fontSize 13, nowrap, min height 36). (c) The auto-ping never sets `busy`; it has its own in-flight ref and skips a tick while the previous ping runs. (d) The optional fare input is always visible in the accepted/fare row. (e) The hint line sits under the buttons and is hidden only in compact mode. (f) `dash.demand.log.send` and `dash.demand.log.cancel` are removed (the collapsible panel they served no longer exists); `dash.demand.log.ping` and `dash.demand.log.hint` are added to both dictionaries. The brief's `var(--white)` is `var(--arctic)` (the only white-ish token in `globals.css`).
+
 **Files:**
 - Replace: `frontend/components/bv/dash/demand/LogTab.tsx`
 
