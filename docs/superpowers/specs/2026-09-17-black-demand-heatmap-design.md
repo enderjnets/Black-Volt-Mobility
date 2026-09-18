@@ -284,7 +284,7 @@ Deferred, not planned: paid live flight schedules toggle; Poisson GLM / gradient
 ## Owner TODOs
 
 1. ✅ 2026-09-17 — export received and tested against the importer: the US export has no "Online Offline" and no "Dispatches" file, but ships `driver_app_analytics-0.csv` (30 days of GPS) → Addendum A. Upload the ZIP in the Import tab when Phase 1 is deployed, and request a new export monthly.
-2. Get a free Census API key (api.census.gov/data/key_signup.html) → `CENSUS_API_KEY` in the VPS `.env`.
+2. ✅ 2026-09-17 — key obtained and working: `build_demand_priors` runs against the real ACS with it. It lives in the local root `.env` only; Task 14 copies it to the VPS `.env`. The owner confirmed on 2026-09-18 that he has NOT rotated it, so the value in the local `.env` is the live one.
 3. ✅ 2026-09-17 — DEN Commercial Holding Lot (8500 Peña Blvd, Denver, CO 80249) confirmed by the owner via its Google Maps pin: `DEN_LOT_LAT=39.8399691`, `DEN_LOT_LNG=-104.6698651` (in the local root `.env`; Task 14 copies both to the VPS `.env`, values in the plan's Task 14 env table). The app shows the configured 400 m circle on the Week/Map views.
 4. ✅ 2026-09-17 — curated list approved unchanged by the owner; he cannot rank it and need not: of his 28 Black/SUV pickups of Aug–Sep 2026, 12 were at DEN and 5 within 500 m of a curated place, so the ranking comes from the data.
 5. Tap every offer (product, accepted or not) for 4 weeks; Online/Here/Offline are optional because the monthly GPS import covers waiting time (Addendum A).
