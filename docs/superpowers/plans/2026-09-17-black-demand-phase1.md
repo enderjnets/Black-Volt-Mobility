@@ -4113,6 +4113,8 @@ git commit -m "feat(demand): hourly 7×24 planner per zone — priors, flights, 
 
 ### Task 10: Frontend foundation — API client, i18n, nav, route, tabs shell
 
+**Amendment (2026-09-17, controller ruling):** the i18n list also includes `dash.title.demand` (EN "Where to wait" / ES "Dónde esperar") because `DashShell.tsx` renders `t(\`dash.title.${seg}\`)` as the page h1 of every `/dashboard/*` route; without it the header shows the raw key.
+
 **Files:**
 - Create: `frontend/lib/demand.ts`
 - Modify: `frontend/lib/i18n.tsx` (EN block near `"dash.nav.stats"` ~line 637; ES block near ~line 1946)
@@ -4283,6 +4285,7 @@ Add to the `EN` dictionary in `frontend/lib/i18n.tsx`, right after `"dash.nav.st
 
 ```ts
   "dash.nav.demand": "Where to wait",
+  "dash.title.demand": "Where to wait",
   "dash.demand.title": "Where to wait",
   "dash.demand.tab.log": "Log",
   "dash.demand.tab.week": "Week",
@@ -4360,6 +4363,7 @@ Add to the `ES` dictionary right after `"dash.nav.stats": "Mis Stats",`:
 
 ```ts
   "dash.nav.demand": "Dónde esperar",
+  "dash.title.demand": "Dónde esperar",
   "dash.demand.title": "Dónde esperar",
   "dash.demand.tab.log": "Registro",
   "dash.demand.tab.week": "Semana",
