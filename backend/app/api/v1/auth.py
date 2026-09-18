@@ -168,7 +168,10 @@ async def me(request: Request, db: AsyncSession = Depends(get_db)):
             # designated driver, so the "Your Driver" tab can resolve the profile.
             "tenant_slug": tenant.slug if tenant else None,
             "is_admin": await session_is_admin(db, payload),
-            "features": {"demand": settings.DEMAND_ENABLED},
+            "features": {
+                "demand": settings.DEMAND_ENABLED,
+                "flights": settings.FLIGHTS_ENABLED,
+            },
         }
     )
     base["agreements_pending"] = [

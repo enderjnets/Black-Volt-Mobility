@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.96.0 — 2026-09-18 — Flights: the driver's own flights, soonest first
+
+`rides.flight_number` has been a `String(40)` of free text since the second migration,
+printed verbatim on the ride row, in the confirmation email and on the calendar event,
+and asked about by nobody. Production holds 36 of them in seven shapes of the same idea:
+`UA 1377`, `UA2085`, `DL 0346`, `WN 3018`, `WN203`, `SW 1197`, and eight that are only
+digits.
+
+A new `/dashboard/flights` screen reads them. `flight_code.parse_designator` resolves the
+airline and the number — stripping a leading airline name, dropping zero padding, and
+mapping the `SW` two rides use to `WN`, which is Southwest's actual code — and
+`flight_code.direction` decides from the addresses whether the passenger is landing or
+flying out, using the word-boundary airport test rather than the substring one that
+matches Garden and Golden.
+
+What it refuses to do is guess. A number with no airline is reported as such, because
+there is a 976 at every carrier and sending a driver to the wrong terminal on a real
+morning is worse than an empty field; the row offers the carriers he flies most and
+writes the answer back onto the ride. There is no flight-status provider yet, so
+`live_source` is `"none"` and the card says it rather than rendering a plausible time.
+
+Behind `FLIGHTS_ENABLED`, off by default. `GET /api/v1/flights/upcoming` is staff-only
+and tenant-scoped; rides with a flight number but no scheduled time, or on a trip that
+never touches an airport, are counted in `skipped` instead of vanishing.
+
 ## 0.95.1 — 2026-09-18 — The Week tab no longer goes blank while you are online
 
 The per-cell history added in 0.95.0 subtracts a wait segment's start from its end to get

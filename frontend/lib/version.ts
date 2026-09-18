@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.95.1";
+export const CURRENT_VERSION = "0.96.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.96.0",
+    date: "2026-09-18",
+    title: "Flights: your flights in one screen, soonest first",
+    changes: [
+      "A new Flights screen lists the flights attached to your next rides, ordered by the one that happens first, and says for each whether the passenger is landing or flying out \u2014 read from the pickup and drop-off, not typed in anywhere.",
+      "The flight numbers on your rides were stored seven different ways. They now read as one: UA 1377, UA2085, DL 0346 and WN203 all resolve, and SW becomes WN, which is what Southwest actually is.",
+      "Eight of them are a bare number with no airline. A 976 exists at every airline, so the screen does not guess \u2014 it asks once, with the carriers you fly most first, and writes the answer back onto the ride.",
+      "There is no live flight status yet, and the card says so instead of showing a time it does not have.",
+    ],
+  },
   {
     version: "0.95.1",
     date: "2026-09-18",
