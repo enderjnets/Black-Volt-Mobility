@@ -97,7 +97,7 @@ def test_parse_2021_paris_format_with_segments_and_windows():
             DISPATCH_2021_HEADER + "\n" + DISPATCH_2021_ROW + "\n",
     })
     p = ui.parse_zip(data)
-    assert p.files_missing == []
+    assert [m["kind"] for m in p.files_missing] == ["analytics"]
     assert len(p.trips) == 1 and len(p.segments) == 2 and len(p.windows) == 1
     t = p.trips[0]
     assert t.product == "x" and t.product_raw == "uberX"
@@ -135,7 +135,7 @@ def test_parse_2025_us_format_flags_airport_and_missing_segments():
     assert t.begin_at == datetime(2025, 3, 1, 12, 52, 0, tzinfo=UTC)
     assert t.dropoff_at == datetime(2025, 3, 1, 13, 30, 10, tzinfo=UTC)
     missing = {m["kind"]: m["consequence"] for m in p.files_missing}
-    assert "online_offline" in missing and "logs" in missing["online_offline"]
+    assert "online_offline" in missing and "GPS" in missing["online_offline"]
 
 
 def test_naive_utc_columns_in_segments_and_windows_are_utc():
@@ -178,3 +178,18 @@ def test_rejects_oversized_payload(monkeypatch):
     with pytest.raises(ui.ImportError_) as e:
         ui.parse_zip(b"x" * 11)  # never reaches zipfile: size is checked first
     assert e.value.code == "too_large"
+
+
+def test_missing_analytics_is_reported_with_consequence():
+    data = _zip({"driver_lifetime_trips-0.csv": TRIPS_2025_HEADER + "\n" + TRIPS_2025_ROW + "\n"})
+    p = ui.parse_zip(data)
+    missing = {m["kind"]: m["consequence"] for m in p.files_missing}
+    assert missing["analytics"] == (
+        "driver_app_analytics.csv not present: no waiting locations from this export; "
+        "only your taps place you. Request a new export monthly."
+    )
+    assert missing["online_offline"] == (
+        "Driver Online Offline.csv not present (the US export never ships it): waiting "
+        "locations come from the 30-day GPS file (driver_app_analytics) and your offer "
+        "taps; request a new export monthly."
+    )

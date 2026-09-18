@@ -88,7 +88,7 @@ def test_import_twice_is_idempotent_and_reports_missing_files():
     assert s["trips"]["inserted"] == 1 and s["segments"]["inserted"] == 2
     assert s["trips"]["by_product"] == {"black_suv": 1}
     assert s["trips"]["date_min"].startswith("2025-03-01")
-    assert [m["kind"] for m in s["files_missing"]] == ["dispatches"]
+    assert [m["kind"] for m in s["files_missing"]] == ["dispatches", "analytics"]
     r2 = c.post("/api/v1/demand/import",
                 files=[("file", ("uber.zip", _export_zip(), "application/zip"))])
     assert r2.status_code == 201

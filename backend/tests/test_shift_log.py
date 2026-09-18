@@ -11,6 +11,8 @@ os.environ["SMART_SIMULATED"] = "true"
 os.environ["DEMAND_ENABLED"] = "true"
 os.environ["DEN_LOT_LAT"] = "39.8000"
 os.environ["DEN_LOT_LNG"] = "-104.7000"
+os.environ["DEMAND_HOME_LAT"] = "39.60000"
+os.environ["DEMAND_HOME_LNG"] = "-104.80000"
 
 from app.config import get_settings  # noqa: E402
 
@@ -87,6 +89,16 @@ def test_here_inside_den_lot_tags_zone():
     c = _owner()
     e = _ev(c, "here", "2026-09-16T03:00:00Z", lat=39.8001, lng=-104.7001)
     assert e["zone_key"] == "den_lot"
+
+
+def test_home_tag():
+    c = _owner()
+    home = _ev(c, "online", "2026-09-16T05:00:00Z", lat=39.60000, lng=-104.80000)
+    assert home["zone_key"] == "home"
+    away = _ev(c, "online", "2026-09-16T05:05:00Z", lat=39.61000, lng=-104.80000)
+    assert away["zone_key"] is None
+    here = _ev(c, "here", "2026-09-16T05:10:00Z", lat=39.8001, lng=-104.7001)
+    assert here["zone_key"] == "den_lot"
 
 
 def test_bad_kind_and_product_are_422():

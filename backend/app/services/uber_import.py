@@ -48,23 +48,32 @@ from app.models import (
 logger = logging.getLogger("blackvolt.demand.import")
 
 MAX_ZIP_BYTES = 50 * 1024 * 1024
+# Cap on one uncompressed ZIP member (the 30-day GPS analytics file: real size 38 MB
+# inside a 2 MB ZIP). MAX_ZIP_BYTES caps the whole archive; this caps a single member.
+MAX_MEMBER_BYTES = 150 * 1024 * 1024
 
 # kind → consequence shown to the owner when the file is absent.
 KNOWN_FILES: dict[str, str] = {
     "trips": "No trips file: nothing to learn about your products, hours or airport runs.",
     "online_offline": (
-        "Driver Online Offline.csv not present: waiting locations will come only from "
-        "your logs and the 30-day GPS file; request a new export monthly."
+        "Driver Online Offline.csv not present (the US export never ships it): waiting "
+        "locations come from the 30-day GPS file (driver_app_analytics) and your offer "
+        "taps; request a new export monthly."
     ),
     "dispatches": (
         "Dispatches file not present: the hour-of-week offer rate starts from your trips "
         "instead of real offer counts."
+    ),
+    "analytics": (
+        "driver_app_analytics.csv not present: no waiting locations from this export; "
+        "only your taps place you. Request a new export monthly."
     ),
 }
 
 _KIND_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("online_offline", re.compile(r"driver online offline", re.I)),
     ("dispatches", re.compile(r"dispatches offered and accepted", re.I)),
+    ("analytics", re.compile(r"driver_app_analytics", re.I)),
     (
         "trips",
         re.compile(
@@ -111,6 +120,16 @@ class ParsedSegment:
     begin_lng: float | None
     end_lat: float | None
     end_lng: float | None
+    h3_r8: str | None = None
+    zone_key: str | None = None
+
+
+@dataclass(slots=True)
+class ParsedPing:
+    at: datetime
+    lat: float
+    lng: float
+    online: bool
 
 
 @dataclass
@@ -132,9 +151,11 @@ class ParsedExport:
     trips: list[ParsedTrip] = field(default_factory=list)
     segments: list[ParsedSegment] = field(default_factory=list)
     windows: list[ParsedWindow] = field(default_factory=list)
+    pings: list[ParsedPing] = field(default_factory=list)
     files_found: list[str] = field(default_factory=list)
     files_missing: list[dict] = field(default_factory=list)
     skipped_rows: int = 0
+    pings_skipped: int = 0
 
 
 # ── Field helpers ───────────────────────────────────────────────────────────────
@@ -163,6 +184,9 @@ _TS_FORMATS = (
     "%Y-%m-%d %H:%M:%S %z UTC",
     "%Y-%m-%d %H:%M:%S %z",
     "%Y-%m-%dT%H:%M:%S",
+    # The GPS analytics file ("Event Time (UTC)") carries milliseconds; naive
+    # like every other *_utc column.
+    "%Y-%m-%d %H:%M:%S.%f",
     "%Y-%m-%d %H:%M:%S",
 )
 
@@ -320,6 +344,17 @@ def _window(row: dict) -> ParsedWindow:
     )
 
 
+def _ping(row: dict) -> ParsedPing:
+    """The GPS analytics row: only these four columns are ever read (Addendum A) —
+    everything else (IP, device, carrier, app version, event name) is ignored."""
+    at = _utc(row, "Event Time (UTC)")
+    lat = _f(row, "Latitude")
+    lng = _f(row, "Longitude")
+    if at is None or lat is None or lng is None:
+        raise ValueError("bad ping row")
+    return ParsedPing(at=at, lat=lat, lng=lng, online=_b(row, "Is Driver Online?"))
+
+
 def _kind_of(name: str) -> str | None:
     base = name.rsplit("/", 1)[-1]
     if base.startswith("._") or not base.lower().endswith(".csv"):
@@ -350,6 +385,14 @@ def parse_zip(data: bytes) -> ParsedExport:
             kind = _kind_of(info.filename)
             if kind is None:
                 continue
+            if kind == "analytics" and info.file_size > MAX_MEMBER_BYTES:
+                out.files_missing.append({
+                    "kind": "analytics_too_large",
+                    "consequence": (
+                        "driver_app_analytics.csv is larger than 150 MB; not read."
+                    ),
+                })
+                continue
             out.files_found.append(info.filename.rsplit("/", 1)[-1])
             seen_kinds.add(kind)
             text = z.read(info).decode("utf-8-sig", errors="replace")
@@ -357,11 +400,13 @@ def parse_zip(data: bytes) -> ParsedExport:
                 "trips": _trip,
                 "online_offline": _segment,
                 "dispatches": _window,
+                "analytics": _ping,
             }
             targets = {
                 "trips": out.trips,
                 "online_offline": out.segments,
                 "dispatches": out.windows,
+                "analytics": out.pings,
             }
             parser = parsers[kind]
             target = targets[kind]
@@ -369,7 +414,10 @@ def parse_zip(data: bytes) -> ParsedExport:
                 try:
                     target.append(parser(row))
                 except Exception:
-                    out.skipped_rows += 1
+                    if kind == "analytics":
+                        out.pings_skipped += 1
+                    else:
+                        out.skipped_rows += 1
     if not any_csv:
         raise ImportError_("no_csv")
     for kind, consequence in KNOWN_FILES.items():
@@ -432,7 +480,8 @@ async def import_export(db: AsyncSession, *, tenant_id: int, data: bytes) -> dic
             "begin_lng": _round5(s.begin_lng),
             "end_lat": _round5(s.end_lat),
             "end_lng": _round5(s.end_lng),
-            "h3_r8": _cell(s.begin_lat, s.begin_lng),
+            "h3_r8": s.h3_r8 if s.h3_r8 is not None else _cell(s.begin_lat, s.begin_lng),
+            "zone_key": s.zone_key,
             "source": SegmentSource.EXPORT,
         }
         for s in parsed.segments
@@ -454,6 +503,18 @@ async def import_export(db: AsyncSession, *, tenant_id: int, data: bytes) -> dic
         for w in parsed.windows
     ]
     t_ins = await _upsert(db, UberTrip, trip_rows, ("tenant_id", "dedup_key"))
+
+    # Deferred import: gps_import needs ParsedTrip/ParsedPing/_cell/_round5/_upsert from
+    # this module, so it imports from here at module load time. A top-level import here
+    # would run gps_import's imports before this module finished defining those names.
+    from app.services import gps_import
+
+    gps_summary = await gps_import.import_pings(
+        db, tenant_id=tenant_id, pings=parsed.pings, trips=parsed.trips
+    )
+    if gps_summary is not None:
+        gps_summary["skipped_rows"] = parsed.pings_skipped
+
     s_ins = await _upsert(db, DriverStateSegment, seg_rows, ("tenant_id", "dedup_key"))
     w_ins = await _upsert(db, DispatchWindow, win_rows, ("tenant_id", "dedup_key"))
 
@@ -474,6 +535,7 @@ async def import_export(db: AsyncSession, *, tenant_id: int, data: bytes) -> dic
         },
         "segments": {"inserted": s_ins, "skipped": len(seg_rows) - s_ins},
         "windows": {"inserted": w_ins, "skipped": len(win_rows) - w_ins},
+        "gps": gps_summary,
     }
     db.add(DemandImport(tenant_id=tenant_id, summary=summary))
     await db.commit()

@@ -45,6 +45,7 @@ class EarnerState(str, enum.Enum):
 class SegmentSource(str, enum.Enum):
     EXPORT = "export"
     LIVE = "live"
+    GPS = "gps"
 
 
 def _tenant_fk() -> Mapped[int]:
@@ -68,7 +69,7 @@ class UberTrip(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     dropoff_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Only the 2022 export format carries pickup coordinates; null otherwise.
+    # Filled by the GPS import (Task 15) or the 2022 export format; null otherwise.
     begin_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     begin_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     city: Mapped[str | None] = mapped_column(String(80), nullable=True)

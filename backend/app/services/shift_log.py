@@ -44,6 +44,13 @@ def in_den_lot(lat: float | None, lng: float | None) -> bool:
     return _haversine_m(lat, lng, s.DEN_LOT_LAT, s.DEN_LOT_LNG) <= s.DEN_LOT_RADIUS_M
 
 
+def in_home(lat: float | None, lng: float | None) -> bool:
+    s = get_settings()
+    if lat is None or lng is None or s.DEMAND_HOME_LAT is None or s.DEMAND_HOME_LNG is None:
+        return False
+    return _haversine_m(lat, lng, s.DEMAND_HOME_LAT, s.DEMAND_HOME_LNG) <= s.DEMAND_HOME_RADIUS_M
+
+
 def _r5(v: float | None) -> float | None:
     return None if v is None else round(v, 5)
 
@@ -80,7 +87,9 @@ def _new_segment(
         begin_lat=_r5(lat),
         begin_lng=_r5(lng),
         h3_r8=cell_of(lat, lng),
-        zone_key="den_lot" if in_den_lot(lat, lng) else None,
+        zone_key=(
+            "den_lot" if in_den_lot(lat, lng) else "home" if in_home(lat, lng) else None
+        ),
         source=SegmentSource.LIVE,
     )
 

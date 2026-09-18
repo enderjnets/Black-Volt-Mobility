@@ -440,12 +440,20 @@ class Settings(BaseSettings):
     DEN_LOT_LAT: float | None = None
     DEN_LOT_LNG: float | None = None
     DEN_LOT_RADIUS_M: int = 400
+    # Owner's home (Task 15, Addendum A): a GPS "open" segment near here is excluded
+    # from exposure. Single-tenant shortcut — the value lives in the VPS .env only,
+    # never in the repo, a doc or a screen.
+    DEMAND_HOME_LAT: float | None = None
+    DEMAND_HOME_LNG: float | None = None
+    DEMAND_HOME_RADIUS_M: int = 300
     DEMAND_BRIDGE_FARE_DEFAULT: float = 35.0
     DEMAND_RECOMPUTE_MIN: int = 15
     # api.weather.gov requires an identifying User-Agent.
     NWS_USER_AGENT: str = "BlackVoltMobility/1.0 (blackvoltmobility@gmail.com)"
 
-    @field_validator("DEN_LOT_LAT", "DEN_LOT_LNG", mode="before")
+    @field_validator(
+        "DEN_LOT_LAT", "DEN_LOT_LNG", "DEMAND_HOME_LAT", "DEMAND_HOME_LNG", mode="before"
+    )
     @classmethod
     def _blank_lot_coord_to_none(cls, v):
         # docker-compose passes "" when unset; treat that as "not configured".
