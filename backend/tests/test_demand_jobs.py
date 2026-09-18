@@ -302,6 +302,20 @@ def test_block_reasons_of_a_quiet_block_stay_empty():
                  "own_minutes": 0.0, "own_offers": 0.0}
 
 
+def test_a_recompute_invalidates_every_cached_zone_for_the_tenant():
+    """The sweep has to match the keys, and nothing in the types says it does.
+
+    Adding a payload version between `week` and the tenant id once moved every key out
+    from under the invalidator's pattern. Nothing raised: recompute_week returned
+    happily, the driver kept the previous week for the length of the TTL, and the only
+    symptom was numbers that would not change. Pin the two together.
+    """
+    assert demand._key(7, "lodo").startswith(demand._key_prefix(7))
+    assert demand._key(7, "lodo") == f"{demand._key_prefix(7)}lodo"
+    # A tenant's prefix must not be a prefix of another tenant's keys (7 vs 70).
+    assert not demand._key(70, "lodo").startswith(demand._key_prefix(7))
+
+
 def test_recompute_and_week_endpoint():
     _seed_priors()
     c = _owner()
