@@ -26,6 +26,7 @@ from app.db.base import get_session_factory  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import DispatchWindow, HexPrior, UberProduct, UberTrip  # noqa: E402
 from app.services import demand  # noqa: E402
+from app.services import demand_model as dm  # noqa: E402
 
 client = TestClient(app)
 CHERRY_CREEK = (39.7170, -104.9530)
@@ -251,6 +252,54 @@ def test_week_has_no_top_blocks_before_any_data():
     # every hour carries the same prior, so the week genuinely has no shape.
     assert len(means) == 1 and means.pop() > 0
     assert body["top_blocks"] == []
+
+
+def test_block_reasons_cover_the_whole_block_not_just_its_first_hour():
+    """The row the driver reads has to say why THAT RANGE of hours is worth driving to.
+
+    Reading `grid[dow][start_hour]["reasons"]` answered a narrower question: an event
+    that starts at 20:00 inside an 18:00-22:00 block, and any flight bank that misses
+    the first hour, vanished from the row. The spec asks each block to carry "the
+    covariates that lifted it" - it, the block. Pure function, no DB.
+    """
+    def cell(flights=1.0, events=None, holiday=None, own_minutes=0.0, own_offers=0.0):
+        return {"reasons": {"flights": flights, "events": events or [], "holiday": holiday,
+                            "own_minutes": own_minutes, "own_offers": own_offers}}
+
+    grid = [[cell() for _ in range(24)] for _ in range(7)]
+    grid[1][18] = cell(own_minutes=30.0, own_offers=1.0)
+    grid[1][19] = cell(flights=1.4, own_minutes=15.0)
+    grid[1][20] = cell(flights=2.1, events=["Nuggets vs Lakers"], holiday="Labor Day",
+                       own_offers=2.0)
+    grid[1][21] = cell(events=["Nuggets vs Lakers", "Red Rocks: ODESZA"])
+
+    block = dm.Block(dow=1, start_hour=18, end_hour=22, expected_offers=9.0, mean=0.13)
+    r = demand._block_reasons(grid, block)
+
+    assert r["flights"] == 2.1                     # the block's peak, not the first hour's 1.0
+    assert r["events"] == ["Nuggets vs Lakers", "Red Rocks: ODESZA"]  # union, deduped, in order
+    assert r["holiday"] == "Labor Day"             # per-day, carried by any hour of the block
+    assert r["own_minutes"] == 45.0                # 30 + 15: over a block these are totals
+    assert r["own_offers"] == 3.0
+
+    # The reading this replaced would have shown none of it, which is the whole point.
+    first_hour = grid[1][18]["reasons"]
+    assert first_hour["flights"] == 1.0 and first_hour["events"] == []
+
+
+def test_block_reasons_of_a_quiet_block_stay_empty():
+    """The other half: aggregating must not invent a reason where there is none.
+
+    Without this, `flights` defaulting the wrong way or `events` collecting falsy
+    entries would still pass the test above.
+    """
+    quiet = {"reasons": {"flights": 1.0, "events": [], "holiday": None,
+                         "own_minutes": 0.0, "own_offers": 0.0}}
+    grid = [[dict(quiet) for _ in range(24)] for _ in range(7)]
+    block = dm.Block(dow=3, start_hour=6, end_hour=8, expected_offers=2.0, mean=0.1)
+    r = demand._block_reasons(grid, block)
+    assert r == {"flights": 1.0, "events": [], "holiday": None,
+                 "own_minutes": 0.0, "own_offers": 0.0}
 
 
 def test_recompute_and_week_endpoint():

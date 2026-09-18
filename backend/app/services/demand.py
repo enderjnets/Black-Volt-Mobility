@@ -366,6 +366,39 @@ async def _private_rides(db: AsyncSession, tenant_id: int, now: datetime) -> lis
     ]
 
 
+def _block_reasons(grid: list[list[dict | None]], b: dm.Block) -> dict:
+    """The covariates that lifted the BLOCK, which is not the same as the ones that
+    lifted its first hour.
+
+    The spec asks each block to carry "the covariates that lifted it". Reading
+    `grid[dow][start_hour]["reasons"]` answered a different question: an event that
+    starts at 20:00 inside an 18:00–22:00 block, or a flight bank that lands on any
+    hour but the first, is a reason the block exists and was silently dropped from the
+    row the driver reads. Events are unioned in order of first appearance, the flight
+    multiplier is the block's peak (the row prints one number, so it must be the one
+    worth driving for), and the two own-data figures are summed because over a block
+    they are totals. `holiday` is per-day, so any hour of the block carries it.
+
+    start_hour is inclusive and end_hour exclusive, and top_blocks never crosses
+    midnight, so every hour in the range belongs to the same day.
+    """
+    hours = [(grid[b.dow][h] or {}).get("reasons") or {} for h in range(b.start_hour, b.end_hour)]
+    if not hours:
+        return {}
+    events: list[str] = []
+    for r in hours:
+        for ev in r.get("events") or []:
+            if ev not in events:
+                events.append(ev)
+    return {
+        "flights": max((r.get("flights") or 1.0) for r in hours),
+        "events": events,
+        "holiday": next((r.get("holiday") for r in hours if r.get("holiday")), None),
+        "own_minutes": round(sum(r.get("own_minutes") or 0.0 for r in hours), 1),
+        "own_offers": round(sum(r.get("own_offers") or 0.0 for r in hours), 2),
+    }
+
+
 async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) -> dict | None:
     zones = [{"key": z["key"], "name": z["name"]} for z in dpl.ZONES]
     keys = {z["key"] for z in dpl.ZONES}
@@ -418,7 +451,7 @@ async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) ->
         "top_blocks": [
             {"dow": b.dow, "start_hour": b.start_hour, "end_hour": b.end_hour,
              "expected_offers": round(b.expected_offers, 2), "mean": b.mean,
-             "reasons": grid[b.dow][b.start_hour]["reasons"]}
+             "reasons": _block_reasons(grid, b)}
             for b in blocks
         ],
         "private_rides": await _private_rides(db, tenant_id, now),
