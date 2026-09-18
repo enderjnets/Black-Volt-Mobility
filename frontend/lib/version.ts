@@ -10,7 +10,7 @@ export const CURRENT_VERSION = "0.93.0";
 export const CHANGELOG: VersionEntry[] = [
   {
     version: "0.93.0",
-    date: "2026-09-17",
+    date: "2026-09-18",
     title: "Where to wait: your week, planned from your own Black data",
     changes: [
       "New 'Where to wait' tab: import your Uber data export and see which hours of the week bring Black and Black SUV offers, zone by zone, with the reasons (DEN flight banks, events, holidays).",

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.93.0 — 2026-09-17 — Where to wait: your week, planned from your own Black data
+## 0.93.0 — 2026-09-18 — Where to wait: your week, planned from your own Black data
 
 Phase 1 of "Where to wait" ships: a planner built entirely from the driver's own Black and Black
 SUV history, not a generic heatmap. Import an Uber data export and the app scores every hour of
