@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_staff, resolve_tenant_id
 from app.db.base import get_db
-from app.services import shift_log, uber_import
+from app.services import demand, shift_log, uber_import
 
 router = APIRouter(tags=["demand"])
 
@@ -103,3 +103,19 @@ async def get_log_today(
         y, m, d = (int(x) for x in date.split("-"))
         now = datetime(y, m, d, 12, 0, tzinfo=shift_log.DENVER).astimezone(UTC)
     return await shift_log.today(db, tenant_id=tenant_id, now=now)
+
+
+@router.get("/demand/week")
+async def get_week(
+    response: Response,
+    zone: str | None = Query(default=None, max_length=40),
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_staff),
+):
+    tenant_id = await resolve_tenant_id(db, payload)
+    body = await demand.week_payload(db, tenant_id=tenant_id, zone=zone)
+    if body is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_zone")
+    response.headers["ETag"] = demand.etag_for(body)
+    response.headers["Cache-Control"] = "private, max-age=300, stale-while-revalidate=900"
+    return body
