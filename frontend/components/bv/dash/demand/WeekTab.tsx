@@ -42,7 +42,11 @@ function shade(v: number, max: number, min: number): string {
 const MIN_PER_HOUR = 60;
 
 function offersInTheHour(ratePerMinute: number): string {
-  return (ratePerMinute * MIN_PER_HOUR).toFixed(1);
+  const v = ratePerMinute * MIN_PER_HOUR;
+  // A quiet hour is not an impossible one. Under 0.05 the single decimal collapses to
+  // "0.0", which reads as "never" — the same claim that once had 138 cells announcing
+  // 0.0%. Below the display's own resolution the panel says so instead.
+  return v > 0 && v < 0.05 ? "<0.1" : v.toFixed(1);
 }
 
 function pct(n: number): string {
