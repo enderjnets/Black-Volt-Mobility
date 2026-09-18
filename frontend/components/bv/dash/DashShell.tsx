@@ -227,6 +227,7 @@ export function DashShell({ children }: { children: ReactNode }) {
 
       <div className="bv-mobile-pad" style={{ flex: 1, minWidth: 0 }}>
         <div
+          className="bv-dash-header"
           style={{
             display: "flex",
             alignItems: "center",

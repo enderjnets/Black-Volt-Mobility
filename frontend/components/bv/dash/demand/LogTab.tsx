@@ -40,6 +40,17 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
+async function postLog(kind: LogKind, extra: Partial<Parameters<typeof logEvent>[0]> = {}): Promise<void> {
+  const pos = await getPosition();
+  await logEvent({
+    client_event_id: newEventId(),
+    kind,
+    lat: pos?.lat ?? null,
+    lng: pos?.lng ?? null,
+    ...extra,
+  });
+}
+
 export function LogTab() {
   const { t } = useI18n();
   const [today, setToday] = useState<TodayLog | null>(null);
@@ -49,6 +60,7 @@ export function LogTab() {
   const [fare, setFare] = useState("");
   const [flash, setFlash] = useState<"saved" | "failed" | null>(null);
   const wakeLock = useRef<{ release: () => Promise<void> } | null>(null);
+  const pingInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -62,18 +74,20 @@ export function LogTab() {
     refresh();
   }, [refresh]);
 
+  // Next to Uber Driver in split-screen, the shell's own sticky header and fixed
+  // tab bar cost too much of a ~390×400 viewport; drop them for this tab only.
+  useEffect(() => {
+    document.documentElement.dataset.bvCompact = "log";
+    return () => {
+      delete document.documentElement.dataset.bvCompact;
+    };
+  }, []);
+
   const send = useCallback(
     async (kind: LogKind, extra: Partial<Parameters<typeof logEvent>[0]> = {}) => {
       setBusy(kind);
-      const pos = await getPosition();
       try {
-        await logEvent({
-          client_event_id: newEventId(),
-          kind,
-          lat: pos?.lat ?? null,
-          lng: pos?.lng ?? null,
-          ...extra,
-        });
+        await postLog(kind, extra);
         setFlash("saved");
       } catch {
         setFlash("failed");
@@ -86,6 +100,24 @@ export function LogTab() {
     [refresh],
   );
 
+  // Auto-ping has its own in-flight guard, never the tap `busy` state — an offer
+  // arriving mid-ping must find every button live. A still-running ping just
+  // skips the next tick instead of piling up requests.
+  const sendPing = useCallback(async () => {
+    if (pingInFlight.current) return;
+    pingInFlight.current = true;
+    try {
+      await postLog("ping");
+      setFlash("saved");
+    } catch {
+      setFlash("failed"); // the owner must know when his waits stop being counted
+    } finally {
+      pingInFlight.current = false;
+      setTimeout(() => setFlash(null), 1800);
+      refresh();
+    }
+  }, [refresh]);
+
   // Auto-ping while waiting and this screen is visible; a wake lock keeps the
   // screen on so the ping loop survives (best effort — iOS ignores it when hidden).
   const waiting = today?.state === "open";
@@ -94,7 +126,7 @@ export function LogTab() {
     let alive = true;
     const tick = () => {
       if (!alive || document.visibilityState !== "visible") return;
-      send("ping");
+      sendPing();
     };
     const id = setInterval(tick, PING_MS);
     (async () => {
@@ -111,7 +143,7 @@ export function LogTab() {
       wakeLock.current?.release().catch(() => {});
       wakeLock.current = null;
     };
-  }, [waiting, send]);
+  }, [waiting, sendPing]);
 
   const sendOffer = async () => {
     const f = fare.trim() ? Number(fare) : null;
@@ -161,13 +193,15 @@ export function LogTab() {
   });
 
   const chip = (on: boolean): React.CSSProperties => ({
-    padding: "10px 14px",
+    minHeight: 36,
+    padding: "10px 12px",
     borderRadius: 999,
     border: `1px solid ${on ? "var(--volt)" : "var(--line-strong)"}`,
     background: on ? "rgba(0,229,255,0.12)" : "transparent",
     color: on ? "var(--volt)" : "var(--silver)",
     fontWeight: 600,
-    fontSize: 14,
+    fontSize: 13,
+    whiteSpace: "nowrap",
     cursor: "pointer",
     opacity: disabled ? 0.55 : 1,
   });
@@ -195,7 +229,7 @@ export function LogTab() {
           {t("dash.demand.log.offer")}
         </button>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {PRODUCTS.map((p) => (
             <button key={p} style={chip(product === p)} disabled={disabled} onClick={() => setProduct(p)}>
               {t(`dash.demand.product.${p}`)}
@@ -232,7 +266,7 @@ export function LogTab() {
         </button>
       </div>
 
-      <div style={{ fontSize: 12, color: "var(--silver)" }}>{t("dash.demand.log.hint")}</div>
+      <div className="bv-log-hint" style={{ fontSize: 12, color: "var(--silver)" }}>{t("dash.demand.log.hint")}</div>
 
       {waiting && (
         <div style={{ fontSize: 12, color: "var(--silver)" }}>{t("dash.demand.log.autoPing")}</div>
