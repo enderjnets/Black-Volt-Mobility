@@ -153,7 +153,16 @@ export function WeekTab() {
                 <span style={{ fontWeight: 700, color: "var(--volt)" }}>
                   {t(`dash.demand.dow.${DOW_KEYS[b.dow]}`)} {b.start_hour}:00–{b.end_hour}:00
                 </span>
-                <span>{b.expected_offers.toFixed(1)} {t("dash.demand.week.expected")}</span>
+                {/* A ratio, not a count. The count stacks four multipliers into peaks
+                    an order of magnitude above anything this driver has lived; the
+                    ordering those multipliers produce is the part that holds. With no
+                    baseline there is no ratio, and the row says nothing rather than
+                    falling back to the number we stopped trusting. */}
+                {b.lift != null && (
+                  <span style={{ fontWeight: 600 }}>
+                    {t("dash.demand.week.lift", { n: b.lift.toFixed(1) })}
+                  </span>
+                )}
                 {b.reasons.flights != null && b.reasons.flights > 1.2 && (
                   <span style={{ color: "var(--silver)" }}><Icon name="plane" size={12} color="currentColor" /> {t("dash.demand.week.flights")} ×{b.reasons.flights}</span>
                 )}
@@ -205,6 +214,10 @@ export function WeekTab() {
           </div>
           <div style={{ color: "var(--silver)" }}>
             {offersInTheHour(cell.mean)} ({offersInTheHour(cell.lo)}–{offersInTheHour(cell.hi)}) {t("dash.demand.week.expected")}
+            {/* The one place an absolute count survives, because here you are looking
+                into a single hour rather than choosing between them — and it has to
+                admit whose number it is. */}
+            <span style={{ opacity: 0.65 }}> · {t("dash.demand.week.estimate")}</span>
           </div>
           <div style={{ color: "var(--silver)" }}>
             {pct(cell.own_share)} {t("dash.demand.week.ownData")} · {((cell.reasons.own_minutes ?? 0) / 60).toFixed(1)} {t("dash.demand.week.hoursLogged")}

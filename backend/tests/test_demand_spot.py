@@ -60,7 +60,8 @@ def test_a_cluster_returns_the_middle_not_a_doorway():
 
 
 def test_a_lone_place_is_that_place():
-    lat, lng, place, near = ds.triangulate(*KIMPTON_MONACO, {"Kimpton Hotel Monaco Denver": KIMPTON_MONACO})
+    only = {"Kimpton Hotel Monaco Denver": KIMPTON_MONACO}
+    lat, lng, place, near = ds.triangulate(*KIMPTON_MONACO, only)
     assert (lat, lng) == KIMPTON_MONACO
     assert place == "Kimpton Hotel Monaco Denver"
     assert near == ["Kimpton Hotel Monaco Denver"]

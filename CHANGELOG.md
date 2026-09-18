@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.95.0 — 2026-09-18 — Blocks say how much better, not how many offers
+
+Fixing the census layer removed a blanket 0.5x penalty that had been suppressing every
+cell, and the peaks jumped: LoDo's best block went from 3.6 to 14.3 expected offers, or
+7.5 an hour. Measured against the real thing, thirty days of GPS give 118.6 hours of
+waiting and 31 Black/SUV trips — **0.26 offers an hour**. The peaks were twenty to thirty
+times a lived week, because four multipliers (income, hotels, events, flights) compose
+into roughly 11x the base, and `top_blocks` shows exactly the hours where they compose.
+
+The ordering those multipliers produce has held up against the city. The scale never had
+anything to check it against. So the screen stops claiming the scale.
+
+- **A block reads "×5.8 a normal hour"** instead of a count. Both sides of the ratio come
+  from the model — dividing a model estimate by a measured rate would be the same frame
+  error this feature has already made six times. The baseline is the median hour across
+  *all* zones, so the number stays comparable between them; a per-zone baseline would
+  give every zone's best block the same ratio and destroy the only comparison worth
+  making.
+- **The detail panel keeps the estimate and its interval**, because there you are looking
+  into one hour rather than choosing between them — now labelled as a model estimate
+  rather than your history.
+- **A quiet hour reads "<0.1", not "0.0".** Under 0.05 the single decimal collapsed to
+  zero, which reads as never. It is not never, and an exact zero is a claim this feature
+  has already made falsely once.
+- **Importing an export refreshes the planner at once.** Only the hourly job ever rewrote
+  the scores, so the first read after an upload showed the previous week.
+
 ## 0.94.0 — 2026-09-18 — Every block now tells you where to park, and why
 
 The planner answered *when*. It now answers *where to stand*, and says which of the two

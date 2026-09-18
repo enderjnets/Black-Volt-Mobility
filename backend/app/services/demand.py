@@ -463,7 +463,8 @@ async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) ->
         ).scalars().all()
     if not rows:
         return {"zone": zone, "zone_name": None, "zones": zones, "computed_at": None,
-                "grid": [], "top_blocks": [], "private_rides": [], "own_minutes_total": 0}
+                "grid": [], "top_blocks": [], "private_rides": [], "own_minutes_total": 0,
+                "baseline_mean": 0.0}
     if zone is None:
         # Default: the zone with the most of the owner's own minutes, else the first scored.
         by_zone: dict[str, float] = {}
@@ -490,6 +491,21 @@ async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) ->
             "own_share": r.own_share, "reasons": r.reasons or {},
         }
     blocks = dm.top_blocks(ests) if all(e is not None for e in ests) else []
+    # What a block is worth is reported as a ratio against a normal hour, not as a count
+    # of offers. The count stacks four multipliers — income, hotels, events, flights —
+    # into peaks around 11x the base, and that scale has never been checked against a
+    # real week: the owner's own history runs an order of magnitude below it. The ORDER
+    # those multipliers produce has been checked and holds, and a ratio is the part of
+    # the model that survives being wrong about the scale.
+    #
+    # Both sides of the ratio come from the model. Dividing a model estimate by a
+    # measured rate would be the frame error this feature has already made six times.
+    # The median, not the mean, because the mean is inflated by the very peaks in
+    # question. Across ALL zones, so the number stays comparable between them — a
+    # per-zone baseline would give every zone's best block the same ratio and destroy
+    # exactly the comparison the driver is making.
+    all_means = sorted(r.mean for r in rows)
+    baseline = all_means[len(all_means) // 2] if all_means else 0.0
     now = datetime.now(UTC)
     # Only pay for the spot inputs when there is a block to place. Three reads on a
     # cache miss, none on a hit, and none at all for a zone with nothing to recommend.
@@ -531,11 +547,13 @@ async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) ->
         "top_blocks": [
             {"dow": b.dow, "start_hour": b.start_hour, "end_hour": b.end_hour,
              "expected_offers": round(b.expected_offers, 2), "mean": b.mean,
-             "reasons": _block_reasons(grid, b), "spot": _spot_for(b)}
+             "reasons": _block_reasons(grid, b), "spot": _spot_for(b),
+             "lift": round(b.mean / baseline, 1) if baseline > 0 else None}
             for b in blocks
         ],
         "private_rides": await _private_rides(db, tenant_id, now),
         "own_minutes_total": round(sum(e.exposure_min for e in ests if e), 1),
+        "baseline_mean": baseline,
     }
     await _cache_set(tenant_id, zone, payload)
     return payload
@@ -548,10 +566,16 @@ def etag_for(payload: dict) -> str:
 
 
 # ── Redis (best-effort, same pattern as coach.py) ───────────────────────────────
-# Bump when the payload SHAPE changes. Neither the cache key nor the ETag knew anything
-# about shape, so adding a field used to be invisible for up to the 2 h TTL — the wrong
-# kind of surprise to debug twice.
-PAYLOAD_VERSION = "v2"
+# Bump when the payload SHAPE changes. Neither the cache key nor the ETag knows anything
+# about shape, so a new field is otherwise invisible for up to the 2 h TTL.
+#
+# v2 -> v3 added `baseline_mean` and `top_blocks[].lift`. Worth recording that this
+# constant was introduced and then forgotten within the same afternoon: the next shape
+# change shipped without touching it, and the payload came back from Redis missing the
+# field it had just gained. A version you have to remember is a version you will forget,
+# so the guard that actually works is the test asserting the new field survives a round
+# trip — not this line.
+PAYLOAD_VERSION = "v3"
 
 
 def _key_prefix(tenant_id: int) -> str:

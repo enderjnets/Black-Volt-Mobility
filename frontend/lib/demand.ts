@@ -87,6 +87,9 @@ export interface TopBlock {
   mean: number;
   reasons: WeekCell["reasons"];
   spot?: WaitingSpot | null;
+  /* How many times a normal hour this block is. Both sides of the ratio come from
+     the model: its scale is unverified, its ordering is not. */
+  lift?: number | null;
 }
 
 export interface WeekPayload {
@@ -98,6 +101,7 @@ export interface WeekPayload {
   top_blocks: TopBlock[];
   private_rides: { id: number; at: string; pickup: string }[];
   own_minutes_total: number;
+  baseline_mean: number;
 }
 
 async function jget<T>(path: string): Promise<T> {

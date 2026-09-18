@@ -5,9 +5,20 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.94.0";
+export const CURRENT_VERSION = "0.95.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.95.0",
+    date: "2026-09-18",
+    title: "Blocks now say how much better, not how many offers",
+    changes: [
+      "A block reads '×5.8 a normal hour' instead of a count of offers. The count stacked four multipliers into peaks far above anything you have actually seen; the ordering they produce is the part that holds, and a ratio is what survives.",
+      "Tapping an hour still shows the estimate and its interval, now labelled as a model estimate rather than your history.",
+      "A quiet hour reads '<0.1' instead of '0.0'. It is not never.",
+      "Importing an export refreshes the planner immediately instead of waiting up to an hour for the next scheduled run.",
+    ],
+  },
   {
     version: "0.94.0",
     date: "2026-09-18",
