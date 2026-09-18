@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.94.0 — 2026-09-18 — Every block now tells you where to park, and why
+
+The planner answered *when*. It now answers *where to stand*, and says which of the two
+it is speaking from: your own history, or a model that has never sat in a car.
+
+- **A waiting spot and a Go button on every block.** The rules fire in order and the row
+  names the one that won. An event sends you a block out from the venue — the entrance
+  is the worst traffic in the city with nowhere to stop — and names the venue. DEN sends
+  you to the Commercial Holding Lot. Otherwise it is the cell where your own waiting has
+  actually produced Black offers, and failing that the highest-income part of the zone.
+- **Clusters are triangulated, not pointed at.** Where several luxury hotels sit within a
+  kilometre, the spot is the point among them rather than one doorway you would be moved
+  on from.
+- **A single lucky offer cannot pick your evening.** A cell needs at least an hour of
+  your own waiting before its offers-per-hour counts, so somewhere you drove through once
+  never outranks somewhere you work.
+- **Fixed: the Census income layer had never worked.** The tract polygons were being read
+  from TIGERweb's *block group* layer, whose ids are one character longer than the ACS
+  ids, so every lookup missed and all 14,741 cells in the metro carried an affluence of
+  exactly 0.0 — while the build script still reported success. Income now varies cell by
+  cell, which is what makes "the best corner of this zone" mean anything. **Every number
+  on the planner moves with this fix.**
+
 ## 0.93.1 — 2026-09-18 — Every hour of the planner was showing zero expected offers
 
 Found in production minutes after v0.93.0 went live, against real data.

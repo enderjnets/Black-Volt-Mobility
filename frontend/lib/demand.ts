@@ -67,13 +67,35 @@ export interface WeekCell {
   reasons: { flights?: number; events?: string[]; holiday?: string | null; own_minutes?: number; own_offers?: number };
 }
 
+/* Where to physically park during a block. `source` is not decoration: it is the
+   difference between "you have waited here and it paid" and "the census says this is
+   the richest corner", and the driver deciding whether to drive there needs it. */
+export interface WaitingSpot {
+  lat: number;
+  lng: number;
+  source: "event" | "den_lot" | "your_data" | "income";
+  place: string | null;
+  near: string[];
+  venue: string | null;
+}
+
+export interface TopBlock {
+  dow: number;
+  start_hour: number;
+  end_hour: number;
+  expected_offers: number;
+  mean: number;
+  reasons: WeekCell["reasons"];
+  spot?: WaitingSpot | null;
+}
+
 export interface WeekPayload {
   zone: string | null;
   zone_name: string | null;
   zones: { key: string; name: string }[];
   computed_at: string | null;
   grid: WeekCell[][];
-  top_blocks: { dow: number; start_hour: number; end_hour: number; expected_offers: number; mean: number; reasons: WeekCell["reasons"] }[];
+  top_blocks: TopBlock[];
   private_rides: { id: number; at: string; pickup: string }[];
   own_minutes_total: number;
 }

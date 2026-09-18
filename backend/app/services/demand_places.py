@@ -8,6 +8,7 @@ Google Places, whose policy forbids storing anything but place_id.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from app.services.uber_research import TARGET_ZONES
@@ -82,3 +83,57 @@ def load_geocoded() -> dict[str, tuple[float, float]]:
     except FileNotFoundError:
         return {}
     return {k: (float(v["lat"]), float(v["lng"])) for k, v in raw.items()}
+
+
+# ── Geography ───────────────────────────────────────────────────────────────────
+# Places are the only thing in this system that can turn a coordinate into a sentence
+# a driver understands, so the lookups live beside the list rather than inside whoever
+# happens to need them first.
+
+def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    r = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return r * 2 * math.asin(math.sqrt(a))
+
+
+def places_within(
+    lat: float, lng: float, places: dict[str, tuple[float, float]], *, km: float
+) -> list[tuple[str, float, float]]:
+    """(name, lat, lng) for every curated place within `km`, nearest first."""
+    out = [
+        (name, plat, plng, haversine_m(lat, lng, plat, plng))
+        for name, (plat, plng) in places.items()
+        if haversine_m(lat, lng, plat, plng) <= km * 1000.0
+    ]
+    out.sort(key=lambda t: (t[3], t[0]))
+    return [(n, la, ln) for n, la, ln, _ in out]
+
+
+def nearest_place(
+    lat: float, lng: float, places: dict[str, tuple[float, float]], *, max_km: float = 2.0
+) -> tuple[str, float] | None:
+    """The closest curated place and its distance in km, or None if all are further
+    than `max_km`. Past a couple of kilometres a name stops describing where you are."""
+    if not places:
+        return None
+    name, (plat, plng) = min(
+        places.items(), key=lambda kv: haversine_m(lat, lng, kv[1][0], kv[1][1])
+    )
+    d_km = haversine_m(lat, lng, plat, plng) / 1000.0
+    return (name, round(d_km, 2)) if d_km <= max_km else None
+
+
+def centroid(points: list[tuple[float, float]]) -> tuple[float, float]:
+    """The middle of a small cluster of places.
+
+    A plain mean of lat/lng, not a projected centroid: over the ~1 km cluster this is
+    ever asked about, the difference is a few centimetres, and the answer is a kerb to
+    wait at rather than a survey marker. Sitting between four hotels beats sitting in
+    the doorway of one of them, which is where a "nearest place" answer would park you.
+    """
+    n = len(points)
+    if n == 0:
+        raise ValueError("centroid of no points")
+    return (round(sum(p[0] for p in points) / n, 6), round(sum(p[1] for p in points) / n, 6))

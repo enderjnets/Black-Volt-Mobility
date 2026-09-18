@@ -404,15 +404,9 @@ def top_waits(
         per_hour = round(premium_requests / hours, 2) if hours > 0 else 0.0
         clat, clng = h3.cell_to_latlng(cell)
 
-        place, distance_km = None, None
-        nearest = min(
-            places.items(), key=lambda kv: _haversine_m(clat, clng, kv[1][0], kv[1][1]),
-            default=None,
-        )
-        if nearest is not None:
-            d_km = _haversine_m(clat, clng, nearest[1][0], nearest[1][1]) / 1000.0
-            if d_km <= LABEL_KM:
-                place, distance_km = nearest[0], round(d_km, 2)
+        # Same labeller the waiting-spot picker uses, so a cell never gets two names.
+        near = demand_places.nearest_place(clat, clng, places, max_km=LABEL_KM)
+        place, distance_km = near if near is not None else (None, None)
 
         zone_key, zone_name = None, None
         for z in demand_places.ZONES:

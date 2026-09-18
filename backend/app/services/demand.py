@@ -37,6 +37,7 @@ from app.models import (
 )
 from app.services import demand_model as dm
 from app.services import demand_places as dpl
+from app.services import demand_spot
 from app.services import flights_baseline as fb
 
 logger = logging.getLogger("blackvolt.demand")
@@ -162,7 +163,8 @@ async def _upcoming_events(db: AsyncSession, tenant_id: int, now: datetime) -> l
         )
     ).scalars().all()
     return [
-        {"title": r.title, "lat": r.venue_lat, "lng": r.venue_lng, "starts_at": r.starts_at}
+        {"title": r.title, "venue_name": r.venue_name, "lat": r.venue_lat,
+         "lng": r.venue_lng, "starts_at": r.starts_at}
         for r in rows
     ]
 
@@ -399,6 +401,53 @@ def _block_reasons(grid: list[list[dict | None]], b: dm.Block) -> dict:
     }
 
 
+async def _own_by_cell(db: AsyncSession, tenant_id: int) -> dict[str, tuple[float, float]]:
+    """cell → (open minutes, premium offers) over the whole history.
+
+    The planner only ever asked whether a cell belonged to a zone; this is the first
+    place that cares WHICH cell, because "where do I park" cannot be answered at the
+    scale of a two-and-a-half mile circle. Deliberately not restricted to a block's
+    hours: with a few hundred wait segments in total, an hour-restricted per-cell count
+    is empty nearly everywhere, and an empty answer dressed as a specific one is worse
+    than an honest general one.
+    """
+    since = datetime.now(UTC) - timedelta(days=90)
+    minutes: dict[str, float] = {}
+    offers: dict[str, float] = {}
+
+    segs = (
+        await db.execute(
+            select(DriverStateSegment).where(
+                DriverStateSegment.tenant_id == tenant_id,
+                DriverStateSegment.state == EarnerState.OPEN,
+                DriverStateSegment.begin_at >= since,
+                DriverStateSegment.h3_r8.is_not(None),
+            )
+        )
+    ).scalars().all()
+    for s in segs:
+        if s.zone_key == "home":
+            continue
+        minutes[s.h3_r8] = minutes.get(s.h3_r8, 0.0) + (
+            s.end_at - s.begin_at
+        ).total_seconds() / 60.0
+
+    rows = (
+        await db.execute(
+            select(OfferEvent).where(
+                OfferEvent.tenant_id == tenant_id,
+                OfferEvent.product.in_(_PREMIUM),
+                OfferEvent.at >= since,
+                OfferEvent.h3_r8.is_not(None),
+            )
+        )
+    ).scalars().all()
+    for o in rows:
+        offers[o.h3_r8] = offers.get(o.h3_r8, 0.0) + 1.0
+
+    return {c: (minutes.get(c, 0.0), offers.get(c, 0.0)) for c in set(minutes) | set(offers)}
+
+
 async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) -> dict | None:
     zones = [{"key": z["key"], "name": z["name"]} for z in dpl.ZONES]
     keys = {z["key"] for z in dpl.ZONES}
@@ -442,6 +491,37 @@ async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) ->
         }
     blocks = dm.top_blocks(ests) if all(e is not None for e in ests) else []
     now = datetime.now(UTC)
+    # Only pay for the spot inputs when there is a block to place. Three reads on a
+    # cache miss, none on a hit, and none at all for a zone with nothing to recommend.
+    spot_cells: list = []
+    spot_events: list[dict] = []
+    own_cells: dict[str, tuple[float, float]] = {}
+    if blocks:
+        spot_cells = (await _zone_cells(db)).get(zone, [])
+        spot_events = await _upcoming_events(db, tenant_id, now)
+        own_cells = await _own_by_cell(db, tenant_id)
+    settings = get_settings()
+    den_lot = (
+        (settings.DEN_LOT_LAT, settings.DEN_LOT_LNG)
+        if settings.DEN_LOT_LAT is not None and settings.DEN_LOT_LNG is not None
+        else None
+    )
+    zone_def = next(z for z in dpl.ZONES if z["key"] == zone)
+    places = dpl.load_geocoded()
+    if den_lot is not None:
+        places = {**places, "DEN Commercial Holding Lot": den_lot}
+
+    def _spot_for(b: dm.Block) -> dict | None:
+        return demand_spot.pick_spot(
+            zone=zone_def,
+            block_events=list(_block_reasons(grid, b).get("events") or []),
+            cells=spot_cells,
+            own_by_cell=own_cells,
+            places=places,
+            events=spot_events,
+            den_lot=den_lot,
+        )
+
     payload = {
         "zone": zone,
         "zone_name": next(z["name"] for z in zones if z["key"] == zone),
@@ -451,7 +531,7 @@ async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) ->
         "top_blocks": [
             {"dow": b.dow, "start_hour": b.start_hour, "end_hour": b.end_hour,
              "expected_offers": round(b.expected_offers, 2), "mean": b.mean,
-             "reasons": _block_reasons(grid, b)}
+             "reasons": _block_reasons(grid, b), "spot": _spot_for(b)}
             for b in blocks
         ],
         "private_rides": await _private_rides(db, tenant_id, now),
@@ -463,13 +543,30 @@ async def week_payload(db: AsyncSession, *, tenant_id: int, zone: str | None) ->
 
 def etag_for(payload: dict) -> str:
     return '"' + hashlib.sha1(
-        f"{payload.get('computed_at')}|{payload.get('zone')}".encode()
+        f"{PAYLOAD_VERSION}|{payload.get('computed_at')}|{payload.get('zone')}".encode()
     ).hexdigest()[:16] + '"'
 
 
 # ── Redis (best-effort, same pattern as coach.py) ───────────────────────────────
+# Bump when the payload SHAPE changes. Neither the cache key nor the ETag knew anything
+# about shape, so adding a field used to be invisible for up to the 2 h TTL — the wrong
+# kind of surprise to debug twice.
+PAYLOAD_VERSION = "v2"
+
+
+def _key_prefix(tenant_id: int) -> str:
+    """Every key for a tenant, and the thing the invalidator sweeps.
+
+    The two used to be written out separately, and the moment a version was added
+    between `week` and the tenant id the sweep silently stopped matching: a recompute no
+    longer refreshed anything, and the driver kept the old week for the length of the
+    TTL. One source, so they cannot drift again.
+    """
+    return f"demand:week:{PAYLOAD_VERSION}:{tenant_id}:"
+
+
 def _key(tenant_id: int, zone: str) -> str:
-    return f"demand:week:{tenant_id}:{zone}"
+    return f"{_key_prefix(tenant_id)}{zone}"
 
 
 async def _cache_get(tenant_id: int, zone: str) -> dict | None:
@@ -506,7 +603,10 @@ async def _cache_clear(tenant_id: int) -> None:
 
         client = redis_async.from_url(get_settings().REDIS_URL)
         try:
-            keys = await client.keys(f"demand:week:{tenant_id}:*")
+            # The current shape, plus whatever an older release left behind: those
+            # would expire on their own, but a rollback would start reading them again.
+            keys = await client.keys(f"{_key_prefix(tenant_id)}*")
+            keys += await client.keys(f"demand:week:{tenant_id}:*")
             if keys:
                 await client.delete(*keys)
         finally:

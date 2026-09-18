@@ -111,6 +111,56 @@ def _tract_stats(
     return income, share
 
 
+# TIGERweb's Tracts_Blocks service publishes several layers with near-identical names.
+# Layer 0 is "Census Tracts" and its GEOID is 11 characters (state+county+tract). Layer
+# 8 is "Census Block Groups" — 12 characters, because it appends the block-group digit.
+# The ACS below is queried `for=tract:*`, so its keys are 11 characters. Asking layer 8
+# for the polygons made every lookup miss, `affluence_score(None, None)` return 0.0, and
+# every cell in the metro carry the same flat prior; the build script still printed a
+# cell count, so nothing ever complained. The layer is named rather than inlined in the
+# URL so that changing it means reading this.
+_TIGER_TRACT_LAYER = 0
+_TIGER = (
+    "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/"
+    f"Tracts_Blocks/MapServer/{_TIGER_TRACT_LAYER}/query"
+)
+
+
+def _join_tracts(
+    features: list[dict], stats: dict[str, tuple[float | None, float | None]]
+) -> list[dict]:
+    """Attach each ACS tract's income to its polygon, and refuse to do it silently wrong.
+
+    A GEOID one character longer than the ACS keys is a different geography, not a
+    missing tract. Matching none of them used to succeed quietly and hand back a
+    metro-wide affluence of exactly 0.0, so a total miss now raises and names both
+    shapes instead.
+    """
+    out: list[dict] = []
+    matched = 0
+    for feat in features:
+        geoid = (feat.get("properties") or {}).get("GEOID")
+        geom = feat.get("geometry") or {}
+        if not geoid or not geom.get("coordinates"):
+            continue
+        inc, share = stats.get(geoid, (None, None))
+        if geoid in stats:
+            matched += 1
+        polys = [geom["coordinates"]] if geom.get("type") == "Polygon" else geom["coordinates"]
+        for poly in polys:
+            rings = [[(lat, lng) for lng, lat in ring] for ring in poly]
+            out.append({"geoid": geoid, "income": inc, "share_200k": share, "rings": rings})
+    if features and stats and matched == 0:
+        got = str((features[0].get("properties") or {}).get("GEOID"))
+        want = next(iter(stats))
+        raise RuntimeError(
+            f"no TIGERweb GEOID matched the ACS tracts: polygon id {got!r} ({len(got)} "
+            f"chars) vs ACS id {want!r} ({len(want)} chars). Check the TIGERweb layer — "
+            "0 is Census Tracts, 8 is Census Block Groups."
+        )
+    return out
+
+
 async def fetch_census(counties: list[str] | None = None) -> list[dict]:
     """ACS 5-year 2020-2024 tract rows + TIGERweb tract polygons for the metro counties.
     Returns [{"geoid", "income", "share_200k", "rings"}]. Needs CENSUS_API_KEY."""
@@ -139,8 +189,7 @@ async def fetch_census(counties: list[str] | None = None) -> list[dict]:
                     row[idx["B19013_001E"]], row[idx["B19001_001E"]], row[idx["B19001_017E"]]
                 )
             g = await http.get(
-                "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/"
-                "Tracts_Blocks/MapServer/8/query",
+                _TIGER,
                 params={
                     "where": f"STATE='08' AND COUNTY='{county}'",
                     "outFields": "GEOID",
@@ -149,14 +198,7 @@ async def fetch_census(counties: list[str] | None = None) -> list[dict]:
                 },
             )
             g.raise_for_status()
-            for feat in g.json().get("features", []):
-                geoid = feat["properties"]["GEOID"]
-                geom = feat["geometry"]
-                polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
-                inc, share = stats.get(geoid, (None, None))
-                for poly in polys:
-                    rings = [[(lat, lng) for lng, lat in ring] for ring in poly]
-                    out.append({"geoid": geoid, "income": inc, "share_200k": share, "rings": rings})
+            out.extend(_join_tracts(g.json().get("features", []), stats))
     return out
 
 
