@@ -73,6 +73,9 @@ export function WeekTab() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* .bv-mobile-pad * { min-width: 0 } lets flex items shrink below their own
+          nowrap text, so without flexShrink the chips overlap and a tap lands on
+          the neighbour instead of scrolling. */}
       <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
         {data.zones.map((z) => {
           const on = z.key === data.zone;
@@ -80,7 +83,7 @@ export function WeekTab() {
             <button
               key={z.key}
               onClick={() => setZone(z.key)}
-              style={{ whiteSpace: "nowrap", padding: "8px 12px", borderRadius: 999, border: `1px solid ${on ? "var(--volt)" : "var(--line-strong)"}`, background: on ? "rgba(0,229,255,0.12)" : "transparent", color: on ? "var(--volt)" : "var(--silver)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "8px 12px", borderRadius: 999, border: `1px solid ${on ? "var(--volt)" : "var(--line-strong)"}`, background: on ? "rgba(0,229,255,0.12)" : "transparent", color: on ? "var(--volt)" : "var(--silver)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
               {z.name}
             </button>
