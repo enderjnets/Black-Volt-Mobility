@@ -8,7 +8,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Icon } from "../../Icon";
 import { useI18n } from "@/lib/i18n";
-import { DOW_KEYS, type WeekCell, type WeekPayload, getWeek } from "@/lib/demand";
+import { DOW_KEYS, type WaitingSpot, type WeekCell, type WeekPayload, getWeek } from "@/lib/demand";
+import { openMapsTo } from "@/lib/maps";
 
 const THIN = 0.2;
 
@@ -53,6 +54,24 @@ function pct(n: number): string {
 // Compare the same rounded value so the percent and the "thin" flag agree.
 function isThin(share: number): boolean {
   return Math.round(share * 100) < THIN * 100;
+}
+
+type T = (key: string, vars?: Record<string, string | number>) => string;
+
+// A destination with no reason reads the same whether it came from fifty hours of his
+// own waiting or from a census table, and today in eight of twelve zones it is the
+// latter. The row says which.
+function spotLabel(spot: WaitingSpot, t: T): string {
+  const head =
+    spot.source === "event"
+      ? t("dash.demand.week.spot.event", { venue: spot.venue ?? "" })
+      : spot.source === "den_lot"
+        ? t("dash.demand.week.spot.denLot")
+        : spot.source === "your_data"
+          ? t("dash.demand.week.spot.yours")
+          : t("dash.demand.week.spot.income");
+  const between = spot.near.length >= 2 ? spot.near.join(" \u00b7 ") : spot.place;
+  return between ? `${head} \u00b7 ${between}` : head;
 }
 
 export function WeekTab() {
@@ -138,6 +157,25 @@ export function WeekTab() {
                   <span key={ev} style={{ color: "var(--silver)" }}><Icon name="calendar" size={12} color="currentColor" /> {ev}</span>
                 ))}
                 {b.reasons.holiday && <span style={{ color: "var(--silver)" }}>{t("dash.demand.week.holiday")}: {b.reasons.holiday}</span>}
+                {b.spot && (
+                  <>
+                    <span style={{ color: "var(--silver)" }}>
+                      <Icon name="map-pin" size={12} color="currentColor" /> {spotLabel(b.spot, t)}
+                    </span>
+                    {/* flexShrink: 0 is load-bearing — .bv-mobile-pad * { min-width: 0 }
+                        lets a flex child shrink under its own text and swallow the tap. */}
+                    <button
+                      type="button"
+                      onClick={() => openMapsTo(`${b.spot!.lat},${b.spot!.lng}`)}
+                      aria-label={t("dash.demand.week.spot.nav")}
+                      title={t("dash.demand.week.spot.nav")}
+                      style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: "var(--radius-full)", background: "var(--volt-bg)", border: "1px solid var(--volt-border)", color: "var(--volt)", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "var(--font-sans)", flexShrink: 0 }}
+                    >
+                      <Icon name="navigation" size={12} color="var(--volt)" />
+                      {t("dash.demand.week.spot.go")}
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>
