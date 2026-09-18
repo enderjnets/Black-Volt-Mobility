@@ -4893,6 +4893,29 @@ git commit -m "feat(frontend): one-tap shift log — Online/Here/Offer/Offline, 
 - Behaviour (spec "Tab Week" / "Tab Import"): zone chips; 7×24 grid coloured by `mean` (sequential cyan scale), hatched when `own_share < 0.2`; tap a cell → detail line (p15, interval, own share, hours, reasons); top blocks list above the grid; private rides outlined; empty state. Import: drop zone / picker, progress, summary with missing files in red and their consequence, last import on load, error strings by code.
 - **Amendment (2026-09-17, Addendum A):** when `summary.gps` is present the Import tab renders, after the files block, a "Your waits this month" / "Tus esperas del mes" table: one row per `top_waits` item — label (`place` + `distance_km` with one decimal when `place` is set; else `zone_name`; else `dash.demand.import.gps.outside` when `outside`; else `dash.demand.import.gps.other`), `hours`, `premium_requests`, `per_hour` (2 decimals) — plus one line "GPS: {days} days, {pings} pings, {home_hours} h at home excluded" (EN/ES). New i18n keys under `dash.demand.import.gps.*`. When `summary.gps` is null nothing extra renders. The Playwright fixture ZIP of Task 13 gains an analytics file so the table is exercised.
 
+**Amendment 2 (2026-09-17, controller rulings after implementation):** (a) the
+cell tap-detail renders the `lo`–`hi` interval next to the mean, using the
+existing key `dash.demand.week.expected` — the behaviour line above always
+required it ("p15, interval, own share, hours, reasons") and the Step 1 code
+block below omits it. (b) Private rides are bucketed into the grid in
+`America/Denver` with `Intl.DateTimeFormat` (`hourCycle: "h23"`, weekday mapped
+Monday-first to match `DOW_KEYS`), never with `Date#getDay()/getHours()`: the
+backend emits a tz-aware instant, so the browser methods read the device's zone
+and break the Global Constraint on time math. A ride whose weekday part is
+missing is skipped, not defaulted. (c) The Week tab's `computed_at` stamp and
+(d) the Import tab's `summary.at` stamp are both pinned to
+`timeZone: "America/Denver"`, matching the five existing dashboard components
+that already format that way; no shared helper is introduced, per that
+precedent. (e) The import's `by_product` breakdown renders through
+`dash.demand.product.*` instead of raw snake_case keys, and the key
+`dash.demand.product.other` is ADDED to EN and ES ("Other" / "Otro") because
+`normalize_product` falls back to `other` and `UberProduct.OTHER` exists while
+the frontend previously carried only five product keys; the `Product` union in
+`lib/demand.ts` is deliberately NOT widened — `other` is an import bucket, never
+a loggable choice. (f) When `summary.gps` is non-null but `top_waits` is empty,
+the table is not rendered at all; the "GPS: {days} days, {pings} pings,
+{home_hours} h at home excluded" line still renders.
+
 - [ ] **Step 1: Week tab**
 
 Replace `frontend/components/bv/dash/demand/WeekTab.tsx` with:
