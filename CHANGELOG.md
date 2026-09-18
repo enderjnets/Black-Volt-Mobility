@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.96.1 — 2026-09-18 — Flights reaches as far ahead as the owner actually books
+
+Verifying 0.96.0 against live production data, the screen showed **one** of the four
+booked flights: the window was 72 hours and the owner takes bookings a week out. The
+list now reaches 14 days. This is the list's horizon only — the live-status horizon in
+Phase B is a separate, much shorter one, because that is the one that costs money.
+
 ## 0.96.0 — 2026-09-18 — Flights: the driver's own flights, soonest first
 
 `rides.flight_number` has been a `String(40)` of free text since the second migration,

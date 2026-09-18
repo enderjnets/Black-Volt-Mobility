@@ -26,9 +26,11 @@ from app.services import flight_code as fc
 from app.services.booking import _airportish
 from app.services.dashboard import client_names
 
-# How far ahead the screen looks. Three days covers every ride he has booked at a time,
-# and keeps the Phase-B lookup budget to flights that are actually about to happen.
-WINDOW_HOURS = 72
+# How far ahead the screen looks. Measured, not guessed: at 72 h the owner's live data
+# showed ONE of his four booked flights, because he takes bookings a week out. Two weeks
+# covers them with room. This is only how far the LIST reaches — Phase B will fetch live
+# status for a much shorter horizon, since that is what costs money.
+WINDOW_HOURS = 14 * 24
 
 
 def _iso(dt: datetime | None) -> str | None:

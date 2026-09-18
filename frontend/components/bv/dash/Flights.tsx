@@ -593,7 +593,7 @@ export function Flights() {
           }}
         >
           <Icon name="clock" size={13} color="var(--fg3)" />
-          {data.flights.length} · {data.window_hours} h
+          {data.flights.length} · {t("dash.flights.windowDays", { n: String(Math.round(data.window_hours / 24)) })}
         </div>
       )}
     </div>
