@@ -77,12 +77,41 @@ def test_a_click_while_a_job_is_in_flight_is_refused():
     assert r.json()["detail"] == "already_writing"
 
 
-def test_write_next_with_an_empty_queue_fails_fast():
-    """Better a 400 now than two minutes of silence and nothing to show for it."""
+def test_write_next_with_an_empty_queue_fails_fast(monkeypatch):
+    """Better a 400 now than two minutes of silence and nothing to show for it.
+
+    The empty queue is forced, not assumed. The suite runs against the long-lived dev
+    database, which holds real keyword research — 114 rows sat at status "planned" — so
+    "write the next one" legitimately answers 202 there and this test failed for a
+    reason that had nothing to do with the endpoint. Emptying the queue for real would
+    mean truncating blog_keywords in conftest, i.e. destroying that research on every
+    run; the contract under test is the fast fail, not the query, so the query is
+    stubbed instead.
+    """
+    async def empty_queue(*a, **kw):
+        return None
+
+    monkeypatch.setattr(blog_api.blog_service, "next_planned_keyword", empty_queue)
     c = _client()
     r = c.post("/api/v1/blog/admin/generate", json={})
     assert r.status_code == 400
     assert r.json()["detail"] == "need_keyword"
+
+
+def test_write_next_with_a_queued_keyword_starts_writing(monkeypatch):
+    """The other half of the branch: with something planned, the 400 must NOT fire.
+
+    Without this, stubbing the queue above could hide a fast fail that never stops
+    firing — the test would still pass while the button did nothing but 400.
+    """
+    async def one_queued(*a, **kw):
+        return object()
+
+    monkeypatch.setattr(blog_api.blog_service, "next_planned_keyword", one_queued)
+    c = _client()
+    r = c.post("/api/v1/blog/admin/generate", json={})
+    assert r.status_code == 202
+    assert r.json() == {"status": "generating"}
 
 
 def test_a_crashing_job_releases_the_lock_and_swallows_the_error(monkeypatch):

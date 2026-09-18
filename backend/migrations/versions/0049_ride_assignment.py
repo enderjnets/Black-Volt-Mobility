@@ -4,8 +4,8 @@ Revision ID: 0049_ride_assignment
 Revises: 0048_client_notifications
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0049_ride_assignment"
 down_revision = "0048_client_notifications"

@@ -43,7 +43,9 @@ def _reset_ride_data():
                 "platform_stats, driver_goals, social_posts, social_interactions, "
                 "social_accounts, document_consents, reviews, review_invites, events, "
                 "event_suggestions, chat_conversations, chat_messages, notifications, "
-                "client_notifications, push_subscriptions, clients "
+                "client_notifications, push_subscriptions, clients, "
+                "uber_trips, driver_state_segments, offer_events, dispatch_windows, "
+                "demand_imports, week_scores, hex_scores "
                 "RESTART IDENTITY CASCADE"
             )
         finally:

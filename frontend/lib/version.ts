@@ -5,9 +5,19 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.92.1";
+export const CURRENT_VERSION = "0.93.0";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.93.0",
+    date: "2026-09-18",
+    title: "Where to wait: your week, planned from your own Black data",
+    changes: [
+      "New 'Where to wait' tab: import your Uber data export and see which hours of the week bring Black and Black SUV offers, zone by zone, with the reasons (DEN flight banks, events, holidays).",
+      "One-tap shift log built for split-screen next to Uber: Online, I'm here, Offer (with product), Offline. Every minute you wait and every offer you see teaches the planner.",
+      "Every cell says how much comes from your data and how many hours you have logged there — thin cells are hatched, never hidden.",
+    ],
+  },
   {
     version: "0.92.1",
     date: "2026-07-30",

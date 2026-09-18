@@ -163,6 +163,18 @@ services:
       # Live price scout (optional; empty → formula-only). Internal URL when enabled.
       PRICING_SCOUT_URL: ${PRICING_SCOUT_URL:-}
       PRICING_SCOUT_SECRET: ${PRICING_SCOUT_SECRET:-}
+      # "Where to wait" demand planner (Phase 1)
+      DEMAND_ENABLED: ${DEMAND_ENABLED:-false}
+      CENSUS_API_KEY: ${CENSUS_API_KEY:-}
+      DEN_LOT_LAT: ${DEN_LOT_LAT:-}
+      DEN_LOT_LNG: ${DEN_LOT_LNG:-}
+      DEN_LOT_RADIUS_M: ${DEN_LOT_RADIUS_M:-400}
+      DEMAND_HOME_LAT: ${DEMAND_HOME_LAT:-}
+      DEMAND_HOME_LNG: ${DEMAND_HOME_LNG:-}
+      DEMAND_HOME_RADIUS_M: ${DEMAND_HOME_RADIUS_M:-300}
+      DEMAND_BRIDGE_FARE_DEFAULT: ${DEMAND_BRIDGE_FARE_DEFAULT:-35}
+      DEMAND_RECOMPUTE_MIN: ${DEMAND_RECOMPUTE_MIN:-15}
+      NWS_USER_AGENT: ${NWS_USER_AGENT:-BlackVoltMobility/1.0 (blackvoltmobility@gmail.com)}
     volumes:
       # Service-account JSON for Google Calendar (gitignored; absent in dev).
       - ./secrets:/secrets:ro

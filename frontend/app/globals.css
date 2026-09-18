@@ -260,6 +260,23 @@ body {
   }
 }
 
+/* Android split-screen (~390×400 or shorter): the Log tab sets
+   html[data-bv-compact="log"] on mount and clears it on unmount, so only that
+   tab drops the dashboard's own sticky header + fixed tab bar to reclaim the
+   viewport — every other dashboard page keeps the shell as-is. */
+@media (max-width: 899px) and (max-height: 520px) {
+  html[data-bv-compact="log"] .bv-dash-header,
+  html[data-bv-compact="log"] .bv-tabbar,
+  html[data-bv-compact="log"] .bv-log-hint,
+  html[data-bv-compact="log"] .bv-install-hint {
+    display: none !important;
+  }
+  /* The 84px exists to clear the fixed tab bar, which compact mode just hid. */
+  html[data-bv-compact="log"] .bv-mobile-pad {
+    padding-bottom: 12px !important;
+  }
+}
+
 @media (max-width: 899px) {
   /* Tables become touch cards (rows handle their own mobile layout): drop the
      column header + the min-width that forced horizontal scroll. */

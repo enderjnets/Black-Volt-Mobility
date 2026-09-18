@@ -87,6 +87,9 @@ class RateConfig(Base):
     default_driver_share_pct: Mapped[int] = mapped_column(
         Integer, default=80, server_default="80"
     )
+    # "Where to wait": minimum Comfort fare worth taking toward a better zone.
+    # Null → settings.DEMAND_BRIDGE_FARE_DEFAULT.
+    bridge_fare: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

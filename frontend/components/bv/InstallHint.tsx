@@ -64,6 +64,7 @@ export function InstallHint() {
     <div
       role="dialog"
       aria-label={t("install.title")}
+      className="bv-install-hint"
       style={{
         position: "fixed",
         left: 12,

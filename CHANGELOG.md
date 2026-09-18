@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.93.0 — 2026-09-18 — Where to wait: your week, planned from your own Black data
+
+Phase 1 of "Where to wait" ships: a planner built entirely from the driver's own Black and Black
+SUV history, not a generic heatmap. Import an Uber data export and the app scores every hour of
+the week, zone by zone, with the reasons behind the number (DEN flight banks, events, holidays).
+
+- **New "Where to wait" tab** — import your Uber data export and see which hours of the week bring
+  Black and Black SUV offers, zone by zone, with the reasons (DEN flight banks, events, holidays).
+- **One-tap shift log built for split-screen next to Uber** — Online, I'm here, Offer (with
+  product), Offline. Every minute you wait and every offer you see teaches the planner.
+- **Every cell says where its number comes from** — how much comes from your data and how many
+  hours you have logged there; thin cells are hatched, never hidden.
+
 ## 0.92.1 — 2026-07-30 — Two rough edges from the autopilot's first unattended article
 
 The autopilot ran for the first time and behaved exactly as designed: it wrote, the gate caught a

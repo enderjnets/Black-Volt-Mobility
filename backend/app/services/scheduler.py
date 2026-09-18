@@ -164,6 +164,29 @@ async def _blog_gsc_job() -> None:
         logger.warning("blog_gsc job failed: %s", e)
 
 
+async def _demand_week_job() -> None:
+    """Hourly: rebuild the 'Where to wait' 7×24 planner for every tenant with data.
+
+    One session per tenant: a failing tenant's rollback/pending state must never
+    leak into the next tenant's recompute (post-review ruling (c))."""
+    try:
+        from app.db.base import get_session_factory
+        from app.services import demand
+
+        session_factory = get_session_factory()
+        async with session_factory() as db:
+            tenant_ids = await demand.tenants_with_data(db)
+        for tid in tenant_ids:
+            try:
+                async with session_factory() as db:
+                    result = await demand.recompute_week(db, tenant_id=tid)
+                logger.info("demand week %s: %s", tid, result)
+            except Exception as e:
+                logger.warning("demand week job failed for tenant %s: %s", tid, e)
+    except Exception as e:  # never let a job crash the scheduler
+        logger.warning("demand week job failed: %s", e)
+
+
 def start() -> None:
     """Start the scheduler. Best-effort: a missing APScheduler or any startup
     error degrades to 'no background publishing' rather than breaking the app."""
@@ -231,6 +254,11 @@ def start() -> None:
                 _blog_gsc_job,
                 CronTrigger(hour=4, minute=0, timezone="America/Denver"),
                 id="blog_daily_gsc", max_instances=1, coalesce=True,
+            )
+        if get_settings().DEMAND_ENABLED:
+            sched.add_job(
+                _demand_week_job, "interval", hours=1, id="demand_week",
+                max_instances=1, coalesce=True,
             )
         sched.start()
         _scheduler = sched

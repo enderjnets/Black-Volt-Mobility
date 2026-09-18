@@ -19,6 +19,7 @@ from app.api.v1.calendar_link import router as calendar_link_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.client_notifications import router as client_notifications_router
 from app.api.v1.dashboard import router as dashboard_router
+from app.api.v1.demand import router as demand_router
 from app.api.v1.discounts import router as discounts_router
 from app.api.v1.events import router as events_router
 from app.api.v1.funnel import router as funnel_router
@@ -133,6 +134,7 @@ app.include_router(payments_router, prefix="/api/v1")
 app.include_router(subscriptions_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(demand_router, prefix="/api/v1")
 app.include_router(funnel_router, prefix="/api/v1")
 app.include_router(social_router, prefix="/api/v1")
 app.include_router(tenant_router, prefix="/api/v1")
