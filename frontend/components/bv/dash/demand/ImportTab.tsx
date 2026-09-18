@@ -114,7 +114,13 @@ export function ImportTab() {
           <Row label={t("dash.demand.import.segments")} a={summary.segments.inserted} b={summary.segments.skipped} t={t} />
           <Row label={t("dash.demand.import.windows")} a={summary.windows.inserted} b={summary.windows.skipped} t={t} />
           {summary.trips.date_min && (
-            <div><span style={{ color: "var(--silver)" }}>{t("dash.demand.import.range")}:</span> {summary.trips.date_min.slice(0, 10)} → {summary.trips.date_max?.slice(0, 10)}</div>
+            <div>
+              <span style={{ color: "var(--silver)" }}>{t("dash.demand.import.range")}:</span>{" "}
+              {new Date(summary.trips.date_min).toLocaleDateString(undefined, { timeZone: "America/Denver" })} →{" "}
+              {summary.trips.date_max
+                ? new Date(summary.trips.date_max).toLocaleDateString(undefined, { timeZone: "America/Denver" })
+                : ""}
+            </div>
           )}
           {Object.keys(summary.trips.by_product).length > 0 && (
             <div><span style={{ color: "var(--silver)" }}>{t("dash.demand.import.byProduct")}:</span> {Object.entries(summary.trips.by_product).map(([k, v]) => `${t(`dash.demand.product.${k}`)} ${v}`).join(" · ")}</div>

@@ -30,6 +30,13 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
+// pct() rounds before display; a raw compare against THIN can disagree with
+// what the rounded percent just showed (0.199 → "20%" but still < 0.2).
+// Compare the same rounded value so the percent and the "thin" flag agree.
+function isThin(share: number): boolean {
+  return Math.round(share * 100) < THIN * 100;
+}
+
 export function WeekTab() {
   const { t } = useI18n();
   const [zone, setZone] = useState<string | null>(null);
@@ -64,7 +71,7 @@ export function WeekTab() {
     return s;
   }, [data]);
 
-  if (err) return <div style={{ color: "#ff7a7a", fontSize: 13 }}>{err}</div>;
+  if (err) return <div style={{ color: "#ff7a7a", fontSize: 13 }}>{t("dash.demand.week.err")}</div>;
   if (!data) return null;
   if (!data.grid.length) {
     return <div style={{ fontSize: 13, color: "var(--silver)" }}>{t("dash.demand.week.empty")}</div>;
@@ -140,14 +147,24 @@ export function WeekTab() {
           </div>
           <div style={{ color: "var(--silver)" }}>
             {pct(cell.own_share)} {t("dash.demand.week.ownData")} · {((cell.reasons.own_minutes ?? 0) / 60).toFixed(1)} {t("dash.demand.week.hoursLogged")}
-            {cell.own_share < THIN ? ` · ${t("dash.demand.week.thin")}` : ""}
+            {isThin(cell.own_share) ? ` · ${t("dash.demand.week.thin")}` : ""}
           </div>
-          <div style={{ color: "var(--silver)" }}>
-            {t("dash.demand.week.flights")} ×{cell.reasons.flights ?? 1}
-            {(cell.reasons.events ?? []).length ? ` · ${t("dash.demand.week.events")}: ${cell.reasons.events!.join(", ")}` : ""}
-            {cell.reasons.holiday ? ` · ${t("dash.demand.week.holiday")}: ${cell.reasons.holiday}` : ""}
-            {privateByCell.has(`${sel.d}-${sel.h}`) ? ` · ${t("dash.demand.week.privateRide")}` : ""}
-          </div>
+          {(() => {
+            const extras: string[] = [];
+            if (cell.reasons.flights != null && cell.reasons.flights > 1.2) {
+              extras.push(`${t("dash.demand.week.flights")} ×${cell.reasons.flights}`);
+            }
+            if ((cell.reasons.events ?? []).length) {
+              extras.push(`${t("dash.demand.week.events")}: ${cell.reasons.events!.join(", ")}`);
+            }
+            if (cell.reasons.holiday) {
+              extras.push(`${t("dash.demand.week.holiday")}: ${cell.reasons.holiday}`);
+            }
+            if (privateByCell.has(`${sel.d}-${sel.h}`)) {
+              extras.push(t("dash.demand.week.privateRide"));
+            }
+            return extras.length ? <div style={{ color: "var(--silver)" }}>{extras.join(" · ")}</div> : null;
+          })()}
         </div>
       )}
 

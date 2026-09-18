@@ -84,11 +84,13 @@ export function LogTab() {
   }, []);
 
   const send = useCallback(
-    async (kind: LogKind, extra: Partial<Parameters<typeof logEvent>[0]> = {}) => {
+    async (kind: LogKind, extra: Partial<Parameters<typeof logEvent>[0]> = {}): Promise<boolean> => {
       setBusy(kind);
+      let ok = false;
       try {
         await postLog(kind, extra);
         setFlash("saved");
+        ok = true;
       } catch {
         setFlash("failed");
       } finally {
@@ -96,6 +98,7 @@ export function LogTab() {
         setTimeout(() => setFlash(null), 1800);
         refresh();
       }
+      return ok;
     },
     [refresh],
   );
@@ -146,13 +149,22 @@ export function LogTab() {
   }, [waiting, sendPing]);
 
   const sendOffer = async () => {
-    const f = fare.trim() ? Number(fare) : null;
-    await send("offer", { product, accepted, fare: Number.isFinite(f as number) ? f : null });
-    setAccepted(false);
-    setFare("");
+    const raw = fare.trim().replace(",", ".");
+    const f = raw ? Number(raw) : null;
+    const ok = await send("offer", { product, accepted, fare: Number.isFinite(f as number) ? f : null });
+    if (ok) {
+      setAccepted(false);
+      setFare("");
+    }
   };
 
-  const disabled = busy !== null;
+  // Per-kind, not global: a slow GPS fix on one button must not freeze the
+  // others — see the auto-ping comment above for why. The product chips and
+  // Accepted toggle are local state that only offer's request cares about.
+  const offerDisabled = busy === "offer";
+  const onlineDisabled = busy === "online";
+  const hereDisabled = busy === "here";
+  const offlineDisabled = busy === "offline";
 
   const offerBtn: React.CSSProperties = {
     minHeight: 76,
@@ -170,10 +182,10 @@ export function LogTab() {
     gap: 10,
     cursor: "pointer",
     WebkitTapHighlightColor: "transparent",
-    opacity: disabled ? 0.55 : 1,
+    opacity: offerDisabled ? 0.55 : 1,
   };
 
-  const secondaryBtn = (active: boolean, tone: "volt" | "warn"): React.CSSProperties => ({
+  const secondaryBtn = (active: boolean, tone: "volt" | "warn", dim: boolean): React.CSSProperties => ({
     minHeight: 56,
     borderRadius: 12,
     border: `1px solid ${active ? "var(--volt)" : "var(--line-strong)"}`,
@@ -189,10 +201,10 @@ export function LogTab() {
     gap: 4,
     cursor: "pointer",
     WebkitTapHighlightColor: "transparent",
-    opacity: disabled ? 0.55 : 1,
+    opacity: dim ? 0.55 : 1,
   });
 
-  const chip = (on: boolean): React.CSSProperties => ({
+  const chip = (on: boolean, dim: boolean): React.CSSProperties => ({
     minHeight: 36,
     padding: "10px 12px",
     borderRadius: 999,
@@ -203,7 +215,7 @@ export function LogTab() {
     fontSize: 13,
     whiteSpace: "nowrap",
     cursor: "pointer",
-    opacity: disabled ? 0.55 : 1,
+    opacity: dim ? 0.55 : 1,
   });
 
   const stateKey =
@@ -224,26 +236,38 @@ export function LogTab() {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 14, border: "1px solid var(--volt-border)", background: "rgba(0,229,255,0.05)" }}>
-        <button style={offerBtn} disabled={disabled} onClick={sendOffer}>
+        <button style={offerBtn} disabled={offerDisabled} onClick={sendOffer}>
           <Icon name="bell" size={24} color="currentColor" />
           {t("dash.demand.log.offer")}
         </button>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {PRODUCTS.map((p) => (
-            <button key={p} style={chip(product === p)} disabled={disabled} onClick={() => setProduct(p)}>
+            <button
+              key={p}
+              style={chip(product === p, offerDisabled)}
+              disabled={offerDisabled}
+              aria-pressed={product === p}
+              onClick={() => setProduct(p)}
+            >
               {t(`dash.demand.product.${p}`)}
             </button>
           ))}
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button style={chip(accepted)} disabled={disabled} onClick={() => setAccepted((a) => !a)}>
+          <button
+            style={chip(accepted, offerDisabled)}
+            disabled={offerDisabled}
+            aria-pressed={accepted}
+            onClick={() => setAccepted((a) => !a)}
+          >
             <Icon name="check" size={14} color="currentColor" /> {t("dash.demand.log.accepted")}
           </button>
           <input
             inputMode="decimal"
             placeholder={t("dash.demand.log.fare")}
+            aria-label={t("dash.demand.log.fare")}
             value={fare}
             onChange={(e) => setFare(e.target.value)}
             style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--line-strong)", background: "transparent", color: "var(--arctic)" }}
@@ -252,15 +276,15 @@ export function LogTab() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-        <button style={secondaryBtn(today?.state === "open", "volt")} disabled={disabled} onClick={() => send("online")}>
+        <button style={secondaryBtn(today?.state === "open", "volt", onlineDisabled)} disabled={onlineDisabled} onClick={() => send("online")}>
           <Icon name="zap" size={18} color="currentColor" />
           {t("dash.demand.log.online")}
         </button>
-        <button style={secondaryBtn(false, "volt")} disabled={disabled} onClick={() => send("here")}>
+        <button style={secondaryBtn(false, "volt", hereDisabled)} disabled={hereDisabled} onClick={() => send("here")}>
           <Icon name="map-pin" size={18} color="currentColor" />
           {t("dash.demand.log.here")}
         </button>
-        <button style={secondaryBtn(false, "warn")} disabled={disabled} onClick={() => send("offline")}>
+        <button style={secondaryBtn(false, "warn", offlineDisabled)} disabled={offlineDisabled} onClick={() => send("offline")}>
           <Icon name="x" size={18} color="currentColor" />
           {t("dash.demand.log.offline")}
         </button>
@@ -288,7 +312,7 @@ export function LogTab() {
               {e.fare != null && <span>${e.fare}</span>}
               {e.zone_key === "den_lot" && <span style={{ color: "var(--silver)" }}>{t("dash.demand.log.denLot")}</span>}
               {e.no_position && (
-                <button onClick={() => send("here")} style={{ marginLeft: "auto", ...chip(false), padding: "4px 10px", fontSize: 12 }}>
+                <button onClick={() => send("here")} style={{ marginLeft: "auto", ...chip(false, hereDisabled), flexShrink: 0, padding: "4px 10px", fontSize: 12 }}>
                   {t("dash.demand.log.noPosition")} · {t("dash.demand.log.retry")}
                 </button>
               )}
