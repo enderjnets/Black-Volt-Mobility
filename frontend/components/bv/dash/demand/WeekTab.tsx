@@ -12,6 +12,13 @@ import { DOW_KEYS, type WeekCell, type WeekPayload, getWeek } from "@/lib/demand
 
 const THIN = 0.2;
 
+// private_rides carry tz-aware timestamps; bucket them into the Denver
+// day-of-week/hour grid without ever touching the browser's own zone.
+const DEN_CELL = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Denver", weekday: "short", hour: "numeric", hourCycle: "h23",
+});
+const DOW_INDEX: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+
 function shade(v: number, max: number): string {
   const x = max > 0 ? Math.min(1, v / max) : 0;
   // 0 → near-black, 1 → electric cyan.
@@ -48,8 +55,11 @@ export function WeekTab() {
   const privateByCell = useMemo(() => {
     const s = new Set<string>();
     for (const r of data?.private_rides ?? []) {
-      const d = new Date(r.at);
-      s.add(`${(d.getDay() + 6) % 7}-${d.getHours()}`);
+      const parts = DEN_CELL.formatToParts(new Date(r.at));
+      const weekday = parts.find((p) => p.type === "weekday")?.value;
+      const hour = parts.find((p) => p.type === "hour")?.value;
+      if (weekday === undefined || !(weekday in DOW_INDEX) || hour === undefined) continue;
+      s.add(`${DOW_INDEX[weekday]}-${Number(hour)}`);
     }
     return s;
   }, [data]);
@@ -123,6 +133,9 @@ export function WeekTab() {
             {t(`dash.demand.dow.${DOW_KEYS[sel.d]}`)} {sel.h}:00 — <span style={{ color: "var(--volt)" }}>{pct(cell.p15)}</span> {t("dash.demand.week.p15")}
           </div>
           <div style={{ color: "var(--silver)" }}>
+            {cell.mean.toFixed(1)} ({cell.lo.toFixed(1)}–{cell.hi.toFixed(1)}) {t("dash.demand.week.expected")}
+          </div>
+          <div style={{ color: "var(--silver)" }}>
             {pct(cell.own_share)} {t("dash.demand.week.ownData")} · {((cell.reasons.own_minutes ?? 0) / 60).toFixed(1)} {t("dash.demand.week.hoursLogged")}
             {cell.own_share < THIN ? ` · ${t("dash.demand.week.thin")}` : ""}
           </div>
@@ -137,7 +150,7 @@ export function WeekTab() {
 
       {data.computed_at && (
         <div style={{ fontSize: 11, color: "var(--silver)" }}>
-          {t("dash.demand.week.computed")} {new Date(data.computed_at).toLocaleString()}
+          {t("dash.demand.week.computed")} {new Date(data.computed_at).toLocaleString(undefined, { timeZone: "America/Denver" })}
         </div>
       )}
     </div>

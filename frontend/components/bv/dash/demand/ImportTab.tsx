@@ -108,7 +108,7 @@ export function ImportTab() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 12, border: "1px solid var(--line-strong)", background: "var(--obsidian)", fontSize: 13 }}>
           <div style={{ fontWeight: 700 }}>
             {phase === "done" ? t("dash.demand.import.done") : t("dash.demand.import.last")}
-            {summary.at ? ` · ${new Date(summary.at).toLocaleString()}` : ""}
+            {summary.at ? ` · ${new Date(summary.at).toLocaleString(undefined, { timeZone: "America/Denver" })}` : ""}
           </div>
           <Row label={t("dash.demand.import.trips")} a={summary.trips.inserted} b={summary.trips.skipped} t={t} />
           <Row label={t("dash.demand.import.segments")} a={summary.segments.inserted} b={summary.segments.skipped} t={t} />
@@ -117,7 +117,7 @@ export function ImportTab() {
             <div><span style={{ color: "var(--silver)" }}>{t("dash.demand.import.range")}:</span> {summary.trips.date_min.slice(0, 10)} → {summary.trips.date_max?.slice(0, 10)}</div>
           )}
           {Object.keys(summary.trips.by_product).length > 0 && (
-            <div><span style={{ color: "var(--silver)" }}>{t("dash.demand.import.byProduct")}:</span> {Object.entries(summary.trips.by_product).map(([k, v]) => `${k} ${v}`).join(" · ")}</div>
+            <div><span style={{ color: "var(--silver)" }}>{t("dash.demand.import.byProduct")}:</span> {Object.entries(summary.trips.by_product).map(([k, v]) => `${t(`dash.demand.product.${k}`)} ${v}`).join(" · ")}</div>
           )}
           <div><span style={{ color: "var(--silver)" }}>{t("dash.demand.import.found")}:</span> {summary.files_found.join(", ") || "—"}</div>
           {summary.files_missing.length > 0 && (
@@ -130,29 +130,33 @@ export function ImportTab() {
           )}
           {summary.gps && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontWeight: 700 }}>{t("dash.demand.import.gps.title")}</div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ color: "var(--silver)", textAlign: "left" }}>
-                      <th style={{ padding: "4px 6px" }}>{t("dash.demand.import.gps.col.place")}</th>
-                      <th style={{ padding: "4px 6px" }}>{t("dash.demand.import.gps.col.hours")}</th>
-                      <th style={{ padding: "4px 6px" }}>{t("dash.demand.import.gps.col.premium")}</th>
-                      <th style={{ padding: "4px 6px" }}>{t("dash.demand.import.gps.col.perHour")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.gps.top_waits.map((w) => (
-                      <tr key={w.h3_r8} style={{ borderTop: "1px solid var(--line-strong)" }}>
-                        <td style={{ padding: "4px 6px" }}><WaitLabel w={w} t={t} /></td>
-                        <td style={{ padding: "4px 6px" }}>{w.hours.toFixed(1)} h</td>
-                        <td style={{ padding: "4px 6px" }}>{w.premium_requests}</td>
-                        <td style={{ padding: "4px 6px" }}>{w.per_hour.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {summary.gps.top_waits.length > 0 && (
+                <>
+                  <div style={{ fontWeight: 700 }}>{t("dash.demand.import.gps.title")}</div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ color: "var(--silver)", textAlign: "left" }}>
+                          <th style={{ padding: "4px 6px" }}>{t("dash.demand.import.gps.col.place")}</th>
+                          <th style={{ padding: "4px 6px" }}>{t("dash.demand.import.gps.col.hours")}</th>
+                          <th style={{ padding: "4px 6px" }}>{t("dash.demand.import.gps.col.premium")}</th>
+                          <th style={{ padding: "4px 6px" }}>{t("dash.demand.import.gps.col.perHour")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summary.gps.top_waits.map((w) => (
+                          <tr key={w.h3_r8} style={{ borderTop: "1px solid var(--line-strong)" }}>
+                            <td style={{ padding: "4px 6px" }}><WaitLabel w={w} t={t} /></td>
+                            <td style={{ padding: "4px 6px" }}>{w.hours.toFixed(1)} h</td>
+                            <td style={{ padding: "4px 6px" }}>{w.premium_requests}</td>
+                            <td style={{ padding: "4px 6px" }}>{w.per_hour.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
               <div style={{ fontSize: 11, color: "var(--silver)" }}>
                 {t("dash.demand.import.gps.summary", {
                   days: summary.gps.days,
