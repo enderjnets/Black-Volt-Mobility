@@ -19,8 +19,14 @@ const DEN_CELL = new Intl.DateTimeFormat("en-US", {
 });
 const DOW_INDEX: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
-function shade(v: number, max: number): string {
-  const x = max > 0 ? Math.min(1, v / max) : 0;
+// `min` is not decoration: a zone with no data of its own comes back as 168
+// identical cells, and v/max is then 1 everywhere — a solid wall of bright cyan
+// reading "excellent all week" next to a block list that correctly says nothing
+// stands out. A week with no shape gets the floor colour, same principle as
+// top_blocks returning no block rather than the flattest 24 hours.
+function shade(v: number, max: number, min: number): string {
+  const flat = !(max > 0) || max - min <= max * 0.05;
+  const x = flat ? 0 : Math.min(1, v / max);
   // 0 → near-black, 1 → electric cyan.
   const a = 0.08 + 0.72 * x;
   return `rgba(0,229,255,${a.toFixed(3)})`;
@@ -55,10 +61,11 @@ export function WeekTab() {
     };
   }, [zone]);
 
-  const max = useMemo(
-    () => (data?.grid.length ? Math.max(...data.grid.flat().map((c) => c?.mean ?? 0)) : 0),
-    [data],
-  );
+  const [max, min] = useMemo(() => {
+    if (!data?.grid.length) return [0, 0];
+    const means = data.grid.flat().map((c) => c?.mean ?? 0);
+    return [Math.max(...means), Math.min(...means)];
+  }, [data]);
   const privateByCell = useMemo(() => {
     const s = new Set<string>();
     for (const r of data?.private_rides ?? []) {
@@ -132,7 +139,7 @@ export function WeekTab() {
             <div key={h} style={{ fontSize: 9, color: "var(--silver)", textAlign: "center" }}>{h % 3 === 0 ? h : ""}</div>
           ))}
           {data.grid.map((row, d) => (
-            <FragmentRow key={d} d={d} row={row} max={max} sel={sel} setSel={setSel} privateByCell={privateByCell} label={t(`dash.demand.dow.${DOW_KEYS[d]}`)} />
+            <FragmentRow key={d} d={d} row={row} max={max} min={min} sel={sel} setSel={setSel} privateByCell={privateByCell} label={t(`dash.demand.dow.${DOW_KEYS[d]}`)} />
           ))}
         </div>
       </div>
@@ -178,11 +185,12 @@ export function WeekTab() {
 }
 
 function FragmentRow({
-  d, row, max, sel, setSel, privateByCell, label,
+  d, row, max, min, sel, setSel, privateByCell, label,
 }: {
   d: number;
   row: WeekCell[];
   max: number;
+  min: number;
   sel: { d: number; h: number } | null;
   setSel: (s: { d: number; h: number }) => void;
   privateByCell: Set<string>;
@@ -206,8 +214,8 @@ function FragmentRow({
               borderRadius: 3,
               border: on ? "2px solid var(--arctic)" : priv ? "2px solid #ffd166" : "1px solid rgba(255,255,255,0.06)",
               background: thin
-                ? `repeating-linear-gradient(45deg, ${shade(c?.mean ?? 0, max)} 0 3px, rgba(0,0,0,0.35) 3px 5px)`
-                : shade(c?.mean ?? 0, max),
+                ? `repeating-linear-gradient(45deg, ${shade(c?.mean ?? 0, max, min)} 0 3px, rgba(0,0,0,0.35) 3px 5px)`
+                : shade(c?.mean ?? 0, max, min),
               cursor: "pointer",
             }}
           />
