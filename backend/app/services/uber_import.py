@@ -386,6 +386,7 @@ def parse_zip(data: bytes) -> ParsedExport:
             if kind is None:
                 continue
             if kind == "analytics" and info.file_size > MAX_MEMBER_BYTES:
+                seen_kinds.add(kind)
                 out.files_missing.append({
                     "kind": "analytics_too_large",
                     "consequence": (
@@ -414,10 +415,9 @@ def parse_zip(data: bytes) -> ParsedExport:
                 try:
                     target.append(parser(row))
                 except Exception:
+                    out.skipped_rows += 1
                     if kind == "analytics":
                         out.pings_skipped += 1
-                    else:
-                        out.skipped_rows += 1
     if not any_csv:
         raise ImportError_("no_csv")
     for kind, consequence in KNOWN_FILES.items():

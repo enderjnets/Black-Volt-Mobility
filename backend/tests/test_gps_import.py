@@ -52,7 +52,11 @@ OUTSIDE = (39.19, -106.82)
 
 DAY = datetime(2026, 9, 1, tzinfo=UTC)
 
-assert h3.latlng_to_cell(*A, 8) != h3.latlng_to_cell(*B, 8)
+# The CSV row writes 5-decimal coordinates (`_ping_row`'s `.5f`), so the "blip
+# absorbed" case must be checked against the ROUNDED point actually written —
+# unrounded, rounding could silently land B back in A's cell and the test
+# scenario it guards would go vacuous.
+assert h3.latlng_to_cell(*A, 8) != h3.latlng_to_cell(round(B[0], 5), round(B[1], 5), 8)
 
 
 def _cell(pt: tuple[float, float]) -> str:
@@ -179,13 +183,28 @@ def _rows(query: str, *args) -> list:
     return asyncio.run(_run())
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_gps_tenant_state():
+    """This module's DB tests write `demand_imports` rows and `source='gps'`
+    segments for the single default tenant every other DB-touching test file
+    shares (password login always resolves to it). Clean both up on teardown so
+    test_demand_api.py's "never imported" precondition still holds when the
+    brief's Step 7 command runs these files in its stated order."""
+    yield
+    tenants = _rows("SELECT id FROM tenants WHERE slug IN ('ender-ocando', 'black-volt')")
+    for row in tenants:
+        tid = row["id"]
+        _rows("DELETE FROM demand_imports WHERE tenant_id = $1", tid)
+        _rows("DELETE FROM driver_state_segments WHERE tenant_id = $1 AND source = 'gps'", tid)
+
+
 def test_parse_zip_reads_analytics_member():
     good = _fixture_pings()
     p = ui.parse_zip(_export_zip(good, bad=True))
     assert "driver_app_analytics-0.csv" in p.files_found
     assert len(p.pings) == len(good)
     assert p.pings_skipped == 1
-    assert p.skipped_rows == 0
+    assert p.skipped_rows == 1
     first = p.pings[0]
     assert first.at.tzinfo is not None and first.at == good[0][0]
     burst_16 = [pg for pg in p.pings if pg.at.hour == 16]
@@ -252,6 +271,7 @@ def test_top_waits_labels():
         open_segs + [outside_seg],
         premium_cells,
         places={"Clayton Hotel & Members Club": (39.7203, -104.9565)},
+        home_cell=_cell(HOME),
     )
     by_cell = {w["h3_r8"]: w for w in waits}
 
@@ -339,6 +359,26 @@ def test_import_pings_replace_window_and_backfill():
     assert got == expected
 
 
+def test_home_majority_rule():
+    # ~250 m east of HOME, inside HOME's own res-8 cell (asserted, not assumed) —
+    # so the run never splits by cell; only the time-weighted majority decides.
+    p_lat, p_lng = 39.60000, -104.79708
+    assert h3.latlng_to_cell(p_lat, p_lng, 8) == h3.latlng_to_cell(*HOME, 8)
+
+    def _run(p_minutes: int, home_minutes: int):
+        p_times = [_at(20, m) for m in range(p_minutes + 1)]
+        home_times = [_at(20, p_minutes + m) for m in range(1, home_minutes + 1)]
+        pings = [ui.ParsedPing(at=t, lat=p_lat, lng=p_lng, online=True) for t in p_times] + [
+            ui.ParsedPing(at=t, lat=HOME[0], lng=HOME[1], online=True) for t in home_times
+        ]
+        segs = gps_import.segment_pings(pings, [], home=HOME, home_radius_m=100)
+        assert len(segs) == 1
+        return segs[0]
+
+    assert _run(1, 20).zone_key == "home"
+    assert _run(20, 1).zone_key is None
+
+
 def test_analytics_privacy_and_size_cap(monkeypatch):
     c = _owner()
     data = _export_zip(_fixture_pings())
@@ -361,6 +401,15 @@ def test_analytics_privacy_and_size_cap(monkeypatch):
 
     monkeypatch.setattr(ui, "MAX_MEMBER_BYTES", 10)
     parsed = ui.parse_zip(data)
-    assert any(m["kind"] == "analytics_too_large" for m in parsed.files_missing)
+    missing_kinds = [m["kind"] for m in parsed.files_missing]
+    assert missing_kinds.count("analytics_too_large") == 1
+    assert "analytics" not in missing_kinds
     assert parsed.pings == []
     assert len(parsed.trips) == 4
+
+    r2 = c.post("/api/v1/demand/import", files=[("file", ("uber4.zip", data, "application/zip"))])
+    assert r2.status_code == 201, r2.text
+    s2 = r2.json()
+    assert s2["gps"] is None
+    assert [m["kind"] for m in s2["files_missing"]].count("analytics_too_large") == 1
+    assert s2["trips"]["inserted"] + s2["trips"]["skipped"] == 4

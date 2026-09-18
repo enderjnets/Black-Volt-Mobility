@@ -46,6 +46,15 @@ def coverage(pings: list[ParsedPing]) -> tuple[datetime, datetime] | None:
     return min(times), max(times)
 
 
+def _busy_start(t: ParsedTrip) -> datetime:
+    """A scheduled ride can be dispatched (`request_at`) after it already began
+    (`begin_at`) — the busy window has to start at the earlier of the two, or the
+    driver reads as "open" while already driving a passenger."""
+    if t.begin_at is not None and t.begin_at < t.request_at:
+        return t.begin_at
+    return t.request_at
+
+
 def _busy_end(t: ParsedTrip) -> datetime:
     if t.dropoff_at is not None:
         return t.dropoff_at
@@ -68,6 +77,20 @@ def _non_queued(
         if not any(j != i and s <= t.request_at <= e for j, (s, e) in enumerate(busy)):
             out.append(t)
     return out
+
+
+def _offer_context(
+    trips: list[ParsedTrip], start: datetime, end: datetime
+) -> tuple[list[ParsedTrip], list[tuple[datetime, datetime]], list[ParsedTrip]]:
+    """Shared by `segment_pings` and `request_cells`: trips scoped to the file's
+    coverage, their busy windows, and which of those are offers received while
+    open — non-queued, and not a scheduled ride whose `begin_at` precedes its
+    `request_at` (that ride was already under way, not an offer being waited on)."""
+    scoped = _scoped_trips(trips, start, end)
+    busy = [(_busy_start(t), _busy_end(t)) for t in scoped]
+    non_queued = _non_queued(scoped, busy)
+    offers = [t for t in non_queued if t.begin_at is None or t.begin_at >= t.request_at]
+    return scoped, busy, offers
 
 
 def _merge(windows: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
@@ -182,6 +205,44 @@ def _open_runs(labelled: list[tuple[datetime, float, float, bool]]):
         yield _close(cur)
 
 
+def _weights(times: list[datetime]) -> list[float]:
+    """Each ping's weight is the gap to the next ping in the whole file, capped
+    at GAP_S — the last ping (no next one) weighs 0."""
+    n = len(times)
+    w = [0.0] * n
+    for i in range(n - 1):
+        w[i] = min((times[i + 1] - times[i]).total_seconds(), GAP_S)
+    return w
+
+
+def _is_home_majority(
+    begin_at: datetime,
+    end_at: datetime,
+    times: list[datetime],
+    lats: list[float],
+    lngs: list[float],
+    weights: list[float],
+    home: tuple[float, float] | None,
+    home_radius_m: int,
+) -> bool:
+    """Time-weighted majority (Addendum A, R1): the segment is "home" when at
+    least half of its (weighted) time lies within the home radius, not merely
+    where it began — a long stationary run inside one oversized H3 cell can
+    begin far from home (approaching) and still spend nearly all its time there."""
+    if home is None:
+        return False
+    lo = bisect.bisect_left(times, begin_at)
+    hi = bisect.bisect_right(times, end_at)
+    total_w = 0.0
+    home_w = 0.0
+    for i in range(lo, hi):
+        w = weights[i]
+        total_w += w
+        if _haversine_m(lats[i], lngs[i], home[0], home[1]) <= home_radius_m:
+            home_w += w
+    return total_w > 0 and (home_w / total_w) >= 0.5
+
+
 def segment_pings(
     pings: list[ParsedPing],
     trips: list[ParsedTrip],
@@ -197,19 +258,18 @@ def segment_pings(
     times = [p.at for p in ordered]
     lats = [p.lat for p in ordered]
     lngs = [p.lng for p in ordered]
+    weights = _weights(times)
 
-    scoped = _scoped_trips(trips, start, end)
-    busy_windows = [(t.request_at, _busy_end(t)) for t in scoped]
+    scoped, busy_windows, offers = _offer_context(trips, start, end)
     is_busy = _Busy(busy_windows)
-    offers = _non_queued(scoped, busy_windows)
 
     out: list[ParsedSegment] = []
 
     labelled = [(p.at, p.lat, p.lng, p.online and not is_busy(p.at)) for p in ordered]
     for cell, b_at, e_at, blat, blng, elat, elng in _open_runs(labelled):
-        zone_key = None
-        if home is not None and _haversine_m(blat, blng, home[0], home[1]) <= home_radius_m:
-            zone_key = "home"
+        zone_key = "home" if _is_home_majority(
+            b_at, e_at, times, lats, lngs, weights, home, home_radius_m
+        ) else None
         out.append(
             ParsedSegment(
                 dedup_key=_dedup_key("open", b_at, e_at, cell),
@@ -296,9 +356,7 @@ def request_cells(pings: list[ParsedPing], trips: list[ParsedTrip]) -> list[str]
     lats = [p.lat for p in ordered]
     lngs = [p.lng for p in ordered]
 
-    scoped = _scoped_trips(trips, start, end)
-    busy_windows = [(t.request_at, _busy_end(t)) for t in scoped]
-    offers = _non_queued(scoped, busy_windows)
+    _, _, offers = _offer_context(trips, start, end)
 
     out: list[str] = []
     for t in offers:
@@ -322,10 +380,11 @@ def top_waits(
     premium_cells: list[str],
     *,
     places: dict[str, tuple[float, float]],
+    home_cell: str | None,
 ) -> list[dict]:
     minutes: dict[str, float] = {}
     for s in open_segments:
-        if s.h3_r8 is None:
+        if s.h3_r8 is None or s.h3_r8 == home_cell:
             continue
         minutes[s.h3_r8] = minutes.get(s.h3_r8, 0.0) + (
             s.end_at - s.begin_at
@@ -453,7 +512,10 @@ async def import_pings(
         if s.state == "open" and s.zone_key == "home"
     )
     open_segments = [s for s in segments if s.state == "open" and s.zone_key != "home"]
-    waits = top_waits(open_segments, request_cells(pings, trips), places=_places(settings))
+    home_cell = _cell(*home) if home is not None else None
+    waits = top_waits(
+        open_segments, request_cells(pings, trips), places=_places(settings), home_cell=home_cell
+    )
 
     return {
         "start": start.isoformat(),
