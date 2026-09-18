@@ -428,8 +428,15 @@ async def _own_by_cell(db: AsyncSession, tenant_id: int) -> dict[str, tuple[floa
     for s in segs:
         if s.zone_key == "home":
             continue
+        # Same rule as _segment_minutes_by_hour: a segment that is still open carries no
+        # end_at and falls back to its last ping. Subtracting it raw took the whole Week
+        # tab down with a 500 — and it does so in precisely the state this feature exists
+        # for, one "Online" tap that has not been closed yet.
+        end = s.end_at or s.last_ping_at
+        if end is None or end <= s.begin_at:
+            continue
         minutes[s.h3_r8] = minutes.get(s.h3_r8, 0.0) + (
-            s.end_at - s.begin_at
+            end - s.begin_at
         ).total_seconds() / 60.0
 
     rows = (

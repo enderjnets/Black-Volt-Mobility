@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.95.1 — 2026-09-18 — The Week tab no longer goes blank while you are online
+
+The per-cell history added in 0.95.0 subtracts a wait segment's start from its end to get
+the minutes you have spent in each hexagon. A shift that is still open has no end — the
+column stays null until you tap Offline — so `GET /demand/week` raised a TypeError and
+answered 500 for every zone. The tab went blank from the moment you went online, which is
+precisely the state the feature exists to serve.
+
+It now falls back to the segment's last GPS ping, the same rule `_segment_minutes_by_hour`
+has used all along, and skips a segment whose end is not after its start. Regression test
+seeds an unclosed segment and asserts the endpoint still answers 200 with its minutes
+counted.
+
 ## 0.95.0 — 2026-09-18 — Blocks say how much better, not how many offers
 
 Fixing the census layer removed a blanket 0.5x penalty that had been suppressing every

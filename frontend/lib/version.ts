@@ -5,9 +5,17 @@ export interface VersionEntry {
   changes: string[];
 }
 
-export const CURRENT_VERSION = "0.95.0";
+export const CURRENT_VERSION = "0.95.1";
 
 export const CHANGELOG: VersionEntry[] = [
+  {
+    version: "0.95.1",
+    date: "2026-09-18",
+    title: "The Week tab no longer goes blank while you are online",
+    changes: [
+      "An open shift took the whole Week tab down. The per-cell history added in 0.95.0 subtracted a shift's start from its end, and a shift you have not closed yet has no end \u2014 so from the moment you tapped Online the planner answered with an error and the tab went blank. It now falls back to your last GPS ping, the rule the hourly view already used.",
+    ],
+  },
   {
     version: "0.95.0",
     date: "2026-09-18",

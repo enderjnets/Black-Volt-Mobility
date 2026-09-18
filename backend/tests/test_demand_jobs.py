@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import asyncpg
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 os.environ["DASHBOARD_PASSWORD"] = "test-pw"
 os.environ["AUTH_SECRET"] = "api-test-secret"
@@ -30,6 +30,12 @@ from app.services import demand_model as dm  # noqa: E402
 
 client = TestClient(app)
 CHERRY_CREEK = (39.7170, -104.9530)
+
+
+def _cell(lat: float, lng: float) -> str:
+    import h3
+
+    return h3.latlng_to_cell(lat, lng, 8)
 
 
 def _owner() -> TestClient:
@@ -131,6 +137,27 @@ def _seed_priors():
                     }
                 await db.merge(HexPrior(h3_r8=cell, affluence=0.8, hotels=2, generators=3,
                                         den_distance_mi=20.0, zone_key="cherry_creek"))
+            # The zone must contain ONLY these cells. The exact posterior identity below
+            # is computed from a hand-chosen static multiplier, which holds only while
+            # the fixture owns the zone — and it did, purely because nobody had ever run
+            # build_demand_priors against this database. The moment real priors exist,
+            # cherry_creek gains ~15 more cells, `static` becomes their mean, and the
+            # test fails for a reason that has nothing to do with the code. Park the
+            # strangers by zone, snapshotting them so teardown puts them back.
+            disk = set(h3.grid_disk(centre, 2))
+            strangers = (await db.execute(
+                select(HexPrior).where(HexPrior.zone_key == "cherry_creek")
+            )).scalars().all()
+            for row in strangers:
+                if row.h3_r8 in disk:
+                    continue
+                if row.h3_r8 not in _HEX_PRIOR_ORIGINALS:
+                    _HEX_PRIOR_ORIGINALS[row.h3_r8] = {
+                        "affluence": row.affluence, "hotels": row.hotels,
+                        "generators": row.generators,
+                        "den_distance_mi": row.den_distance_mi, "zone_key": row.zone_key,
+                    }
+                row.zone_key = None
             await db.commit()
 
     asyncio.run(_run())
@@ -331,6 +358,47 @@ def test_block_reasons_of_a_quiet_block_stay_empty():
     r = demand._block_reasons(grid, block)
     assert r == {"flights": 1.0, "events": [], "holiday": None,
                  "own_minutes": 0.0, "own_offers": 0.0}
+
+
+def test_a_shift_still_open_does_not_take_the_week_down():
+    """The state this whole feature exists for: you tapped Online and have not tapped
+    Offline yet.
+
+    Such a segment carries no end_at — it is still happening — and subtracting it raw
+    threw `unsupported operand type(s) for -: 'NoneType' and 'datetime.datetime'` out of
+    the payload, so the entire Week tab answered 500. It reached production because
+    every seeded segment in this file had already been closed, and the endpoint was only
+    ever exercised against tidy history.
+    """
+    from app.models import DriverStateSegment, EarnerState, SegmentSource
+
+    _reset_demand_tenant_state()
+    _seed_priors()
+    c = _owner()
+    tid = _tenant_id(c)
+    t = datetime(2026, 9, 15, 20, 0, tzinfo=UTC)
+    cell = _cell(*CHERRY_CREEK)
+
+    async def _seed_and_run():
+        async with get_session_factory()() as db:
+            db.add(DriverStateSegment(
+                tenant_id=tid, dedup_key="still-open", state=EarnerState.OPEN,
+                begin_at=t, end_at=None, last_ping_at=t + timedelta(minutes=40),
+                begin_lat=CHERRY_CREEK[0], begin_lng=CHERRY_CREEK[1], h3_r8=cell,
+                source=SegmentSource.LIVE))
+            await db.commit()
+            return await demand.recompute_week(
+                db, tenant_id=tid, now=datetime(2026, 9, 16, tzinfo=UTC)
+            )
+
+    asyncio.run(_seed_and_run())
+    r = c.get("/api/v1/demand/week", params={"zone": "cherry_creek"})
+    assert r.status_code == 200, r.text
+    # And the open minutes still count toward the cell, via the last ping.
+    assert r.json()["own_minutes_total"] > 0
+    # Neighbours in this file build on whatever state is left behind — the exact posterior
+    # identity asserted a few tests down is sensitive to a stray segment.
+    _reset_demand_tenant_state()
 
 
 def test_the_block_ratio_is_measured_against_the_same_baseline_in_every_zone():
