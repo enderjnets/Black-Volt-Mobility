@@ -36,10 +36,13 @@ def test_settings_defaults():
 
 
 def test_me_exposes_demand_feature_flag():
+    """The whole dict on purpose. Every key here turns a screen on or off in the
+    dashboard nav, so one appearing or vanishing unnoticed is a screen appearing or
+    vanishing unnoticed — this assertion is what caught the flights flag being added."""
     c = _owner()
     r = c.get("/api/v1/auth/me")
     assert r.status_code == 200, r.text
-    assert r.json()["features"] == {"demand": True}
+    assert r.json()["features"] == {"demand": True, "flights": False}
 
 
 import io  # noqa: E402

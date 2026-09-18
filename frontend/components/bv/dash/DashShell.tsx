@@ -74,6 +74,14 @@ const NAV: { seg: string; href: string; icon: string; key: string }[] = [
   { seg: "settings", href: "/dashboard/settings", icon: "settings", key: "dash.nav.settings" },
 ];
 const DEMAND_NAV = { seg: "demand", href: "/dashboard/demand", icon: "map-pin", key: "dash.nav.demand" };
+const FLIGHTS_NAV = { seg: "flights", href: "/dashboard/flights", icon: "plane", key: "dash.nav.flights" };
+
+// Feature-flagged entries go in by the item they follow, not by index: the moment a
+// second flag existed, slice(0, 5) meant two different places depending on the first.
+function insertAfter<T extends { seg: string }>(list: T[], seg: string, item: T): T[] {
+  const i = list.findIndex((n) => n.seg === seg);
+  return i < 0 ? [...list, item] : [...list.slice(0, i + 1), item, ...list.slice(i + 1)];
+}
 
 // Super-admin only (social management + the access list). Appended to the nav
 // when me.is_admin — regular drivers never see these.
@@ -134,7 +142,9 @@ export function DashShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const base = me?.features?.demand ? [...NAV.slice(0, 5), DEMAND_NAV, ...NAV.slice(5)] : NAV;
+  let base = NAV;
+  if (me?.features?.flights) base = insertAfter(base, "rides", FLIGHTS_NAV);
+  if (me?.features?.demand) base = insertAfter(base, "stats", DEMAND_NAV);
   const nav = me?.is_admin ? [...base, ...ADMIN_NAV] : base;
   const identity = me?.email ? me.email.split("@")[0] : me?.is_admin ? "Owner" : "Driver";
   const roleLabel = t(me?.is_admin ? "dash.role.admin" : "dash.role.driver");

@@ -629,7 +629,7 @@ function WeekChart() {
 }
 
 // Compact "time until" the next pickup: "5d 2h", "2h 30m", "12m", or `now`.
-function fmtCountdown(iso: string | null | undefined, now: string): string {
+export function fmtCountdown(iso: string | null | undefined, now: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";

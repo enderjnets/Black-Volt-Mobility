@@ -451,6 +451,13 @@ class Settings(BaseSettings):
     # api.weather.gov requires an identifying User-Agent.
     NWS_USER_AGENT: str = "BlackVoltMobility/1.0 (blackvoltmobility@gmail.com)"
 
+    # ── Flights: the driver's own flights, ordered by the hour that constrains him.
+    # Phase A needs nothing but the flight numbers already on the rides. The provider
+    # settings below stay unread until Phase B; FLIGHT_API_PROVIDER/FLIGHT_API_KEY have
+    # been sitting in .env since the project started WITHOUT being declared here, and
+    # `extra="ignore"` meant they were silently discarded at boot.
+    FLIGHTS_ENABLED: bool = False
+
     @field_validator(
         "DEN_LOT_LAT", "DEN_LOT_LNG", "DEMAND_HOME_LAT", "DEMAND_HOME_LNG", mode="before"
     )
