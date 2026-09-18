@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-17-black-demand-heatmap-design.md` (read it first; this plan implements its Phase 1). Research: `docs/research/2026-09-17-black-demand-heatmap.md`.
 
+**Execution order (amended 2026-09-17):** Tasks 1–8, then **Task 15** (spec Addendum A: the 30-day GPS file), then Tasks 9–14. Task 15's rules bind Task 9's loader, Task 11's Log tab and Task 12's Import tab; those sections carry an *Amendment* paragraph.
+
 ## Global Constraints
 
 - Python 3.11, ruff `line-length = 100`, rules `E,F,I,UP,B` (`backend/pyproject.toml`). Run `ruff check .` from `backend/` before every commit.
@@ -47,9 +49,11 @@ Backend (`backend/`):
 - `app/services/demand_prior.py` — Census + places → `hex_priors`.
 - `app/services/flights_baseline.py` — BTS On-Time → `den_flight_baseline`.
 - `app/services/demand.py` — orchestration: week recompute, Redis cache, payloads.
+- `app/services/gps_import.py` — 30-day analytics pings → segments, pickup backfill, waits summary (Task 15).
+- `migrations/versions/0051_segment_source_gps.py`
 - `app/scripts/geocode_places.py`, `app/scripts/build_demand_priors.py`, `app/scripts/build_flight_baseline.py`
 - `app/api/v1/demand.py` — router.
-- `tests/test_demand_model.py`, `tests/test_uber_import.py`, `tests/test_demand_api.py`, `tests/test_shift_log.py`, `tests/test_demand_prior.py`, `tests/test_flights_baseline.py`, `tests/test_demand_jobs.py`
+- `tests/test_demand_model.py`, `tests/test_uber_import.py`, `tests/test_demand_api.py`, `tests/test_shift_log.py`, `tests/test_demand_prior.py`, `tests/test_flights_baseline.py`, `tests/test_demand_jobs.py`, `tests/test_gps_import.py`
 
 Frontend (`frontend/`):
 
@@ -3217,6 +3221,147 @@ git commit -m "feat(demand): DEN hour-of-week flight baseline from BTS On-Time d
 
 ---
 
+### Task 15: GPS analytics import — `gps_import.py` (added 2026-09-17; runs after Task 8, before Task 9)
+
+Binding text: spec **Addendum A**. Owner decisions (2026-09-17): home excluded from exposure; "Your waits this month" in the Import tab; manual logging is offers-only. Every threshold below was measured on the owner's real export (218,344 pings, 27 days), not guessed.
+
+**Files:**
+- Create: `backend/app/services/gps_import.py`
+- Create: `backend/migrations/versions/0051_segment_source_gps.py`
+- Modify: `backend/app/services/uber_import.py` (kind `analytics`, `ParsedPing`, `ParsedExport.pings`, `MAX_MEMBER_BYTES`, `KNOWN_FILES` texts, `ParsedSegment.h3_r8/zone_key`, `import_export` calls `gps_import.import_pings` and adds `"gps"` to the summary)
+- Modify: `backend/app/models/demand.py` (`SegmentSource.GPS = "gps"`; replace the "Only the 2022 export format carries pickup coordinates" comment with "Filled by the GPS import (Task 15) or the 2022 export format; null otherwise.")
+- Modify: `backend/app/config.py` and `docker-compose.yml` (`DEMAND_HOME_LAT: float | None = None`, `DEMAND_HOME_LNG: float | None = None`, `DEMAND_HOME_RADIUS_M: int = 300`, blank → None like the DEN lot validator; compose lines next to `DEN_LOT_*`)
+- Modify: `backend/app/services/shift_log.py` (`in_home(lat, lng)` beside `in_den_lot`; a new `open` segment gets `zone_key = "den_lot"` when in the lot, else `"home"` when within the home radius, else `None`)
+- Test: `backend/tests/test_gps_import.py` (new); one test added to `backend/tests/test_uber_import.py`; one test added to `backend/tests/test_shift_log.py`
+
+**Interfaces:**
+- Consumes: `uber_import.ParsedTrip` (`dedup_key, product, request_at, begin_at, dropoff_at, status`), `uber_import._cell`, `uber_import._round5`, `uber_import._upsert`, `demand_places.load_geocoded/ZONES/METRO_BBOX`, settings `DEN_LOT_*`/`DEMAND_HOME_*`, models `DriverStateSegment`, `UberTrip`, `SegmentSource`, `EarnerState`.
+- Produces:
+  - `uber_import.ParsedPing` — `@dataclass(slots=True)`: `at: datetime` (UTC), `lat: float`, `lng: float`, `online: bool`. `ParsedExport.pings: list[ParsedPing]`. `ParsedSegment` gains `h3_r8: str | None = None` and `zone_key: str | None = None` (existing callers unaffected; `import_export` writes them when present, else computes `h3_r8` from `begin_*` as today).
+  - `uber_import.MAX_MEMBER_BYTES = 150 * 1024 * 1024`; a larger `analytics` member is skipped and listed in `files_missing` with consequence "driver_app_analytics.csv is larger than 150 MB; not read." (kind `analytics_too_large`).
+  - `uber_import.KNOWN_FILES["online_offline"]` = "Driver Online Offline.csv not present (the US export never ships it): waiting locations come from the 30-day GPS file (driver_app_analytics) and your offer taps; request a new export monthly." and new `KNOWN_FILES["analytics"]` = "driver_app_analytics.csv not present: no waiting locations from this export; only your taps place you. Request a new export monthly."; `_KIND_PATTERNS` gains `analytics` ← filename contains `driver_app_analytics`.
+  - `gps_import` constants: `DWELL_S = 60`, `GAP_S = 600`, `MATCH_S = 120`, `CANCEL_S = 60`, `TOP_WAITS = 10`, `LABEL_KM = 2.0`.
+  - `gps_import.coverage(pings) -> tuple[datetime, datetime] | None` — `(min at, max at)`.
+  - `gps_import.segment_pings(pings, trips, *, home: tuple[float, float] | None, home_radius_m: int) -> list[ParsedSegment]` — pure; the rules of Addendum A "Segmentation"; states `open`/`enroute`/`ontrip` only; `dedup_key = sha256("gps|state|begin_at.isoformat()|end_at.isoformat()|h3_r8 or ''")`.
+  - `gps_import.locate_trips(pings, trips) -> dict[str, tuple[float, float]]` — `dedup_key → (lat, lng)` of the ping nearest to `begin_at` within `MATCH_S`; pure.
+  - `gps_import.request_cells(pings, trips) -> list[str]` — one H3 cell per **premium** (`black`, `black_suv`) trip requested while not busy (the same non-queued rule as `enroute`), from the ping nearest to `request_at` within `MATCH_S`; pure.
+  - `gps_import.top_waits(open_segments, premium_cells, *, places: dict[str, tuple[float, float]]) -> list[dict]` — pure; items exactly `{"h3_r8", "hours", "premium_requests", "per_hour", "place", "distance_km", "zone_key", "zone_name", "outside"}` per Addendum A; `hours` rounded to 1 decimal, `per_hour` = `premium_requests` ÷ unrounded hours, rounded to 2 decimals; `home` segments excluded by the caller; sorted by minutes desc, `TOP_WAITS` items.
+  - `async def gps_import.import_pings(db, *, tenant_id: int, pings: list[ParsedPing], trips: list[ParsedTrip]) -> dict | None` — `None` when `pings` is empty; else does, in this order: coverage → `segment_pings` → `DELETE` tenant `gps` segments with `begin_at >= start` → `UPDATE` tenant `gps` segments with `begin_at < start AND end_at > start` to `end_at = start` → insert segments (`_upsert`, `source=SegmentSource.GPS`) → `UPDATE uber_trips SET begin_lat, begin_lng WHERE tenant_id AND dedup_key AND begin_lat IS NULL` for `locate_trips` → returns `{"start", "end" (isoformat), "days" (int, ceil), "pings", "skipped_rows": 0 placeholder replaced by the caller, "segments": {"open", "enroute", "ontrip"}, "trips_located", "home_hours" (1 decimal), "top_waits"}`. No commit inside; `import_export` commits as today.
+  - `import_export` summary gains `"gps": <dict | None>`; `skipped_rows` keeps counting analytics rows that failed to parse.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `backend/tests/test_gps_import.py`. Rules: the analytics header is the real one, verbatim (18 columns); rows are built by a helper that fills the 14 unread columns with constants and the 4 read columns from arguments, in the real formats (`2026-09-01 13:00:00.000`, `true`/`false`, 5-decimal coordinates); trips rows are built from `TRIPS_2025_HEADER`/`TRIPS_2025_ROW` of `test_uber_import.py` via `csv` (parse the row into a dict, override `product_type_name`, `request_timestamp_utc`, `begintrip_timestamp_utc`, `dropoff_timestamp_utc`, `status`, write back with `csv.writer`). Set `DEMAND_HOME_LAT="39.60000"`, `DEMAND_HOME_LNG="-104.80000"` (a synthetic point — never the owner's) and `DEN_LOT_LAT/LNG` as `test_shift_log.py` does, before importing `app`.
+
+```python
+ANALYTICS_HEADER = (
+    "Analytics Event Name,City,Cellular Carrier,Carrier MCC,Carrier MNC,IP Address,"
+    "Device Language,Device Model,Device OS,Device OS Version,Is Driver Online?,"
+    "Driver Status,Application Version,Event Time (UTC),Latitude,Longitude,Speed (GPS),"
+    "Analytics Event Type"
+)
+
+def _ping(t: datetime, lat: float, lng: float, online: bool = True) -> str:
+    return (
+        f"driver_app,denver,Test Carrier,311,480,10.0.0.1,en,sm-test,android,16,"
+        f"{'true' if online else 'false'},,4.593.10000,{t:%Y-%m-%d %H:%M:%S}.000,"
+        f"{lat:.5f},{lng:.5f},0.0,custom"
+    )
+```
+
+Fixture day 2026-09-01 (UTC), pings every 30 s unless stated; cells: A = (39.71700, -104.95300), B = a point ~700 m east of A in a different res-8 cell (assert `h3.latlng_to_cell` differs), C = (39.73500, -104.95300), D = (39.74710, -104.99480), HOME = (39.60000, -104.80000):
+
+- 13:00:00–13:39:30 online at A, except 13:30:30 at B (one ping).
+- 13:40:00–14:00:00 online at C; then nothing until 14:20:00; 14:20:00–14:29:30 online at C.
+- Trip 1 (`UberBLACK`, completed): request 14:30:00, begin 14:40:00, dropoff 15:00:00. Pings continue every 30 s: at C until 14:39:30, at D from 14:40:00.
+- Trip 2 (`UberSUV`, completed, queued): request 14:50:00, begin 15:05:00, dropoff 15:20:00; pings at D throughout.
+- 15:20:30–15:45:00 online at D.
+- Trip 3 (`UberSUV`, `requester_canceled`): request 15:30:00, no begin, no dropoff.
+- 16:00:00–16:10:00 pings at D with `online=false`.
+- 17:00:00–17:30:00 online at HOME.
+- One `uberX` completed trip on 2026-08-20 (outside coverage) to prove trips outside the window are ignored.
+
+Tests (each asserts exact values):
+
+1. `test_parse_zip_reads_analytics_member`: `parse_zip` with the trips + analytics files → `files_found` includes the analytics name, `len(p.pings)` equals the rows written, first ping `at` is tz-aware UTC with the millisecond kept, `online` False for the 16:00 burst; a row with a broken timestamp is counted in `skipped_rows`.
+2. `test_segments_exact`: `segment_pings(p.pings, p.trips, home=(39.6, -104.8), home_radius_m=300)` returns, sorted by `begin_at`, exactly: open A 13:00:00–13:39:30 (`h3_r8` = cell of A, the B blip absorbed); open C 13:40:00–14:00:00; open C 14:20:00–14:29:30; enroute 14:30:00–14:40:00 with `h3_r8` = cell of C; ontrip 14:40:00–15:00:00; ontrip 15:05:00–15:20:00 and **no** enroute for trip 2; open D 15:20:30–15:29:30; enroute 15:30:00–15:31:00 with `h3_r8` = cell of D (cancelled trip); open D 15:31:30–15:45:00; open HOME 17:00:00–17:30:00 with `zone_key == "home"`; nothing from the offline burst; `dedup_key`s all distinct and stable across two calls.
+3. `test_locate_and_request_cells`: `locate_trips` → trip 1 at D, trip 2 at D, no entry for trip 3 or the August trip; `request_cells` → `[cell(C), cell(D)]` (trip 1 while open at C, trip 3 cancelled at D; trip 2 queued is absent).
+4. `test_top_waits_labels`: with `places={"Clayton Hotel & Members Club": (39.7203, -104.9565)}` and the segments above (home excluded by the caller): first item is cell A (`hours` 0.7 — 39.5 min rounded, `premium_requests` 0), C has `premium_requests` 1 and `per_hour` == 2.03 (1 request ÷ 29.5 unrounded minutes, rounded to 2 decimals — `per_hour` is always computed from unrounded minutes); A's `place` is the Clayton entry with `distance_km` < 2; a cell built from (39.19, -106.82) is `outside == True` with `place is None`; the HOME cell is absent.
+5. `test_import_pings_replace_window_and_backfill` (DB, same env/bootstrap as `test_demand_api.py`): import the fixture ZIP through `POST /demand/import` → summary `gps.pings`, `gps.segments == {"open": 6, "enroute": 2, "ontrip": 2}`, `gps.trips_located == 2`, `gps.home_hours == 0.5`, `gps.top_waits[0]["h3_r8"]` = cell of A, and `uber_trips.begin_lat/lng` of trip 1 equal D rounded to 5 decimals. Import the same ZIP again → identical `driver_state_segments` rows (same count, same set of `dedup_key`). Then import a second ZIP whose pings start at 15:35:00 (overlapping) → the segment open D 15:31:30–15:45:00 is truncated to end 15:35:00, every gps segment with `begin_at ≥ 15:35:00` comes from the new file only, and the final rows, sorted by `begin_at`, are exactly: open A 13:00:00–13:39:30; open C 13:40:00–14:00:00; open C 14:20:00–14:29:30; enroute 14:30:00–14:40:00; ontrip 14:40:00–15:00:00; ontrip 15:05:00–15:20:00; open D 15:20:30–15:29:30; enroute 15:30:00–15:31:00; open D 15:31:30–**15:35:00** (truncated); open D 15:35:00–15:45:00 (new file); open HOME 17:00:00–17:30:00 (deleted and re-inserted, same `dedup_key`) — 11 rows, none duplicated.
+6. `test_analytics_privacy_and_size_cap`: the summary JSON and every stored row contain no `10.0.0.1`, no `sm-test`; monkeypatch `MAX_MEMBER_BYTES = 10` → analytics member skipped, `files_missing` carries kind `analytics_too_large`, `gps is None`, trips still imported.
+
+Add to `test_uber_import.py`: `test_missing_analytics_is_reported_with_consequence` — a ZIP with trips only lists kind `analytics` with the exact consequence text above, and the `online_offline` consequence is the new text.
+
+Add to `test_shift_log.py`: `test_home_tag` — `online` at the synthetic home point → `zone_key == "home"`; `online` 1 km away → `None`; `here` in the DEN lot → `"den_lot"`.
+
+Run: `cd backend && .venv/bin/pytest -q tests/test_gps_import.py tests/test_uber_import.py tests/test_shift_log.py` → the new tests fail on import/attribute errors.
+
+- [ ] **Step 2: Migration 0051**
+
+`backend/migrations/versions/0051_segment_source_gps.py`: `revision = "0051_segment_source_gps"`, `down_revision = "0050_demand_phase1"`; `upgrade()` runs `op.execute("ALTER TYPE segment_source ADD VALUE IF NOT EXISTS 'gps'")` and nothing else (no row may use the value in the same transaction); `downgrade()` is a documented no-op (Postgres cannot drop an enum value). `alembic upgrade head` on the local stack, then `alembic revision --autogenerate -m probe` must report no changes (delete the probe file).
+
+- [ ] **Step 3: Settings and compose**
+
+`config.py`: the three `DEMAND_HOME_*` settings next to `DEN_LOT_*`, covered by the same blank-to-None validator (add the two names to its decorator). `docker-compose.yml`: `DEMAND_HOME_LAT: ${DEMAND_HOME_LAT:-}`, `DEMAND_HOME_LNG: ${DEMAND_HOME_LNG:-}`, `DEMAND_HOME_RADIUS_M: ${DEMAND_HOME_RADIUS_M:-300}` after the `DEN_LOT_RADIUS_M` line.
+
+- [ ] **Step 4: Models and parser**
+
+`SegmentSource.GPS = "gps"`. `ParsedPing`, `ParsedExport.pings`, `ParsedSegment.h3_r8/zone_key`, the `analytics` kind in `_KIND_PATTERNS`/`KNOWN_FILES`, `MAX_MEMBER_BYTES` checked against `info.file_size` before `z.read` for the analytics member. The analytics row parser reads only the four columns by header name; `_parse_ts(value, "UTC")` already accepts the millisecond form (verify; extend the format list if not). Skip rows with empty/invalid coordinates or timestamp (count them).
+
+- [ ] **Step 5: `gps_import.py`**
+
+Module docstring: why the trips file is the authority on state and why home is excluded. Reference loop for `open` segments (the only non-obvious piece; keep it, adapt names):
+
+```python
+def _open_runs(labelled):
+    """labelled: (at, lat, lng, is_open) sorted by at. Yields (cell, begin, end, blat, blng, elat, elng)."""
+    cur = None          # current open segment
+    pend = None         # (cell, first ping of the candidate cell, ping before it)
+    prev = None
+    for at, lat, lng, is_open in labelled:
+        if not is_open:
+            if cur: yield _close(cur)
+            cur = pend = None; prev = None
+            continue
+        cell = h3.latlng_to_cell(lat, lng, 8)
+        if cur is None or (at - cur.end).total_seconds() > GAP_S:
+            if cur: yield _close(cur)
+            cur = _Seg(cell, at, lat, lng); pend = None
+        elif cell == cur.cell:
+            cur.extend(at, lat, lng); pend = None
+        else:
+            if pend is None or pend[0] != cell:
+                pend = (cell, (at, lat, lng), prev)
+            if (at - pend[1][0]).total_seconds() >= DWELL_S:
+                cur.end, cur.elat, cur.elng = pend[2]          # last ping before the candidate
+                yield _close(cur)
+                cur = _Seg(cell, *pend[1]); cur.extend(at, lat, lng); pend = None
+            else:
+                cur.extend(at, lat, lng)                        # absorbed unless it dwells
+        prev = (at, lat, lng)
+    if cur: yield _close(cur)
+```
+
+Busy intervals from the trips (Addendum A), `enroute`/`ontrip` rows from the trips with nearest-ping positions (`bisect` over the sorted ping times), home tag, `top_waits` with the label rules (`places` = `demand_places.load_geocoded()` plus `"DEN Commercial Holding Lot"` when `DEN_LOT_LAT/LNG` are set; zones from `demand_places.ZONES` with `radius_mi`; `METRO_BBOX`), `import_pings` with the replace-window statements. `_haversine_m` is duplicated in three services already (ledger deferred minor): import it from `shift_log` rather than adding a fourth copy.
+
+- [ ] **Step 6: `shift_log` home tag**
+
+`in_home()` mirrors `in_den_lot()` with `DEMAND_HOME_*`; the `zone_key` decision for a new `open` segment: lot → `"den_lot"`, else home → `"home"`, else `None`.
+
+- [ ] **Step 7: Verify**
+
+`cd backend && .venv/bin/ruff check . && .venv/bin/pytest -q tests/test_gps_import.py tests/test_uber_import.py tests/test_shift_log.py tests/test_demand_api.py` (DB tests need `DATABASE_URL` with host `127.0.0.1:5435` and `REDIS_URL=redis://127.0.0.1:6382/0` exported — the root `.env` points at the docker host `db`). Then the acceptance run on the owner's real export, `/Users/enderj/Downloads/Uber Data Request 5680944C.zip`, with the real `DEMAND_HOME_*`/`DEN_LOT_*` values exported from the root `.env` (never copy them into any file under the repo or into the report): call `parse_zip` + `segment_pings` + `locate_trips` + `top_waits` directly and check `pings == 218344`, coverage 2026-08-17 → 2026-09-15, open segments between 470 and 500 with total open hours between 140 and 150, `trips_located == 50`, home hours between 20 and 22, `top_waits[0]` is the DEN lot (`place` starts with "DEN", hours 50–55, `premium_requests == 10`). Write the numbers in the report.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add backend/app/services/gps_import.py backend/migrations/versions/0051_segment_source_gps.py backend/app/services/uber_import.py backend/app/models/demand.py backend/app/config.py docker-compose.yml backend/app/services/shift_log.py backend/tests/test_gps_import.py backend/tests/test_uber_import.py backend/tests/test_shift_log.py
+git commit -m "feat(demand): import the 30-day GPS file — waits, offers, pickups, home excluded" -m "<body per the repo's CLAUDE.md trailer>"
+```
+
+---
+
+
 ### Task 9: Week recompute, scheduler job, `/demand/week` — `demand.py`
 
 **Files:**
@@ -3226,7 +3371,7 @@ git commit -m "feat(demand): DEN hour-of-week flight baseline from BTS On-Time d
 - Test: `backend/tests/test_demand_jobs.py`
 
 **Interfaces:**
-- Consumes: `demand_model` (Task 3), models, `flights_baseline.load_baseline/multipliers` (Task 8), `demand_places.ZONES` (Task 7), `shift_log.DENVER`.
+- Consumes: `demand_model` (Task 3), models, `flights_baseline.load_baseline/multipliers` (Task 8), `demand_places.ZONES` (Task 7), `shift_log.DENVER`. **Amendment (Task 15 / Addendum A):** also `SegmentSource` and `DemandImport` (GPS coverage windows); the four counting rules of Addendum A bind `recompute_week` — they are written into the code and tests below.
 - Produces:
   - `async def recompute_week(db, *, tenant_id: int, now: datetime | None = None) -> dict` → `{"zones": int, "rows": int, "computed_at": iso}`; replaces the tenant's `week_scores`.
   - `async def week_payload(db, *, tenant_id: int, zone: str | None) -> dict | None` → `None` for an unknown zone; otherwise `{"zone", "zone_name", "zones": [{"key","name"}], "computed_at", "grid": [[cell×24]×7], "top_blocks": [...], "private_rides": [...], "own_minutes_total": float}` where cell = `{"mean","lo","hi","p15","own_share","reasons"}`; computes on the fly when the tenant has no scores yet.
@@ -3367,6 +3512,46 @@ def test_recompute_and_week_endpoint():
     assert c.get("/api/v1/demand/week", params={"zone": "narnia"}).status_code == 404
 
 
+def test_gps_coverage_and_home_rules():
+    """Addendum A: inside a GPS window live waits are ignored; home never counts."""
+    import h3
+
+    from app.models import DemandImport, DriverStateSegment, EarnerState, SegmentSource
+
+    _seed_priors()
+    c = _owner()
+    tid = _tenant_id(c)
+    cell = h3.latlng_to_cell(*CHERRY_CREEK, 8)
+    t = datetime(2026, 9, 15, 13, 0, tzinfo=UTC)  # Tue 07:00 Denver
+    # A live wait inside the covered window: must not count.
+    _log(c, "online", t)
+    _log(c, "offline", t + timedelta(minutes=50))
+
+    async def _seed_and_run():
+        async with get_session_factory()() as db:
+            db.add(DemandImport(tenant_id=tid, summary={"gps": {
+                "start": "2026-09-01T00:00:00+00:00", "end": "2026-09-30T00:00:00+00:00"}}))
+            db.add(DriverStateSegment(
+                tenant_id=tid, dedup_key="gps-open", state=EarnerState.OPEN, begin_at=t,
+                end_at=t + timedelta(minutes=50), begin_lat=CHERRY_CREEK[0],
+                begin_lng=CHERRY_CREEK[1], h3_r8=cell, source=SegmentSource.GPS))
+            db.add(DriverStateSegment(
+                tenant_id=tid, dedup_key="gps-home", state=EarnerState.OPEN,
+                begin_at=t + timedelta(hours=2), end_at=t + timedelta(hours=2, minutes=50),
+                begin_lat=CHERRY_CREEK[0], begin_lng=CHERRY_CREEK[1], h3_r8=cell,
+                zone_key="home", source=SegmentSource.GPS))
+            await db.commit()
+            return await demand.recompute_week(
+                db, tenant_id=tid, now=datetime(2026, 9, 16, tzinfo=UTC)
+            )
+
+    asyncio.run(_seed_and_run())
+    body = c.get("/api/v1/demand/week", params={"zone": "cherry_creek"}).json()
+    assert body["grid"][1][7]["reasons"]["own_minutes"] == 50  # the GPS wait, not 100
+    assert body["grid"][1][9]["reasons"]["own_minutes"] == 0  # home excluded
+
+
+
 def test_recompute_error_does_not_kill_the_job(monkeypatch):
     from app.services import scheduler
 
@@ -3410,6 +3595,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import (
+    DemandImport,
     DispatchWindow,
     DriverStateSegment,
     EarnerState,
@@ -3418,6 +3604,7 @@ from app.models import (
     OfferEvent,
     Ride,
     RideStatus,
+    SegmentSource,
     UberProduct,
     UberTrip,
     WeekScore,
@@ -3564,6 +3751,19 @@ def _holiday_dows(now: datetime) -> dict[int, str]:
     return out
 
 
+async def _gps_coverage(db: AsyncSession, tenant_id: int) -> list[tuple[datetime, datetime]]:
+    """[start, end] of every imported GPS file: inside them the GPS owns the exposure."""
+    rows = (
+        await db.execute(
+            select(DemandImport.summary).where(DemandImport.tenant_id == tenant_id)
+        )
+    ).scalars().all()
+    out: list[tuple[datetime, datetime]] = []
+    for summary in rows:
+        gps = (summary or {}).get("gps") or {}
+        if gps.get("start") and gps.get("end"):
+            out.append((datetime.fromisoformat(gps["start"]), datetime.fromisoformat(gps["end"])))
+    return out
 # ── Recompute ───────────────────────────────────────────────────────────────────
 async def recompute_week(
     db: AsyncSession, *, tenant_id: int, now: datetime | None = None
@@ -3590,6 +3790,18 @@ async def recompute_week(
             )
         )
     ).scalars().all()
+    # Addendum A: inside a GPS coverage window the GPS owns the exposure; home never counts.
+    coverage = await _gps_coverage(db, tenant_id)
+
+    def _covered(at: datetime) -> bool:
+        return any(a <= at <= b for a, b in coverage)
+
+    segs = [
+        s
+        for s in segs
+        if s.zone_key != "home"
+        and not (s.source == SegmentSource.LIVE and _covered(s.begin_at))
+    ]
     offers = (
         await db.execute(
             select(OfferEvent).where(
@@ -3617,6 +3829,13 @@ async def recompute_week(
         lo = at - timedelta(minutes=3)
         hi = at + timedelta(minutes=3)
         return any(lo <= r <= hi for r in premium_requests)
+
+    accepted_live = [o.at for o in offers if o.accepted]
+
+    def _live_accepted_near(at: datetime) -> bool:
+        return any(abs((a - at).total_seconds()) <= 180 for a in accepted_live)
+
+    enroute = [s for s in enroute if not _live_accepted_near(s.begin_at)]
 
     total_open_min = sum(_segment_minutes_by_hour(segs))
     live_offers = len(offers) + sum(1 for s in enroute if _is_premium_at(s.begin_at))
@@ -3900,7 +4119,7 @@ git commit -m "feat(demand): hourly 7×24 planner per zone — priors, flights, 
 
 **Interfaces:**
 - Consumes: `Me.features.demand` (Task 1); API routes from Tasks 5, 6, 9.
-- Produces (`lib/demand.ts`): types `LogKind`, `Product`, `LogEvent`, `TodayLog`, `ImportSummary`, `WeekCell`, `WeekPayload`; functions `logEvent(body) → Promise<LogEvent>`, `getToday() → Promise<TodayLog>`, `importZip(file, onProgress?) → Promise<ImportSummary>`, `getImportStatus() → Promise<ImportSummary & {at: string} | {never: true}>`, `getWeek(zone?) → Promise<WeekPayload>`, `newEventId() → string`, `PRODUCTS` const, `DOW_KEYS` const. `DemandPage` renders tabs `log | week | import` (query `?tab=`), each tab component receives no props and fetches on its own.
+- Produces (`lib/demand.ts`): types `LogKind`, `Product`, `LogEvent`, `TodayLog`, `ImportSummary`, `WeekCell`, `WeekPayload`; functions `logEvent(body) → Promise<LogEvent>`, `getToday() → Promise<TodayLog>`, `importZip(file, onProgress?) → Promise<ImportSummary>`, `getImportStatus() → Promise<ImportSummary & {at: string} | {never: true}>`, `getWeek(zone?) → Promise<WeekPayload>`, `newEventId() → string`, `PRODUCTS` const, `DOW_KEYS` const. `DemandPage` renders tabs `log | week | import` (query `?tab=`), each tab component receives no props and fetches on its own. **Amendment (Task 15):** `ImportSummary.gps?: GpsSummary | null` with `GpsSummary = { start: string; end: string; days: number; pings: number; segments: { open: number; enroute: number; ontrip: number }; trips_located: number; home_hours: number; top_waits: { h3_r8: string; hours: number; premium_requests: number; per_hour: number; place: string | null; distance_km: number | null; zone_key: string | null; zone_name: string | null; outside: boolean }[] }`.
 
 - [ ] **Step 1: API client**
 
@@ -4369,6 +4588,7 @@ git commit -m "feat(frontend): 'Where to wait' route, API client, i18n and nav (
 **Interfaces:**
 - Consumes: `logEvent`, `getToday`, `newEventId`, `PRODUCTS`, types (Task 10); `Icon`, `Pill` from `../../ui`; `useI18n`.
 - Behaviour (from the spec, "Tab Log"): four big buttons (Online, Here, Offer, Offline) in the upper half; Offer expands product chips + Accepted toggle + optional fare; each tap → `getCurrentPosition` (8 s, high accuracy) → POST with a fresh `client_event_id`; GPS failure → event sent without position, row shows a "no position" badge with a retry that re-sends a `here` with position; while state is `open` and the tab is visible, a `ping` every 60 s with a Screen Wake Lock (best effort); today's list newest first; layout fits 390 px wide and Android split-screen (~390×400): no page header, no scroll needed for the buttons.
+- **Amendment (2026-09-17, Addendum A):** Offer is the primary control — first and largest, its product chips + Accepted toggle always visible; Online, Here and Offline are secondary (smaller, one row). Copy under the buttons, EN/ES: "Your monthly Uber export covers where you waited; tap every offer." / "Tu exportación mensual de Uber cubre dónde esperaste; toca cada oferta." Everything else in this task stands.
 
 - [ ] **Step 1: Implement**
 
@@ -4661,6 +4881,7 @@ git commit -m "feat(frontend): one-tap shift log — Online/Here/Offer/Offline, 
 **Interfaces:**
 - Consumes: `getWeek`, `importZip`, `getImportStatus`, `DOW_KEYS`, types (Task 10).
 - Behaviour (spec "Tab Week" / "Tab Import"): zone chips; 7×24 grid coloured by `mean` (sequential cyan scale), hatched when `own_share < 0.2`; tap a cell → detail line (p15, interval, own share, hours, reasons); top blocks list above the grid; private rides outlined; empty state. Import: drop zone / picker, progress, summary with missing files in red and their consequence, last import on load, error strings by code.
+- **Amendment (2026-09-17, Addendum A):** when `summary.gps` is present the Import tab renders, after the files block, a "Your waits this month" / "Tus esperas del mes" table: one row per `top_waits` item — label (`place` + `distance_km` with one decimal when `place` is set; else `zone_name`; else `dash.demand.import.gps.outside` when `outside`; else `dash.demand.import.gps.other`), `hours`, `premium_requests`, `per_hour` (2 decimals) — plus one line "GPS: {days} days, {pings} pings, {home_hours} h at home excluded" (EN/ES). New i18n keys under `dash.demand.import.gps.*`. When `summary.gps` is null nothing extra renders. The Playwright fixture ZIP of Task 13 gains an analytics file so the table is exercised.
 
 - [ ] **Step 1: Week tab**
 
@@ -5041,6 +5262,8 @@ The planner needs three things once, plus the owner's data.
 | `CENSUS_API_KEY` | free key from https://api.census.gov/data/key_signup.html |
 | `DEN_LOT_LAT` / `DEN_LOT_LNG` | `39.8399691` / `-104.6698651` — Google Maps place pin "Commercial Holding Lot", 8500 Peña Blvd, Denver, CO 80249 (place id `0x876c67929cf14ec3:0x1cf80066bd0b9c72`), confirmed by the owner on 2026-09-17 and already set in the local root `.env`. The map embed/viewport centre (`39.8399732, -104.67244`) sits 220 m west of the pin: inside the 400 m radius, but use the pin. Leaving both empty keeps DEN-lot tagging off |
 | `DEN_LOT_RADIUS_M` | `400` |
+| `DEMAND_HOME_LAT` / `DEMAND_HOME_LNG` | the owner's home point — it lives in the root `.env` of his Mac; copy it from there, never write it in a doc or a commit. Waits within the radius are excluded from the model (Addendum A) |
+| `DEMAND_HOME_RADIUS_M` | `300` |
 | `DEMAND_BRIDGE_FARE_DEFAULT` | `35` |
 
 Restart the backend after changing them (`docker compose up -d backend`).

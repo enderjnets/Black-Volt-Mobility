@@ -62,8 +62,8 @@ All tables have `tenant_id` (FK `tenants.id`, indexed) and `created_at`. One Ale
 | `begin_at`, `end_at` | timestamptz, `end_at` nullable while live | |
 | `begin_lat`, `begin_lng`, `end_lat`, `end_lng` | float nullable | rounded to 5 decimals |
 | `h3_r8` | varchar(16) nullable | H3 res-8 cell of `begin` |
-| `source` | enum `export, live` | |
-| `dedup_key` | varchar(64) unique per tenant | export rows: sha256 of `state|begin_at|end_at`; live rows: uuid |
+| `source` | enum `export, live, gps` | `gps` = derived from the 30-day analytics file (Addendum A) |
+| `dedup_key` | varchar(64) unique per tenant | export rows: sha256 of `state|begin_at|end_at`; live rows: uuid; gps rows: sha256 of `gps|state|begin_at|end_at|h3_r8` |
 
 ### `offer_events` (live logging only; the export has no per-offer product)
 
@@ -104,7 +104,7 @@ Live rows in `driver_state_segments` use the same `client_event_id` of the tap t
 
 ### Settings (`config.py`, declared in `docker-compose.yml`)
 
-`DEMAND_ENABLED` (default false), `CENSUS_API_KEY`, `DEN_LOT_LAT`, `DEN_LOT_LNG`, `DEN_LOT_RADIUS_M` (default 400), `DEMAND_BRIDGE_FARE_DEFAULT` (35), `DEMAND_RECOMPUTE_MIN` (15), `NWS_USER_AGENT`. Per-tenant `RateConfig.bridge_fare` (nullable numeric, added in migration 0050) overrides the default.
+`DEMAND_ENABLED` (default false), `CENSUS_API_KEY`, `DEN_LOT_LAT`, `DEN_LOT_LNG`, `DEN_LOT_RADIUS_M` (default 400), `DEMAND_BRIDGE_FARE_DEFAULT` (35), `DEMAND_RECOMPUTE_MIN` (15), `NWS_USER_AGENT`, `DEMAND_HOME_LAT`, `DEMAND_HOME_LNG`, `DEMAND_HOME_RADIUS_M` (default 300; Addendum A). Per-tenant `RateConfig.bridge_fare` (nullable numeric, added in migration 0050) overrides the default.
 
 ## The model (`services/demand_model.py`, pure functions)
 
@@ -171,7 +171,7 @@ Route `/dashboard/demand`, nav item "Where to wait" / "Dónde esperar" (icon fro
 
 ### Tab "Log" (default while driving)
 
-- Four large buttons filling the upper half: Online, Here, Offer, Offline. Offer expands a chip row (Black SUV, Black, Comfort, X, XL) plus an "Accepted" toggle and an optional fare field; tapping a chip sends immediately.
+- Four large buttons filling the upper half: Online, Here, Offer, Offline. Offer expands a chip row (Black SUV, Black, Comfort, X, XL) plus an "Accepted" toggle and an optional fare field; tapping a chip sends immediately. Addendum A: Offer is the primary control (largest, first); Online, Here and Offline stay as secondary buttons because the monthly GPS import supersedes them for waiting time.
 - Every tap: `getCurrentPosition` (timeout 8 s, high accuracy) → POST with a client-generated `client_event_id`; on GPS failure the event is sent without position and the row shows a "no position" badge with a retry.
 - While the tab is visible and state is online: a `ping` every 60 s with a Screen Wake Lock request (best effort). Leaving the tab stops pinging; the segment stays open until the next tap.
 - Below: today's list (time, kind, product, zone name from `h3_r8` → nearest curated zone, or lat/lng), the current state and "open since".
@@ -186,7 +186,7 @@ Route `/dashboard/demand`, nav item "Where to wait" / "Dónde esperar" (icon fro
 
 ### Tab "Import"
 
-- Drop zone / file picker for the ZIP, upload progress, then the summary: files found, rows per table, date range, products found, and **files missing in red with their consequence** ("Driver Online Offline.csv not present: waiting locations will come only from your logs and the 30-day GPS file; request a new export monthly").
+- Drop zone / file picker for the ZIP, upload progress, then the summary: files found, rows per table, date range, products found, and **files missing in red with their consequence** ("Driver Online Offline.csv not present (the US export never ships it): waiting locations come from the 30-day GPS file (driver_app_analytics) and your offer taps; request a new export monthly"). When the ZIP carried the analytics file, a "Your waits this month" table follows: label, hours, Black/SUV requests, requests per hour (Addendum A).
 - Last import status on load.
 
 ### Tab "Map" (Phase 2)
@@ -198,6 +198,53 @@ Route `/dashboard/demand`, nav item "Where to wait" / "Dónde esperar" (icon fro
 - No Google key in the browser. Directions/Places remain server-side and are never drawn on this map.
 
 Dependencies added: Phase 1 `h3-js` (for the cell id at log time); Phase 2 `maplibre-gl`. `package-lock.json` is gitignored in this repo (Dockerfile runs `npm install`).
+
+## Addendum A (2026-09-17, approved by the owner): the 30-day GPS file
+
+The 2025 US export ships no "Online Offline" and no "Dispatches" file, but it ships `Driver/driver_app_analytics-0.csv`: one row per app event with a position. Measured on the owner's export: 218,344 rows over 27 days, every row geolocated, gap between rows p50 0 s / p90 11 s / p99 37 s, 191,124 rows flagged online, 36k exact-duplicate timestamps. It is the only record of *where* the owner waited, so Phase 1 imports it (Task 15, executed after Task 8 and before Task 9). Owner decisions of 2026-09-17: home time is excluded; the Import tab shows "Your waits this month"; manual logging is offers-only.
+
+### Columns read
+
+Exactly four: `Event Time (UTC)` (naive, UTC, optional milliseconds: `2026-08-25 15:28:46.190`), `Latitude`, `Longitude`, `Is Driver Online?` (`true`/`false`). Every other column (IP address, device model, OS, carrier, app version, event names) is never decoded, stored, logged or echoed in a summary. The parser identifies the member by name (`driver_app_analytics`), reads it only when its uncompressed size is ≤ `MAX_MEMBER_BYTES` = 150 MB (the real file is 38 MB inside a 2 MB ZIP; the 50 MB cap is on the ZIP), and counts malformed rows in `skipped_rows`.
+
+### Segmentation (pure: `gps_import.segment_pings`)
+
+The trips file is the authority on state. For every trip whose `request_at` lies inside the file's coverage, the closed interval `[request_at, dropoff_at]` (or `[request_at, request_at + 60 s]` for a trip cancelled before pickup: no `begin_at`) is "busy": pings inside it are never `open`. Online pings outside every busy interval are `open`; offline pings produce nothing and close the current segment.
+
+- `open` segments: a run of consecutive open pings. A new segment starts when (a) the H3 res-8 cell changes and the driver then stays ≥ 60 s (`DWELL_S`) in the new cell — the segment for the new cell begins at its first ping, the old one ends at the last ping before it; a shorter excursion is absorbed — or (b) the gap to the previous ping exceeds 600 s (`GAP_S`): the old segment ends at its last ping and the gap is not exposure. Measured on the owner's file: 483 segments and 147 h in 27 days (2,198 segments without the dwell rule; 86 % of open pings are stationary).
+- One `enroute` segment per trip requested while open: `begin_at = request_at`, `end_at = begin_at` of the trip (or `request_at + 60 s` when cancelled — the export carries no cancellation time), position = the ping nearest to `request_at` when within 120 s (`MATCH_S`), else no position and `h3_r8 = null`. A cancelled request still counts as an offer received. A request that arrives inside another trip's busy interval (queued offer; 6 of 50 on the owner's file) produces **no** `enroute` segment: exposure at that moment is not `open`, so the offer must not enter the cell rate. The trip itself stays in `uber_trips` and in the hour-of-week histogram.
+- One `ontrip` segment per completed trip: `begin_at` → `dropoff_at`, positions from the nearest pings (120 s).
+- Positions rounded to 5 decimals; `source = gps`; `dedup_key = sha256("gps|state|begin_at|end_at|h3_r8")`.
+- Home: an `open` segment whose begin position is within `DEMAND_HOME_RADIUS_M` (default 300; 300 m captured 21.2 of 21.4 home-online hours on the owner's file) of `DEMAND_HOME_LAT/LNG` gets `zone_key = "home"`. `shift_log` applies the same tag to `online`/`here` events. Home never counts as exposure and never appears in a summary. The setting is a single-tenant shortcut (the tenant rule wants it per tenant); the values live in the VPS `.env` only, never in the repo, a doc or a screen.
+- Pings outside `METRO_BBOX` (Aspen: 11,482 rows) are segmented like any other; their cells belong to no zone.
+
+### Trips backfill
+
+`uber_trips.begin_lat/lng` are filled with the pickup ping (nearest ping to `begin_at` within 120 s) by `UPDATE … WHERE begin_lat IS NULL` for the trips of the window (50 of 50 on the owner's file). The trips rows are already inserted by then; `ON CONFLICT DO NOTHING` cannot do this.
+
+### Coverage and re-import
+
+Coverage is measured, not nominal: `start = min(ping time)`, `end = max(ping time)` (27 days, not 30, on the owner's file). An import replaces: `DELETE` the tenant's `source = gps` segments with `begin_at ≥ start`; truncate any remaining `gps` segment with `end_at > start` to `end_at = start`; insert. Importing the same ZIP twice leaves the table identical; importing next month's overlapping file counts nothing twice. `demand_imports.summary.gps = {start, end, days, pings, skipped_rows, segments: {open, enroute, ontrip}, trips_located, home_hours, top_waits: [...]}`; `null` when the ZIP has no analytics file.
+
+### What the recompute counts (binding on `demand.recompute_week`, Task 9)
+
+Live taps and the GPS file cover the same days, so:
+
+1. Inside any GPS coverage window `[start, end]`, exposure comes only from `source = gps` `open` segments; a `live` `open` segment whose `begin_at` falls inside a window is ignored. Outside every window live segments count as before.
+2. A segment with `zone_key = "home"` never counts as exposure, whatever its source.
+3. Live `offer_events` always count, accepted and declined (they carry the product).
+4. A `gps` `enroute` segment counts as one accepted offer (product via the ±3 min trip match already in the plan) unless a live accepted `offer_events` row exists within ±3 min of its `begin_at`.
+
+Coverage windows are read from every `demand_imports` row of the tenant whose `summary.gps` has `start` and `end`.
+
+### "Your waits this month" (Import tab)
+
+Computed at import from the new `open` segments (home excluded) and the trips of the window: the 10 cells with most open minutes, each `{h3_r8, hours, premium_requests, per_hour, place, distance_km, zone_key, zone_name, outside}` where `premium_requests` = Black/SUV requests received while open in that cell (the `enroute` begin positions), `place`/`distance_km` = the nearest curated place or the DEN lot when within 2 km (else null), `zone_key`/`zone_name` = the zone whose radius contains the cell (else null), `outside` = true outside `METRO_BBOX`. The frontend composes the label (place with distance → zone name → "outside the service area" → "other spot"); no coordinates are shown. Measured on the owner's file: DEN lot 52.9 h, 10 requests, 0.19 per hour; downtown cells 5–6 h with 0–1.
+
+### Log tab
+
+Offer is the primary control (product chips + accepted toggle); Online, Here and Offline stay as secondary buttons: with the monthly GPS import they are optional, and the planner still reflects same-day taps until the next import supersedes them.
+
 
 ## Error handling summary
 
@@ -219,6 +266,7 @@ Backend (`pytest`, ruff, `alembic upgrade head` with no autogenerate drift), eph
 
 - `test_demand_model.py`: prior only → output equals prior; heavy own data → converges to observed rate; 10 logged minutes → stays within 5% of prior; top blocks respect threshold and ≥2 h; DST spring/fall days yield 23 and 25 local hours; bridge rule; travel penalty ranking.
 - `test_uber_import.py`: synthetic fixtures with the **real headers** copied from the 2021 Paris (`;`), 2022 US (`,`, with coordinates) and 2025 US (73 columns, no coordinates) samples, 5–10 rows each; double import inserts 0 the second time; missing "Online Offline" reported with consequence; non-CSV member ignored and listed; oversize rejected; summary counts match rows.
+- `test_gps_import.py`: exact segments from a synthetic day built on the real 18-column header (blip absorbed, dwell switch, 10-min gap, trip, queued request, cancelled request, offline burst, home); replace-window re-import with an overlapping second file; pickup backfill; privacy (unread columns never stored) and the 150 MB member cap.
 - `test_shift_log.py`: sequence online → here → offer(black, accepted) → offline closes segments with correct durations and states; offer without position stored and flagged; duplicate `client_event_id` → 409 with same row; DEN lot tagging; tenant isolation (A cannot read B).
 - `test_demand_api.py`: 401 without session; driver sees only own tenant; `week`/`heat` shapes; `ETag` changes after recompute; unknown zone 404.
 - `test_demand_jobs.py`: one tick writes `week_scores` (Phase 1) and `hex_scores` (Phase 2) plus their Redis keys; a raising compute does not stop the scheduler.
@@ -227,7 +275,7 @@ Frontend: `tsc`, `next lint`, `next build`; Playwright at 390 px with owner logi
 
 ## Phases
 
-**Phase 1 — Planner + logging (v0.93.0)**: migration 0050, `uber_trips`/`driver_state_segments`/`offer_events`/`dispatch_windows`/`demand_imports`/`hex_priors`/`den_flight_baseline`/`week_scores`/`hex_scores`, `uber_import`, `shift_log`, `demand_prior` + script, `flights_baseline` + script, `demand_model`, `demand.recompute_week` + scheduler job, API (import, log, week), tabs Log/Week/Import, tests, deploy to VPS with migration and both scripts run once.
+**Phase 1 — Planner + logging (v0.93.0)**: migration 0050, `uber_trips`/`driver_state_segments`/`offer_events`/`dispatch_windows`/`demand_imports`/`hex_priors`/`den_flight_baseline`/`week_scores`/`hex_scores`, `uber_import`, `gps_import` + migration 0051 (Addendum A), `shift_log`, `demand_prior` + script, `flights_baseline` + script, `demand_model`, `demand.recompute_week` + scheduler job, API (import, log, week), tabs Log/Week/Import, tests, deploy to VPS with migration and both scripts run once.
 
 **Phase 2 — Live map (v0.94.0)**: `demand.recompute_hex` + job, API (heat, heat/top), Map tab with MapLibre + h3-js, bridge destination scoring on the Offer chip (optional `dest_text`), optional push "zone X rises in 40 min" via the existing `push.notify_staff`. Starts only after 4 weeks of Phase 1 logging have been scored against predictions and the result reported to the owner as-is.
 
@@ -235,8 +283,8 @@ Deferred, not planned: paid live flight schedules toggle; Poisson GLM / gradient
 
 ## Owner TODOs
 
-1. Request the Uber data export ("Request your personal Uber data" in Uber help) and upload the ZIP in the Import tab when Phase 1 is deployed; tell us whether a file with `earner_state` and `begin_lat` was inside.
+1. ✅ 2026-09-17 — export received and tested against the importer: the US export has no "Online Offline" and no "Dispatches" file, but ships `driver_app_analytics-0.csv` (30 days of GPS) → Addendum A. Upload the ZIP in the Import tab when Phase 1 is deployed, and request a new export monthly.
 2. Get a free Census API key (api.census.gov/data/key_signup.html) → `CENSUS_API_KEY` in the VPS `.env`.
 3. ✅ 2026-09-17 — DEN Commercial Holding Lot (8500 Peña Blvd, Denver, CO 80249) confirmed by the owner via its Google Maps pin: `DEN_LOT_LAT=39.8399691`, `DEN_LOT_LNG=-104.6698651` (in the local root `.env`; Task 14 copies both to the VPS `.env`, values in the plan's Task 14 env table). The app shows the configured 400 m circle on the Week/Map views.
-4. Review the curated hotel/FBO/generator list in `demand_places.py` before the priors are built.
-5. Log every shift for 4 weeks: Online, Here on each move, Offer with product on every ping, Offline.
+4. ✅ 2026-09-17 — curated list approved unchanged by the owner; he cannot rank it and need not: of his 28 Black/SUV pickups of Aug–Sep 2026, 12 were at DEN and 5 within 500 m of a curated place, so the ranking comes from the data.
+5. Tap every offer (product, accepted or not) for 4 weeks; Online/Here/Offline are optional because the monthly GPS import covers waiting time (Addendum A).
