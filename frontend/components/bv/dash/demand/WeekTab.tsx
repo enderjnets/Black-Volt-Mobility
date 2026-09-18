@@ -1,7 +1,7 @@
 "use client";
 
 /* 7×24 planner per zone. Colour = expected Black offers; hatching = the estimate
-   is still mostly the proxy prior (own_share < 0.2). Hand-rolled like the other
+   is still mostly the proxy prior (own_share rounds below 20%). Hand-rolled like the other
    dashboard charts — no chart library. */
 
 import { useEffect, useMemo, useState } from "react";
@@ -201,7 +201,9 @@ function FragmentRow({
       <div style={{ fontSize: 11, color: "var(--silver)", display: "flex", alignItems: "center" }}>{label}</div>
       {row.map((c, h) => {
         const on = sel?.d === d && sel?.h === h;
-        const thin = (c?.own_share ?? 0) < THIN;
+        // isThin(), not a raw compare: the panel this cell opens prints the ROUNDED
+        // percent, so 0.199 hatched here would read "20%" there with no thin warning.
+        const thin = isThin(c?.own_share ?? 0);
         const priv = privateByCell.has(`${d}-${h}`);
         return (
           <button
