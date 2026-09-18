@@ -136,6 +136,37 @@ def _seed_priors():
     asyncio.run(_run())
 
 
+def _seed_lodo_priors():
+    """A second scored zone, so "the baseline is global" can actually be tested.
+
+    Deliberately richer than the Cherry Creek fixture: if both zones carried the same
+    level, a per-zone baseline and a global one would agree and the test would pass
+    either way. Snapshots into the same dict the module teardown restores from, because
+    hex_priors is shared geography and conftest never truncates it.
+    """
+    import h3
+
+    LODO = (39.7527, -104.9998)
+
+    async def _run():
+        async with get_session_factory()() as db:
+            for cell in h3.grid_disk(h3.latlng_to_cell(*LODO, 8), 2):
+                if cell not in _HEX_PRIOR_ORIGINALS:
+                    existing = await db.get(HexPrior, cell)
+                    _HEX_PRIOR_ORIGINALS[cell] = None if existing is None else {
+                        "affluence": existing.affluence,
+                        "hotels": existing.hotels,
+                        "generators": existing.generators,
+                        "den_distance_mi": existing.den_distance_mi,
+                        "zone_key": existing.zone_key,
+                    }
+                await db.merge(HexPrior(h3_r8=cell, affluence=0.95, hotels=8, generators=5,
+                                        den_distance_mi=18.0, zone_key="lodo"))
+            await db.commit()
+
+    asyncio.run(_run())
+
+
 def _log(c: TestClient, kind: str, at: datetime, **extra):
     body = {"client_event_id": str(uuid.uuid4()), "kind": kind, "at": at.isoformat(),
             "lat": CHERRY_CREEK[0], "lng": CHERRY_CREEK[1], **extra}
@@ -300,6 +331,53 @@ def test_block_reasons_of_a_quiet_block_stay_empty():
     r = demand._block_reasons(grid, block)
     assert r == {"flights": 1.0, "events": [], "holiday": None,
                  "own_minutes": 0.0, "own_offers": 0.0}
+
+
+def test_the_block_ratio_is_measured_against_the_same_baseline_in_every_zone():
+    """A per-zone baseline would give every zone's best block roughly the same ratio and
+    destroy the only comparison the driver is making. The baseline is the median hour
+    across ALL zones, so the number means the same thing wherever it appears.
+
+    Both sides of the ratio come from the model on purpose. Its scale stacks four
+    multipliers into peaks an order of magnitude above this driver's real history, and
+    dividing a model estimate by a measured rate would be the frame error this feature
+    has already made six times. A ratio of two model numbers survives being wrong about
+    the scale; the ordering is what was verified.
+    """
+    _reset_demand_tenant_state()
+    _seed_priors()
+    _seed_lodo_priors()
+    c = _owner()
+    tid = _tenant_id(c)
+
+    async def _run():
+        async with get_session_factory()() as db:
+            return await demand.recompute_week(
+                db, tenant_id=tid, now=datetime(2026, 9, 16, tzinfo=UTC)
+            )
+
+    asyncio.run(_run())
+    # Discover the scored zones instead of naming them: which ones have cells depends on
+    # the seeded priors, and a zone with none answers 404. Asserting on a name that was
+    # never scored tests the fixture, not the baseline.
+    first = c.get("/api/v1/demand/week")
+    assert first.status_code == 200, first.text
+    bodies = []
+    for z in first.json()["zones"]:
+        r = c.get("/api/v1/demand/week", params={"zone": z["key"]})
+        if r.status_code == 200:
+            bodies.append(r.json())
+    assert len(bodies) >= 2, "need at least two scored zones to compare their baselines"
+
+    baselines = {b["baseline_mean"] for b in bodies}
+    assert len(baselines) == 1, f"the baseline must be global, got {baselines}"
+    assert baselines.pop() > 0
+
+    for body in bodies:
+        for blk in body["top_blocks"]:
+            assert blk["lift"] == pytest.approx(
+                round(blk["mean"] / body["baseline_mean"], 1), abs=1e-9
+            )
 
 
 def test_a_recompute_invalidates_every_cached_zone_for_the_tenant():

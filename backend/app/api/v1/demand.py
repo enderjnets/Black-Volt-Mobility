@@ -8,6 +8,7 @@ GET  /demand/week            → 7×24 planner grid + top blocks       (Task 9)
 """
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -18,6 +19,7 @@ from app.api.deps import require_staff, resolve_tenant_id
 from app.db.base import get_db
 from app.services import demand, shift_log, uber_import
 
+logger = logging.getLogger("blackvolt.demand")
 router = APIRouter(tags=["demand"])
 
 
@@ -34,10 +36,20 @@ async def post_import(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="too_large"
         )
     try:
-        return await uber_import.import_export(db, tenant_id=tenant_id, data=data)
+        out = await uber_import.import_export(db, tenant_id=tenant_id, data=data)
     except uber_import.ImportError_ as e:
         code = status.HTTP_413_REQUEST_ENTITY_TOO_LARGE if e.code == "too_large" else 400
         raise HTTPException(status_code=code, detail=e.code) from e
+    # Recompute here rather than leaving it to the hourly job. Uploading an export and
+    # finding last month's week still on screen reads as a failed upload; it took a
+    # hand-run recompute to notice on the day this shipped. Best-effort on purpose: the
+    # rows are already committed, the job would pick them up anyway, and an import that
+    # succeeded must not report failure because the arithmetic after it did.
+    try:
+        await demand.recompute_week(db, tenant_id=tenant_id)
+    except Exception as e:  # noqa: BLE001 - the upload itself already succeeded
+        logger.warning("post-import recompute failed for tenant %s: %s", tenant_id, e)
+    return out
 
 
 @router.get("/demand/import/status")

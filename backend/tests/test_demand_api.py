@@ -97,6 +97,25 @@ def test_import_twice_is_idempotent_and_reports_missing_files():
     assert st["trips"]["inserted"] == 0 and "at" in st
 
 
+def test_an_import_leaves_the_week_already_recomputed():
+    """Upload and the planner is current, not current-in-an-hour.
+
+    The scores used to be rewritten only by the hourly job, so the first read after an
+    import showed the previous week. On the day this shipped it took a hand-run
+    recompute to notice, and the owner would have met it again with next month's export.
+    Asserted through the API, because the gap was between two correct pieces rather than
+    inside either of them.
+    """
+    c = _owner()
+    before = c.get("/api/v1/demand/week").json().get("computed_at")
+    r = c.post("/api/v1/demand/import",
+               files=[("file", ("uber.zip", _export_zip(), "application/zip"))])
+    assert r.status_code == 201, r.text
+    after = c.get("/api/v1/demand/week").json().get("computed_at")
+    assert after is not None
+    assert after != before
+
+
 def test_import_rejects_bad_zip():
     c = _owner()
     r = c.post("/api/v1/demand/import", files=[("file", ("x.zip", b"nope", "application/zip"))])
